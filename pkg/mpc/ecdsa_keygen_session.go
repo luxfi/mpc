@@ -139,12 +139,11 @@ func (s *KeygenSession) GenerateKey(done func()) {
 				return
 			}
 			s.pubkeyBytes = pubKeyBytes
-			done()
 			err = s.Close()
 			if err != nil {
 				logger.Error("Failed to close session", err)
 			}
-			// done()
+			done()
 			return
 		}
 	}
