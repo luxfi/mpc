@@ -65,11 +65,13 @@ func NewNode(
 	peerRegistry PeerRegistry,
 	identityStore identity.Store,
 ) *Node {
+	start := time.Now()
 	preParams, err := keygen.GeneratePreParams(5 * time.Minute)
 	if err != nil {
 		logger.Fatal("Generate pre params failed", err)
 	}
-	logger.Info("Starting new node, preparams is generated successfully!")
+	elapsed := time.Since(start)
+	logger.Info("Starting new node, preparams is generated successfully!", "elapsed", elapsed.Milliseconds())
 
 	go peerRegistry.WatchPeersReady()
 
