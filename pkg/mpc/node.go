@@ -97,7 +97,7 @@ func composeReadyTopic(nodeID string) string {
 }
 
 func (p *Node) CreateKeyGenSession(walletID string, threshold int, successQueue messaging.MessageQueue) (*KeygenSession, error) {
-	if p.peerRegistry.GetReadyPeersCount() < int64(threshold+1) {
+	if p.peerRegistry.GetReadyPeersCount() < p.peerRegistry.GetTotalPeersCount() {
 		return nil, fmt.Errorf("Not enough peers to create gen session! Expected %d, got %d", threshold+1, p.peerRegistry.GetReadyPeersCount())
 	}
 
@@ -121,7 +121,7 @@ func (p *Node) CreateKeyGenSession(walletID string, threshold int, successQueue 
 }
 
 func (p *Node) CreateEDDSAKeyGenSession(walletID string, threshold int, successQueue messaging.MessageQueue) (*EDDSAKeygenSession, error) {
-	if p.peerRegistry.GetReadyPeersCount() < int64(threshold+1) {
+	if p.peerRegistry.GetReadyPeersCount() < p.peerRegistry.GetTotalPeersCount() {
 		return nil, fmt.Errorf("Not enough peers to create gen session! Expected %d, got %d", threshold+1, p.peerRegistry.GetReadyPeersCount())
 	}
 
