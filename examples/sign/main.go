@@ -40,7 +40,7 @@ func main() {
 
 	txMsg := &types.SignTxMessage{
 		KeyType:             types.KeyTypeEd25519,
-		WalletID:            "77dd7e23-9d5c-4ff1-8759-f119d1b19b36",
+		WalletID:            "c47cd6f4-8ef4-4d77-9d2b-37f9d062e615",
 		NetworkInternalCode: "solana-devnet",
 		TxID:                txID,
 		Tx:                  dummyTx,

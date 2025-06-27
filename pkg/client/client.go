@@ -15,7 +15,6 @@ import (
 	"github.com/fystack/mpcium/pkg/eventconsumer"
 	"github.com/fystack/mpcium/pkg/logger"
 	"github.com/fystack/mpcium/pkg/messaging"
-	"github.com/fystack/mpcium/pkg/mpc"
 	"github.com/fystack/mpcium/pkg/types"
 	"github.com/nats-io/nats.go"
 )
@@ -26,7 +25,7 @@ const (
 
 type MPCClient interface {
 	CreateWallet(walletID string) error
-	OnWalletCreationResult(callback func(event mpc.KeygenSuccessEvent)) error
+	OnWalletCreationResult(callback func(event event.KeygenSuccessEvent)) error
 
 	SignTransaction(msg *types.SignTxMessage) error
 	OnSignResult(callback func(event event.SigningResultEvent)) error
@@ -186,9 +185,9 @@ func (c *mpcClient) CreateWallet(walletID string) error {
 }
 
 // The callback will be invoked whenever a wallet creation result is received.
-func (c *mpcClient) OnWalletCreationResult(callback func(event mpc.KeygenSuccessEvent)) error {
+func (c *mpcClient) OnWalletCreationResult(callback func(event event.KeygenSuccessEvent)) error {
 	err := c.genKeySuccessQueue.Dequeue(GenerateWalletSuccessTopic, func(msg []byte) error {
-		var event mpc.KeygenSuccessEvent
+		var event event.KeygenSuccessEvent
 		err := json.Unmarshal(msg, &event)
 		if err != nil {
 			return err

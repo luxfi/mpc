@@ -24,6 +24,7 @@ type PeerRegistry interface {
 	Resign() error
 	GetReadyPeersCount() int64
 	GetReadyPeersIncludeSelf() []string // get ready peers include self
+	GetTotalPeersCount() int64
 }
 
 type registry struct {
@@ -193,6 +194,11 @@ func (r *registry) ArePeersReady() bool {
 	defer r.mu.RUnlock()
 
 	return r.ready
+}
+
+func (r *registry) GetTotalPeersCount() int64 {
+	var self int64 = 1
+	return int64(len(r.peerNodeIDs)) + self
 }
 
 func (r *registry) Resign() error {

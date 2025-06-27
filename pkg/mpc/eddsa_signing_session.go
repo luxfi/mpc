@@ -9,6 +9,7 @@ import (
 	"github.com/bnb-chain/tss-lib/v2/eddsa/keygen"
 	"github.com/bnb-chain/tss-lib/v2/eddsa/signing"
 	"github.com/bnb-chain/tss-lib/v2/tss"
+	"github.com/decred/dcrd/dcrec/edwards/v2"
 	"github.com/fystack/mpcium/pkg/common/errors"
 	"github.com/fystack/mpcium/pkg/event"
 	"github.com/fystack/mpcium/pkg/identity"
@@ -16,12 +17,11 @@ import (
 	"github.com/fystack/mpcium/pkg/kvstore"
 	"github.com/fystack/mpcium/pkg/logger"
 	"github.com/fystack/mpcium/pkg/messaging"
-	"github.com/decred/dcrd/dcrec/edwards/v2"
 	"github.com/samber/lo"
 )
 
-type EDDSASigningSession struct {
-	Session
+type eddsaSigningSession struct {
+	session
 	endCh               chan *common.SignatureData
 	data                *keygen.LocalPartySaveData
 	tx                  *big.Int
@@ -43,9 +43,9 @@ func NewEDDSASigningSession(
 	keyinfoStore keyinfo.Store,
 	resultQueue messaging.MessageQueue,
 	identityStore identity.Store,
-) *EDDSASigningSession {
-	return &EDDSASigningSession{
-		Session: Session{
+) *eddsaSigningSession {
+	return &eddsaSigningSession{
+		session: session{
 			walletID:           walletID,
 			pubSub:             pubSub,
 			direct:             direct,
@@ -79,7 +79,7 @@ func NewEDDSASigningSession(
 	}
 }
 
-func (s *EDDSASigningSession) Init(tx *big.Int) error {
+func (s *eddsaSigningSession) Init(tx *big.Int) error {
 	logger.Infof("Initializing signing session with partyID: %s, peerIDs %s", s.selfPartyID, s.partyIDs)
 	ctx := tss.NewPeerContext(s.partyIDs)
 	params := tss.NewParameters(tss.Edwards(), ctx, s.selfPartyID, len(s.partyIDs), s.threshold)
@@ -124,7 +124,7 @@ func (s *EDDSASigningSession) Init(tx *big.Int) error {
 	return nil
 }
 
-func (s *EDDSASigningSession) Sign(onSuccess func(data []byte)) {
+func (s *eddsaSigningSession) Sign(onSuccess func(data []byte)) {
 	logger.Info("Starting signing", "walletID", s.walletID)
 	go func() {
 		if err := s.party.Start(); err != nil {
