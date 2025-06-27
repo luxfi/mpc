@@ -15,22 +15,20 @@ import (
 	"github.com/fystack/mpcium/pkg/messaging"
 )
 
-const (
-	TypeGenerateWalletSuccess = "mpc.mpc_keygen_success.%s"
-)
-
-type KeygenSession struct {
+type KeyGenSession interface {
 	Session
+
+	Init()
+	GenerateKey(done func())
+	GetPubKeyResult() []byte
+}
+
+type ecdsaKeygenSession struct {
+	session
 	endCh chan *keygen.LocalPartySaveData
 }
 
-type KeygenSuccessEvent struct {
-	WalletID    string `json:"wallet_id"`
-	ECDSAPubKey []byte `json:"ecdsa_pub_key"`
-	EDDSAPubKey []byte `json:"eddsa_pub_key"`
-}
-
-func NewKeygenSession(
+func newECDSAKeygenSession(
 	walletID string,
 	pubSub messaging.PubSub,
 	direct messaging.DirectMessaging,
@@ -43,9 +41,9 @@ func NewKeygenSession(
 	keyinfoStore keyinfo.Store,
 	resultQueue messaging.MessageQueue,
 	identityStore identity.Store,
-) *KeygenSession {
-	return &KeygenSession{
-		Session: Session{
+) *ecdsaKeygenSession {
+	return &ecdsaKeygenSession{
+		session: session{
 			walletID:           walletID,
 			pubSub:             pubSub,
 			direct:             direct,
@@ -71,14 +69,14 @@ func NewKeygenSession(
 			},
 			getRoundFunc:  GetEcdsaMsgRound,
 			resultQueue:   resultQueue,
-			sessionType:   SessionTypeEcdsa,
+			sessionType:   SessionTypeECDSA,
 			identityStore: identityStore,
 		},
 		endCh: make(chan *keygen.LocalPartySaveData),
 	}
 }
 
-func (s *KeygenSession) Init() {
+func (s *ecdsaKeygenSession) Init() {
 	logger.Infof("Initializing session with partyID: %s, peerIDs %s", s.selfPartyID, s.partyIDs)
 	ctx := tss.NewPeerContext(s.partyIDs)
 	params := tss.NewParameters(tss.S256(), ctx, s.selfPartyID, len(s.partyIDs), s.threshold)
@@ -86,7 +84,7 @@ func (s *KeygenSession) Init() {
 	logger.Infof("[INITIALIZED] Initialized session successfully partyID: %s, peerIDs %s, walletID %s, threshold = %d", s.selfPartyID, s.partyIDs, s.walletID, s.threshold)
 }
 
-func (s *KeygenSession) GenerateKey(done func()) {
+func (s *ecdsaKeygenSession) GenerateKey(done func()) {
 	logger.Info("Starting to generate key ECDSA", "walletID", s.walletID)
 	go func() {
 		if err := s.party.Start(); err != nil {

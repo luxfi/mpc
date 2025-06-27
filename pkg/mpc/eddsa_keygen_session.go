@@ -14,17 +14,12 @@ import (
 	"github.com/fystack/mpcium/pkg/messaging"
 )
 
-type EDDSAKeygenSession struct {
-	Session
+type eddsaKeygenSession struct {
+	session
 	endCh chan *keygen.LocalPartySaveData
 }
 
-type EDDSAKeygenSuccessEvent struct {
-	WalletID string `json:"wallet_id"`
-	PubKey   []byte `json:"pub_key"`
-}
-
-func NewEDDSAKeygenSession(
+func newEDDSAKeygenSession(
 	walletID string,
 	pubSub messaging.PubSub,
 	direct messaging.DirectMessaging,
@@ -36,8 +31,8 @@ func NewEDDSAKeygenSession(
 	keyinfoStore keyinfo.Store,
 	resultQueue messaging.MessageQueue,
 	identityStore identity.Store,
-) *EDDSAKeygenSession {
-	return &EDDSAKeygenSession{Session: Session{
+) *eddsaKeygenSession {
+	return &eddsaKeygenSession{session: session{
 		walletID:           walletID,
 		pubSub:             pubSub,
 		direct:             direct,
@@ -62,14 +57,14 @@ func NewEDDSAKeygenSession(
 		},
 		getRoundFunc:  GetEddsaMsgRound,
 		resultQueue:   resultQueue,
-		sessionType:   SessionTypeEddsa,
+		sessionType:   SessionTypeEDDSA,
 		identityStore: identityStore,
 	},
 		endCh: make(chan *keygen.LocalPartySaveData),
 	}
 }
 
-func (s *EDDSAKeygenSession) Init() {
+func (s *eddsaKeygenSession) Init() {
 	logger.Infof("Initializing session with partyID: %s, peerIDs %s", s.selfPartyID, s.partyIDs)
 	ctx := tss.NewPeerContext(s.partyIDs)
 	params := tss.NewParameters(tss.Edwards(), ctx, s.selfPartyID, len(s.partyIDs), s.threshold)
@@ -77,7 +72,7 @@ func (s *EDDSAKeygenSession) Init() {
 	logger.Infof("[INITIALIZED] Initialized session successfully partyID: %s, peerIDs %s, walletID %s, threshold = %d", s.selfPartyID, s.partyIDs, s.walletID, s.threshold)
 }
 
-func (s *EDDSAKeygenSession) GenerateKey(done func()) {
+func (s *eddsaKeygenSession) GenerateKey(done func()) {
 	logger.Info("Starting to generate key EDDSA", "walletID", s.walletID)
 	go func() {
 		if err := s.party.Start(); err != nil {

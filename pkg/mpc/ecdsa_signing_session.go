@@ -20,9 +20,16 @@ import (
 	"github.com/samber/lo"
 )
 
-// Ecdsa signing session
-type SigningSession struct {
+type SigningSession interface {
 	Session
+
+	Init(tx *big.Int) error
+	Sign(onSuccess func(data []byte))
+}
+
+// Ecdsa signing session
+type ecdsaSigningSession struct {
+	session
 	endCh               chan *common.SignatureData
 	data                *keygen.LocalPartySaveData
 	tx                  *big.Int
@@ -30,19 +37,7 @@ type SigningSession struct {
 	networkInternalCode string
 }
 
-type ISession interface {
-	ErrChan() <-chan error
-	ListenToIncomingMessageAsync()
-}
-
-type ISigningSession interface {
-	ISession
-
-	Init(tx *big.Int) error
-	Sign(onSuccess func(data []byte))
-}
-
-func NewSigningSession(
+func newECDSASigningSession(
 	walletID string,
 	txID string,
 	networkInternalCode string,
@@ -57,9 +52,9 @@ func NewSigningSession(
 	keyinfoStore keyinfo.Store,
 	resultQueue messaging.MessageQueue,
 	identityStore identity.Store,
-) *SigningSession {
-	return &SigningSession{
-		Session: Session{
+) *ecdsaSigningSession {
+	return &ecdsaSigningSession{
+		session: session{
 			walletID:           walletID,
 			pubSub:             pubSub,
 			direct:             direct,
@@ -93,7 +88,7 @@ func NewSigningSession(
 	}
 }
 
-func (s *SigningSession) Init(tx *big.Int) error {
+func (s *ecdsaSigningSession) Init(tx *big.Int) error {
 	logger.Infof("Initializing signing session with partyID: %s, peerIDs %s", s.selfPartyID, s.partyIDs)
 	ctx := tss.NewPeerContext(s.partyIDs)
 	params := tss.NewParameters(tss.S256(), ctx, s.selfPartyID, len(s.partyIDs), s.threshold)
@@ -138,7 +133,7 @@ func (s *SigningSession) Init(tx *big.Int) error {
 	return nil
 }
 
-func (s *SigningSession) Sign(onSuccess func(data []byte)) {
+func (s *ecdsaSigningSession) Sign(onSuccess func(data []byte)) {
 	logger.Info("Starting signing", "walletID", s.walletID)
 	go func() {
 		if err := s.party.Start(); err != nil {

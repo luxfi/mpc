@@ -110,24 +110,25 @@ func (ec *eventConsumer) handleKeyGenEvent(natMsg *nats.Msg) {
 	}
 
 	walletID := msg.WalletID
-	session, err := ec.node.CreateKeyGenSession(walletID, ec.mpcThreshold, ec.genKeySucecssQueue)
+	ecdsaSession, err := ec.node.CreateKeyGenSession(mpc.SessionTypeECDSA, walletID, ec.mpcThreshold, ec.genKeySucecssQueue)
 	if err != nil {
 		logger.Error("Failed to create key generation session", err, "walletID", walletID)
 		return
 	}
-	eddsaSession, err := ec.node.CreateEDDSAKeyGenSession(walletID, ec.mpcThreshold, ec.genKeySucecssQueue)
+	eddsaSession, err := ec.node.CreateKeyGenSession(mpc.SessionTypeEDDSA, walletID, ec.mpcThreshold, ec.genKeySucecssQueue)
 	if err != nil {
 		logger.Error("Failed to create key generation session", err, "walletID", walletID)
 		return
 	}
 
-	session.Init()
+	ecdsaSession.Init()
 	eddsaSession.Init()
 
-	ctx, done := context.WithCancel(context.Background())
-	ctxEddsa, doneEddsa := context.WithCancel(context.Background())
+	ctx := context.Background()
+	ctxEcdsa, doneEcdsa := context.WithCancel(ctx)
+	ctxEddsa, doneEddsa := context.WithCancel(ctx)
 
-	successEvent := &mpc.KeygenSuccessEvent{
+	successEvent := &event.KeygenSuccessEvent{
 		WalletID: walletID,
 	}
 
@@ -136,11 +137,11 @@ func (ec *eventConsumer) handleKeyGenEvent(natMsg *nats.Msg) {
 	go func() {
 		for {
 			select {
-			case <-ctx.Done():
-				successEvent.ECDSAPubKey = session.GetPubKeyResult()
+			case <-ctxEcdsa.Done():
+				successEvent.ECDSAPubKey = ecdsaSession.GetPubKeyResult()
 				wg.Done()
 				return
-			case err := <-session.ErrCh:
+			case err := <-ecdsaSession.ErrChan():
 				logger.Error("Keygen session error", err)
 			}
 		}
@@ -153,18 +154,18 @@ func (ec *eventConsumer) handleKeyGenEvent(natMsg *nats.Msg) {
 				successEvent.EDDSAPubKey = eddsaSession.GetPubKeyResult()
 				wg.Done()
 				return
-			case err := <-eddsaSession.ErrCh:
+			case err := <-eddsaSession.ErrChan():
 				logger.Error("Keygen session error", err)
 			}
 		}
 	}()
 
-	session.ListenToIncomingMessageAsync()
+	ecdsaSession.ListenToIncomingMessageAsync()
 	eddsaSession.ListenToIncomingMessageAsync()
 	// TODO: replace sleep with distributed lock
 	time.Sleep(500 * time.Millisecond)
 
-	go session.GenerateKey(done)
+	go ecdsaSession.GenerateKey(doneEcdsa)
 	go eddsaSession.GenerateKey(doneEddsa)
 
 	wg.Wait()
@@ -249,10 +250,11 @@ func (ec *eventConsumer) consumeTxSigningEvent() error {
 			return
 		}
 
-		var session mpc.ISigningSession
+		var session mpc.SigningSession
 		switch msg.KeyType {
 		case types.KeyTypeSecp256k1:
 			session, err = ec.node.CreateSigningSession(
+				mpc.SessionTypeECDSA,
 				msg.WalletID,
 				msg.TxID,
 				msg.NetworkInternalCode,
@@ -260,7 +262,8 @@ func (ec *eventConsumer) consumeTxSigningEvent() error {
 				ec.signingResultQueue,
 			)
 		case types.KeyTypeEd25519:
-			session, err = ec.node.CreateEDDSASigningSession(
+			session, err = ec.node.CreateSigningSession(
+				mpc.SessionTypeECDSA,
 				msg.WalletID,
 				msg.TxID,
 				msg.NetworkInternalCode,

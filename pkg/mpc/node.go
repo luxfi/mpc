@@ -8,6 +8,7 @@ import (
 
 	"github.com/bnb-chain/tss-lib/v2/ecdsa/keygen"
 	"github.com/bnb-chain/tss-lib/v2/tss"
+	"github.com/fystack/mpcium/pkg/common/errors"
 	"github.com/fystack/mpcium/pkg/identity"
 	"github.com/fystack/mpcium/pkg/keyinfo"
 	"github.com/fystack/mpcium/pkg/kvstore"
@@ -92,18 +93,30 @@ func (p *Node) ID() string {
 	return p.nodeID
 }
 
-func composeReadyTopic(nodeID string) string {
-	return fmt.Sprintf("%s-%s", nodeID, "ready")
-}
-
-func (p *Node) CreateKeyGenSession(walletID string, threshold int, successQueue messaging.MessageQueue) (*KeygenSession, error) {
-	if p.peerRegistry.GetReadyPeersCount() < p.peerRegistry.GetTotalPeersCount() {
+func (p *Node) CreateKeyGenSession(
+	sessionType SessionType,
+	walletID string,
+	threshold int,
+	successQueue messaging.MessageQueue,
+) (KeyGenSession, error) {
+	if !p.peerRegistry.ArePeersReady() {
 		return nil, fmt.Errorf("Not enough peers to create gen session! Expected %d, got %d", threshold+1, p.peerRegistry.GetReadyPeersCount())
 	}
 
+	switch sessionType {
+	case SessionTypeECDSA:
+		return p.createECDSAKeyGenSession(walletID, threshold, successQueue)
+	case SessionTypeEDDSA:
+		return p.createEDDSAKeyGenSession(walletID, threshold, successQueue)
+	default:
+		return nil, fmt.Errorf("Unknown session type: %s", sessionType)
+	}
+}
+
+func (p *Node) createECDSAKeyGenSession(walletID string, threshold int, successQueue messaging.MessageQueue) (KeyGenSession, error) {
 	readyPeerIDs := p.peerRegistry.GetReadyPeersIncludeSelf()
 	selfPartyID, allPartyIDs := p.generatePartyIDs(PurposeKeygen, readyPeerIDs)
-	session := NewKeygenSession(
+	session := newECDSAKeygenSession(
 		walletID,
 		p.pubSub,
 		p.direct,
@@ -120,14 +133,10 @@ func (p *Node) CreateKeyGenSession(walletID string, threshold int, successQueue 
 	return session, nil
 }
 
-func (p *Node) CreateEDDSAKeyGenSession(walletID string, threshold int, successQueue messaging.MessageQueue) (*EDDSAKeygenSession, error) {
-	if p.peerRegistry.GetReadyPeersCount() < p.peerRegistry.GetTotalPeersCount() {
-		return nil, fmt.Errorf("Not enough peers to create gen session! Expected %d, got %d", threshold+1, p.peerRegistry.GetReadyPeersCount())
-	}
-
+func (p *Node) createEDDSAKeyGenSession(walletID string, threshold int, successQueue messaging.MessageQueue) (KeyGenSession, error) {
 	readyPeerIDs := p.peerRegistry.GetReadyPeersIncludeSelf()
 	selfPartyID, allPartyIDs := p.generatePartyIDs(PurposeKeygen, readyPeerIDs)
-	session := NewEDDSAKeygenSession(
+	session := newEDDSAKeygenSession(
 		walletID,
 		p.pubSub,
 		p.direct,
@@ -144,58 +153,52 @@ func (p *Node) CreateEDDSAKeyGenSession(walletID string, threshold int, successQ
 }
 
 func (p *Node) CreateSigningSession(
+	sessionType SessionType,
 	walletID string,
 	txID string,
 	networkInternalCode string,
 	threshold int,
 	resultQueue messaging.MessageQueue,
-) (*SigningSession, error) {
+) (SigningSession, error) {
 	readyPeerIDs := p.peerRegistry.GetReadyPeersIncludeSelf()
 	selfPartyID, allPartyIDs := p.generatePartyIDs(PurposeKeygen, readyPeerIDs)
-	session := NewSigningSession(
-		walletID,
-		txID,
-		networkInternalCode,
-		p.pubSub,
-		p.direct,
-		readyPeerIDs,
-		selfPartyID,
-		allPartyIDs,
-		threshold,
-		p.ecdsaPreParams,
-		p.kvstore,
-		p.keyinfoStore,
-		resultQueue,
-		p.identityStore,
-	)
-	return session, nil
-}
+	switch sessionType {
+	case SessionTypeECDSA:
+		return newECDSASigningSession(
+			walletID,
+			txID,
+			networkInternalCode,
+			p.pubSub,
+			p.direct,
+			readyPeerIDs,
+			selfPartyID,
+			allPartyIDs,
+			threshold,
+			p.ecdsaPreParams,
+			p.kvstore,
+			p.keyinfoStore,
+			resultQueue,
+			p.identityStore,
+		), nil
+	case SessionTypeEDDSA:
+		return NewEDDSASigningSession(
+			walletID,
+			txID,
+			networkInternalCode,
+			p.pubSub,
+			p.direct,
+			readyPeerIDs,
+			selfPartyID,
+			allPartyIDs,
+			threshold,
+			p.kvstore,
+			p.keyinfoStore,
+			resultQueue,
+			p.identityStore,
+		), nil
+	}
 
-func (p *Node) CreateEDDSASigningSession(
-	walletID string,
-	txID string,
-	networkInternalCode string,
-	threshold int,
-	resultQueue messaging.MessageQueue,
-) (*EDDSASigningSession, error) {
-	readyPeerIDs := p.peerRegistry.GetReadyPeersIncludeSelf()
-	selfPartyID, allPartyIDs := p.generatePartyIDs(PurposeKeygen, readyPeerIDs)
-	session := NewEDDSASigningSession(
-		walletID,
-		txID,
-		networkInternalCode,
-		p.pubSub,
-		p.direct,
-		readyPeerIDs,
-		selfPartyID,
-		allPartyIDs,
-		threshold,
-		p.kvstore,
-		p.keyinfoStore,
-		resultQueue,
-		p.identityStore,
-	)
-	return session, nil
+	return nil, errors.New("Unknown session type")
 }
 
 func (p *Node) generatePartyIDs(purpose string, readyPeerIDs []string) (self *tss.PartyID, all []*tss.PartyID) {

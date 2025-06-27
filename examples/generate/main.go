@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -12,8 +13,8 @@ import (
 
 	"github.com/fystack/mpcium/pkg/client"
 	"github.com/fystack/mpcium/pkg/config"
+	"github.com/fystack/mpcium/pkg/event"
 	"github.com/fystack/mpcium/pkg/logger"
-	"github.com/fystack/mpcium/pkg/mpc"
 	"github.com/google/uuid"
 	"github.com/nats-io/nats.go"
 	"github.com/spf13/viper"
@@ -41,34 +42,53 @@ func main() {
 	})
 
 	var walletStartTimes sync.Map
+	var walletIDs []string
+	var walletIDsMu sync.Mutex
 	var wg sync.WaitGroup
 	var completedCount int32
 
 	startAll := time.Now()
 
-	wg.Add(*numWallets)
+	// STEP 1: Pre-generate wallet IDs and store start times
+	for i := 0; i < *numWallets; i++ {
+		walletID := uuid.New().String()
+		walletStartTimes.Store(walletID, time.Now())
 
-	err = mpcClient.OnWalletCreationResult(func(event mpc.KeygenSuccessEvent) {
+		walletIDsMu.Lock()
+		walletIDs = append(walletIDs, walletID)
+		walletIDsMu.Unlock()
+	}
+
+	// STEP 2: Register the result handler AFTER all walletIDs are stored
+	err = mpcClient.OnWalletCreationResult(func(event event.KeygenSuccessEvent) {
+		now := time.Now()
 		startTimeAny, ok := walletStartTimes.Load(event.WalletID)
 		if ok {
 			startTime := startTimeAny.(time.Time)
-			duration := time.Since(startTime).Seconds()
-			logger.Info("Wallet created", "walletID", event.WalletID, "duration_seconds", fmt.Sprintf("%.3f", duration))
+			duration := now.Sub(startTime).Seconds()
+			accumulated := now.Sub(startAll).Seconds()
+			countSoFar := atomic.AddInt32(&completedCount, 1)
+
+			logger.Info("Wallet created",
+				"walletID", event.WalletID,
+				"duration_seconds", fmt.Sprintf("%.3f", duration),
+				"accumulated_time_seconds", fmt.Sprintf("%.3f", accumulated),
+				"count_so_far", countSoFar,
+			)
+
 			walletStartTimes.Delete(event.WalletID)
 		} else {
 			logger.Warn("Received wallet result but no start time found", "walletID", event.WalletID)
 		}
-		atomic.AddInt32(&completedCount, 1)
 		wg.Done()
 	})
 	if err != nil {
 		logger.Fatal("Failed to subscribe to wallet-creation results", err)
 	}
 
-	for i := 0; i < *numWallets; i++ {
-		walletID := uuid.New().String()
-		walletStartTimes.Store(walletID, time.Now())
-
+	// STEP 3: Create wallets
+	for _, walletID := range walletIDs {
+		wg.Add(1)
 		if err := mpcClient.CreateWallet(walletID); err != nil {
 			logger.Error("CreateWallet failed", err)
 			walletStartTimes.Delete(walletID)
@@ -83,6 +103,21 @@ func main() {
 		wg.Wait()
 		totalDuration := time.Since(startAll).Seconds()
 		logger.Info("All wallets generated", "count", completedCount, "total_duration_seconds", fmt.Sprintf("%.3f", totalDuration))
+
+		// Save wallet IDs to wallets.json
+		walletIDsMu.Lock()
+		data, err := json.MarshalIndent(walletIDs, "", "  ")
+		walletIDsMu.Unlock()
+		if err != nil {
+			logger.Error("Failed to marshal wallet IDs", err)
+		} else {
+			err = os.WriteFile("wallets.json", data, 0644)
+			if err != nil {
+				logger.Error("Failed to write wallets.json", err)
+			} else {
+				logger.Info("wallets.json written", "count", len(walletIDs))
+			}
+		}
 		os.Exit(0)
 	}()
 

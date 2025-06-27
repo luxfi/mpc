@@ -148,7 +148,7 @@ func main () {
 		NatsConn: natsConn,
 		KeyPath:  "./event_initiator.key",
 	})
-	err = mpcClient.OnWalletCreationResult(func(event mpc.KeygenSuccessEvent) {
+	err = mpcClient.OnWalletCreationResult(func(event event.KeygenSuccessEvent) {
 		logger.Info("Received wallet creation result", "event", event)
 	})
 	if err != nil {

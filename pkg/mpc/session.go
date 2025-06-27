@@ -17,6 +17,14 @@ import (
 	"github.com/nats-io/nats.go"
 )
 
+type SessionType string
+
+const (
+	TypeGenerateWalletSuccess             = "mpc.mpc_keygen_success.%s"
+	SessionTypeECDSA          SessionType = "session_ecdsa"
+	SessionTypeEDDSA          SessionType = "session_eddsa"
+)
+
 var (
 	ErrNotEnoughParticipants = errors.New("Not enough participants to sign")
 )
@@ -28,14 +36,12 @@ type TopicComposer struct {
 
 type KeyComposerFn func(id string) string
 
-type SessionType string
+type Session interface {
+	ListenToIncomingMessageAsync()
+	ErrChan() <-chan error
+}
 
-const (
-	SessionTypeEcdsa SessionType = "session_ecdsa"
-	SessionTypeEddsa SessionType = "session_eddsa"
-)
-
-type Session struct {
+type session struct {
 	walletID           string
 	pubSub             messaging.PubSub
 	direct             messaging.DirectMessaging
@@ -66,19 +72,19 @@ type Session struct {
 	sessionType SessionType
 }
 
-func (s *Session) PartyID() *tss.PartyID {
+func (s *session) PartyID() *tss.PartyID {
 	return s.selfPartyID
 }
 
-func (s *Session) PartyIDs() []*tss.PartyID {
+func (s *session) PartyIDs() []*tss.PartyID {
 	return s.partyIDs
 }
 
-func (s *Session) PartyCount() int {
+func (s *session) PartyCount() int {
 	return len(s.partyIDs)
 }
 
-func (s *Session) handleTssMessage(keyshare tss.Message) {
+func (s *session) handleTssMessage(keyshare tss.Message) {
 	data, routing, err := keyshare.WireBytes()
 	if err != nil {
 		s.ErrCh <- err
@@ -118,7 +124,7 @@ func (s *Session) handleTssMessage(keyshare tss.Message) {
 	}
 }
 
-func (s *Session) receiveTssMessage(rawMsg []byte) {
+func (s *session) receiveTssMessage(rawMsg []byte) {
 	msg, err := types.UnmarshalTssMessage(rawMsg)
 	if err != nil {
 		s.ErrCh <- fmt.Errorf("Failed to unmarshal message: %w", err)
@@ -157,7 +163,7 @@ func (s *Session) receiveTssMessage(rawMsg []byte) {
 	}
 }
 
-func (s *Session) SendReplySignSuccess(natMsg *nats.Msg) {
+func (s *session) SendReplySignSuccess(natMsg *nats.Msg) {
 	msg := natMsg.Data
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -170,7 +176,7 @@ func (s *Session) SendReplySignSuccess(natMsg *nats.Msg) {
 	logger.Info("Sent reply sign sucess message", "reply", natMsg.Reply)
 }
 
-func (s *Session) ListenToIncomingMessageAsync() {
+func (s *session) ListenToIncomingMessageAsync() {
 	go func() {
 		sub, err := s.pubSub.Subscribe(s.topicComposer.ComposeBroadcastTopic(), func(natMsg *nats.Msg) {
 			msg := natMsg.Data
@@ -197,7 +203,7 @@ func (s *Session) ListenToIncomingMessageAsync() {
 
 }
 
-func (s *Session) Close() error {
+func (s *session) Close() error {
 	err := s.broadcastSub.Unsubscribe()
 	if err != nil {
 		return err
@@ -209,10 +215,10 @@ func (s *Session) Close() error {
 	return nil
 }
 
-func (s *Session) GetPubKeyResult() []byte {
+func (s *session) GetPubKeyResult() []byte {
 	return s.pubkeyBytes
 }
 
-func (s *Session) ErrChan() <-chan error {
+func (s *session) ErrChan() <-chan error {
 	return s.ErrCh
 }
