@@ -23,6 +23,9 @@ import (
 const (
 	MPCGenerateEvent = "mpc:generate"
 	MPCSignEvent     = "mpc:sign"
+
+	DefaultConcurrentKeygen     = 2
+	DefaultKeyGenStartupDelayMs = 500
 )
 
 type EventConsumer interface {
@@ -42,7 +45,8 @@ type eventConsumer struct {
 	signingSub       messaging.Subscription
 	identityStore    identity.Store
 
-	msgBuffer chan *nats.Msg
+	msgBuffer           chan *nats.Msg
+	maxConcurrentKeygen int
 
 	// Track active sessions with timestamps for cleanup
 	activeSessions  map[string]time.Time // Maps "walletID-txID" to creation time
@@ -59,18 +63,24 @@ func NewEventConsumer(
 	signingResultQueue messaging.MessageQueue,
 	identityStore identity.Store,
 ) EventConsumer {
+	maxConcurrentKeygen := viper.GetInt("max_concurrent_keygen")
+	if maxConcurrentKeygen == 0 {
+		maxConcurrentKeygen = DefaultConcurrentKeygen
+	}
+
 	ec := &eventConsumer{
-		node:               node,
-		pubsub:             pubsub,
-		genKeySucecssQueue: genKeySucecssQueue,
-		signingResultQueue: signingResultQueue,
-		activeSessions:     make(map[string]time.Time),
-		cleanupInterval:    5 * time.Minute,  // Run cleanup every 5 minutes
-		sessionTimeout:     30 * time.Minute, // Consider sessions older than 30 minutes stale
-		cleanupStopChan:    make(chan struct{}),
-		mpcThreshold:       viper.GetInt("mpc_threshold"),
-		identityStore:      identityStore,
-		msgBuffer:          make(chan *nats.Msg, 100),
+		node:                node,
+		pubsub:              pubsub,
+		genKeySucecssQueue:  genKeySucecssQueue,
+		signingResultQueue:  signingResultQueue,
+		activeSessions:      make(map[string]time.Time),
+		cleanupInterval:     5 * time.Minute,  // Run cleanup every 5 minutes
+		sessionTimeout:      30 * time.Minute, // Consider sessions older than 30 minutes stale
+		cleanupStopChan:     make(chan struct{}),
+		mpcThreshold:        viper.GetInt("mpc_threshold"),
+		maxConcurrentKeygen: maxConcurrentKeygen,
+		identityStore:       identityStore,
+		msgBuffer:           make(chan *nats.Msg, 100),
 	}
 
 	go ec.startKeyGenEventWorker()
@@ -102,7 +112,6 @@ func (ec *eventConsumer) handleKeyGenEvent(natMsg *nats.Msg) {
 		logger.Error("Failed to unmarshal signing message", err)
 		return
 	}
-	logger.Info("Received key generation event", "msg", msg)
 	err = ec.identityStore.VerifyInitiatorMessage(&msg)
 	if err != nil {
 		logger.Error("Failed to verify initiator message", err)
@@ -162,8 +171,10 @@ func (ec *eventConsumer) handleKeyGenEvent(natMsg *nats.Msg) {
 
 	ecdsaSession.ListenToIncomingMessageAsync()
 	eddsaSession.ListenToIncomingMessageAsync()
-	// TODO: replace sleep with distributed lock
-	time.Sleep(500 * time.Millisecond)
+
+	// Temporary delay to allow peer nodes to subscribe and prepare before starting key generation.
+	// This should be replaced with a proper distributed coordination mechanism later (e.g., Consul lock).
+	time.Sleep(DefaultKeyGenStartupDelayMs * time.Millisecond)
 
 	go ecdsaSession.GenerateKey(doneEcdsa)
 	go eddsaSession.GenerateKey(doneEddsa)
@@ -189,8 +200,8 @@ func (ec *eventConsumer) handleKeyGenEvent(natMsg *nats.Msg) {
 }
 
 func (ec *eventConsumer) startKeyGenEventWorker() {
-	const maxConcurrentJobs = 4
-	semaphore := make(chan struct{}, maxConcurrentJobs) // semaphore to limit concurrency
+	// semaphore to limit concurrency
+	semaphore := make(chan struct{}, ec.maxConcurrentKeygen)
 
 	for {
 		select {
