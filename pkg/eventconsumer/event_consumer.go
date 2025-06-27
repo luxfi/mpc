@@ -95,7 +95,6 @@ func (ec *eventConsumer) Run() {
 }
 
 func (ec *eventConsumer) handleKeyGenEvent(natMsg *nats.Msg) {
-	logger.Info("Received keygen event")
 	raw := natMsg.Data
 	var msg types.GenerateKeyMessage
 	err := json.Unmarshal(raw, &msg)
@@ -104,7 +103,6 @@ func (ec *eventConsumer) handleKeyGenEvent(natMsg *nats.Msg) {
 		return
 	}
 	logger.Info("Received key generation event", "msg", msg)
-
 	err = ec.identityStore.VerifyInitiatorMessage(&msg)
 	if err != nil {
 		logger.Error("Failed to verify initiator message", err)
@@ -164,7 +162,7 @@ func (ec *eventConsumer) handleKeyGenEvent(natMsg *nats.Msg) {
 	session.ListenToIncomingMessageAsync()
 	eddsaSession.ListenToIncomingMessageAsync()
 	// TODO: replace sleep with distributed lock
-	time.Sleep(1 * time.Second)
+	time.Sleep(500 * time.Millisecond)
 
 	go session.GenerateKey(done)
 	go eddsaSession.GenerateKey(doneEddsa)

@@ -78,7 +78,7 @@ func (s *EDDSAKeygenSession) Init() {
 }
 
 func (s *EDDSAKeygenSession) GenerateKey(done func()) {
-	logger.Info("Starting to generate key", "walletID", s.walletID)
+	logger.Info("Starting to generate key EDDSA", "walletID", s.walletID)
 	go func() {
 		if err := s.party.Start(); err != nil {
 			s.ErrCh <- err

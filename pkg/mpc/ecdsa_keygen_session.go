@@ -87,7 +87,7 @@ func (s *KeygenSession) Init() {
 }
 
 func (s *KeygenSession) GenerateKey(done func()) {
-	logger.Info("Starting to generate key", "walletID", s.walletID)
+	logger.Info("Starting to generate key ECDSA", "walletID", s.walletID)
 	go func() {
 		if err := s.party.Start(); err != nil {
 			s.ErrCh <- err
