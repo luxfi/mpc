@@ -87,7 +87,6 @@ func NewECDSAReshareSession(
 		sessionType:   SessionTypeECDSA,
 		identityStore: identityStore,
 	}
-
 	reshareParams := tss.NewReSharingParameters(
 		tss.S256(),
 		tss.NewPeerContext(oldPartyIDs),
@@ -98,7 +97,6 @@ func NewECDSAReshareSession(
 		len(newPartyIDs),
 		newThreshold,
 	)
-
 	return &ecdsaReshareSession{
 		session:       &session,
 		reshareParams: reshareParams,

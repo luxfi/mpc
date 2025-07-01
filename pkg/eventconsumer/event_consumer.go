@@ -445,7 +445,7 @@ func (ec *eventConsumer) consumeReshareEvent() error {
 				ec.mpcThreshold,
 				msg.NewThreshold,
 				msg.NodeIDs,
-				true,
+				false,
 				ec.reshareResultQueue,
 			)
 		case types.KeyTypeEd25519:
@@ -455,7 +455,7 @@ func (ec *eventConsumer) consumeReshareEvent() error {
 				ec.mpcThreshold,
 				msg.NewThreshold,
 				msg.NodeIDs,
-				false,
+				true,
 				ec.reshareResultQueue,
 			)
 			if err != nil {
