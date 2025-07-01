@@ -23,6 +23,7 @@ import (
 const (
 	MPCGenerateEvent = "mpc:generate"
 	MPCSignEvent     = "mpc:sign"
+	MPCReshareEvent  = "mpc:reshare"
 
 	DefaultConcurrentKeygen     = 2
 	DefaultKeyGenStartupDelayMs = 500
@@ -40,9 +41,11 @@ type eventConsumer struct {
 
 	genKeySucecssQueue messaging.MessageQueue
 	signingResultQueue messaging.MessageQueue
+	reshareResultQueue messaging.MessageQueue
 
 	keyGenerationSub messaging.Subscription
 	signingSub       messaging.Subscription
+	reshareSub       messaging.Subscription
 	identityStore    identity.Store
 
 	msgBuffer           chan *nats.Msg
@@ -99,6 +102,11 @@ func (ec *eventConsumer) Run() {
 	err = ec.consumeTxSigningEvent()
 	if err != nil {
 		log.Fatal("Failed to consume tx signing event", err)
+	}
+
+	err = ec.consumeReshareEvent()
+	if err != nil {
+		log.Fatal("Failed to consume reshare event", err)
 	}
 
 	logger.Info("MPC Event consumer started...!")
@@ -203,15 +211,12 @@ func (ec *eventConsumer) startKeyGenEventWorker() {
 	// semaphore to limit concurrency
 	semaphore := make(chan struct{}, ec.maxConcurrentKeygen)
 
-	for {
-		select {
-		case natMsg := <-ec.msgBuffer:
-			semaphore <- struct{}{} // acquire a slot
-			go func(msg *nats.Msg) {
-				defer func() { <-semaphore }() // release the slot when done
-				ec.handleKeyGenEvent(msg)
-			}(natMsg)
-		}
+	for natMsg := range ec.msgBuffer {
+		semaphore <- struct{}{} // acquire a slot
+		go func(msg *nats.Msg) {
+			defer func() { <-semaphore }() // release the slot when done
+			ec.handleKeyGenEvent(msg)
+		}(natMsg)
 	}
 }
 
@@ -396,6 +401,157 @@ func (ec *eventConsumer) handleSigningSessionError(walletID, txID, NetworkIntern
 		logger.Error("Failed to publish signing result event", err)
 		return
 	}
+}
+
+func (ec *eventConsumer) consumeReshareEvent() error {
+	sub, err := ec.pubsub.Subscribe(MPCReshareEvent, func(natMsg *nats.Msg) {
+		raw := natMsg.Data
+		var msg types.ResharingMessage
+		err := json.Unmarshal(raw, &msg)
+		if err != nil {
+			logger.Error("Failed to unmarshal signing message", err)
+			return
+		}
+		err = ec.identityStore.VerifyInitiatorMessage(&msg)
+		if err != nil {
+			logger.Error("Failed to verify initiator message", err)
+			return
+		}
+
+		walletID := msg.WalletID
+		var (
+			oldSession mpc.ReshareSession
+			newSession mpc.ReshareSession
+		)
+		switch msg.KeyType {
+		case types.KeyTypeSecp256k1:
+			oldSession, err = ec.node.CreateReshareSession(
+				mpc.SessionTypeECDSA,
+				msg.WalletID,
+				ec.mpcThreshold,
+				msg.NewThreshold,
+				msg.NodeIDs,
+				false,
+				ec.reshareResultQueue,
+			)
+			if err != nil {
+				logger.Error("Failed to create old reshare session", err, "walletID", walletID)
+				return
+			}
+
+			newSession, err = ec.node.CreateReshareSession(
+				mpc.SessionTypeECDSA,
+				msg.WalletID,
+				ec.mpcThreshold,
+				msg.NewThreshold,
+				msg.NodeIDs,
+				true,
+				ec.reshareResultQueue,
+			)
+		case types.KeyTypeEd25519:
+			oldSession, err = ec.node.CreateReshareSession(
+				mpc.SessionTypeEDDSA,
+				msg.WalletID,
+				ec.mpcThreshold,
+				msg.NewThreshold,
+				msg.NodeIDs,
+				false,
+				ec.reshareResultQueue,
+			)
+			if err != nil {
+				logger.Error("Failed to create old reshare session", err, "walletID", walletID)
+				return
+			}
+
+			newSession, err = ec.node.CreateReshareSession(
+				mpc.SessionTypeEDDSA,
+				msg.WalletID,
+				ec.mpcThreshold,
+				msg.NewThreshold,
+				msg.NodeIDs,
+				true,
+				ec.reshareResultQueue,
+			)
+		}
+		if err != nil {
+			logger.Error("Failed to create reshare session", err, "walletID", walletID)
+			return
+		}
+
+		successEvent := &event.ResharingSuccessEvent{
+			WalletID: walletID,
+		}
+
+		fmt.Println("oldSession", oldSession)
+		fmt.Println("newSession", newSession)
+
+		ctx := context.Background()
+		ctxOld, doneOld := context.WithCancel(ctx)
+
+		var wg sync.WaitGroup
+		wg.Add(1)
+		go func() {
+			for {
+				select {
+				case <-ctxOld.Done():
+					wg.Done()
+					return
+				case err := <-oldSession.ErrChan():
+					logger.Error("Keygen session error", err)
+				}
+			}
+		}()
+		if newSession != nil {
+			ctxNew, doneNew := context.WithCancel(ctx)
+			wg.Add(1)
+			go func() {
+				for {
+					select {
+					case <-ctxNew.Done():
+						successEvent.PubKey = newSession.GetPubKeyResult()
+						wg.Done()
+						return
+					case err := <-newSession.ErrChan():
+						logger.Error("Keygen session error", err)
+					}
+				}
+			}()
+			newSession.ListenToIncomingMessageAsync()
+			go newSession.Reshare(doneNew)
+		}
+		oldSession.ListenToIncomingMessageAsync()
+
+		// Temporary delay to allow peer nodes to subscribe and prepare before starting key generation.
+		// This should be replaced with a proper distributed coordination mechanism later (e.g., Consul lock).
+		time.Sleep(DefaultKeyGenStartupDelayMs * time.Millisecond)
+
+		go oldSession.Reshare(doneOld)
+
+		wg.Wait()
+		logger.Info("Closing session successfully!", "event", successEvent)
+
+		successEventBytes, err := json.Marshal(successEvent)
+		if err != nil {
+			logger.Error("Failed to marshal reshare success event", err)
+			return
+		}
+
+		err = ec.reshareResultQueue.Enqueue(fmt.Sprintf(mpc.TypeReshareSuccess, walletID), successEventBytes, &messaging.EnqueueOptions{
+			IdempotententKey: fmt.Sprintf(mpc.TypeReshareSuccess, walletID),
+		})
+		if err != nil {
+			logger.Error("Failed to publish reshare success message", err)
+			return
+		}
+
+		logger.Info("[COMPLETED RESHARE] Reshare completed successfully", "walletID", walletID)
+	})
+
+	ec.reshareSub = sub
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // Add a cleanup routine that runs periodically

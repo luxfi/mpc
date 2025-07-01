@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"math/big"
+	"slices"
 	"time"
 
 	"github.com/bnb-chain/tss-lib/v2/ecdsa/keygen"
@@ -14,12 +15,12 @@ import (
 	"github.com/fystack/mpcium/pkg/kvstore"
 	"github.com/fystack/mpcium/pkg/logger"
 	"github.com/fystack/mpcium/pkg/messaging"
-	"github.com/google/uuid"
 )
 
 const (
-	PurposeKeygen string = "keygen"
-	PurposeSign   string = "sign"
+	PurposeKeygen  string = "keygen"
+	PurposeSign    string = "sign"
+	PurposeReshare string = "reshare"
 )
 
 type ID string
@@ -39,9 +40,8 @@ type Node struct {
 }
 
 func CreatePartyID(nodeID string, label string) *tss.PartyID {
-	partyID := uuid.NewString()
 	key := big.NewInt(0).SetBytes([]byte(nodeID))
-	return tss.NewPartyID(partyID, label, key)
+	return tss.NewPartyID(nodeID+":"+label, label, key)
 }
 
 func PartyIDToNodeID(partyID *tss.PartyID) string {
@@ -199,6 +199,81 @@ func (p *Node) CreateSigningSession(
 	}
 
 	return nil, errors.New("Unknown session type")
+}
+
+func (p *Node) CreateReshareSession(
+	sessionType SessionType,
+	walletID string,
+	oldThreshold int,
+	newThreshold int,
+	newPeerIDs []string,
+	isNewPeer bool,
+	successQueue messaging.MessageQueue,
+) (ReshareSession, error) {
+	if !p.peerRegistry.ArePeersReady() {
+		return nil, fmt.Errorf("Not enough peers to create reshare session! Expected %d, got %d", newThreshold+1, p.peerRegistry.GetReadyPeersCount())
+	}
+	readyPeerIDs := p.peerRegistry.GetReadyPeersIncludeSelf()
+	for _, peerID := range newPeerIDs {
+		if slices.Contains(readyPeerIDs, peerID) {
+			continue
+		}
+		return nil, fmt.Errorf("new peer %s is not ready", peerID)
+	}
+
+	// if current node is not in newPeerIDs and isNewPeer is true, return nil
+	if !slices.Contains(newPeerIDs, p.nodeID) && isNewPeer {
+		return nil, nil
+	}
+
+	var selfPartyID *tss.PartyID
+	oldSelf, oldAllPartyIDs := p.generatePartyIDs(PurposeKeygen, readyPeerIDs)
+	newSelf, newAllPartyIDs := p.generatePartyIDs(PurposeReshare, newPeerIDs)
+	if isNewPeer {
+		selfPartyID = newSelf
+	} else {
+		selfPartyID = oldSelf
+	}
+
+	switch sessionType {
+	case SessionTypeECDSA:
+		return NewECDSAReshareSession(
+			walletID,
+			p.pubSub,
+			p.direct,
+			readyPeerIDs,
+			selfPartyID,
+			oldAllPartyIDs,
+			newAllPartyIDs,
+			oldThreshold,
+			newThreshold,
+			p.ecdsaPreParams,
+			p.kvstore,
+			p.keyinfoStore,
+			successQueue,
+			p.identityStore,
+			isNewPeer,
+		), nil
+	case SessionTypeEDDSA:
+		return NewEDDSAReshareSession(
+			walletID,
+			p.pubSub,
+			p.direct,
+			readyPeerIDs,
+			selfPartyID,
+			oldAllPartyIDs,
+			newAllPartyIDs,
+			oldThreshold,
+			newThreshold,
+			p.kvstore,
+			p.keyinfoStore,
+			successQueue,
+			p.identityStore,
+			isNewPeer,
+		), nil
+	default:
+		return nil, errors.New("Unknown session type")
+	}
 }
 
 func (p *Node) generatePartyIDs(purpose string, readyPeerIDs []string) (self *tss.PartyID, all []*tss.PartyID) {

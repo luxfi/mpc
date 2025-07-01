@@ -33,6 +33,14 @@ type SignTxMessage struct {
 	Signature           []byte  `json:"signature"`
 }
 
+type ResharingMessage struct {
+	NodeIDs      []string `json:"node_ids"` // new peer IDs
+	NewThreshold int      `json:"new_threshold"`
+	KeyType      KeyType  `json:"key_type"`
+	WalletID     string   `json:"wallet_id"`
+	Signature    []byte   `json:"signature"`
+}
+
 func (m *SignTxMessage) Raw() ([]byte, error) {
 	// omit the Signature field itself when computing the signed‐over data
 	payload := struct {
@@ -68,5 +76,17 @@ func (m *GenerateKeyMessage) Sig() []byte {
 }
 
 func (m *GenerateKeyMessage) InitiatorID() string {
+	return m.WalletID
+}
+
+func (m *ResharingMessage) Raw() ([]byte, error) {
+	return []byte(m.WalletID), nil
+}
+
+func (m *ResharingMessage) Sig() []byte {
+	return m.Signature
+}
+
+func (m *ResharingMessage) InitiatorID() string {
 	return m.WalletID
 }
