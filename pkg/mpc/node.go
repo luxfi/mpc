@@ -2,6 +2,7 @@ package mpc
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"math/big"
 	"slices"
@@ -33,7 +34,7 @@ type Node struct {
 	direct         messaging.DirectMessaging
 	kvstore        kvstore.KVStore
 	keyinfoStore   keyinfo.Store
-	ecdsaPreParams *keygen.LocalPreParams
+	ecdsaPreParams []*keygen.LocalPreParams
 	identityStore  identity.Store
 
 	peerRegistry PeerRegistry
@@ -67,26 +68,23 @@ func NewNode(
 	identityStore identity.Store,
 ) *Node {
 	start := time.Now()
-	preParams, err := keygen.GeneratePreParams(5 * time.Minute)
-	if err != nil {
-		logger.Fatal("Generate pre params failed", err)
-	}
 	elapsed := time.Since(start)
 	logger.Info("Starting new node, preparams is generated successfully!", "elapsed", elapsed.Milliseconds())
 
-	go peerRegistry.WatchPeersReady()
-
-	return &Node{
-		nodeID:         nodeID,
-		peerIDs:        peerIDs,
-		pubSub:         pubSub,
-		direct:         direct,
-		kvstore:        kvstore,
-		keyinfoStore:   keyinfoStore,
-		ecdsaPreParams: preParams,
-		peerRegistry:   peerRegistry,
-		identityStore:  identityStore,
+	node := &Node{
+		nodeID:        nodeID,
+		peerIDs:       peerIDs,
+		pubSub:        pubSub,
+		direct:        direct,
+		kvstore:       kvstore,
+		keyinfoStore:  keyinfoStore,
+		peerRegistry:  peerRegistry,
+		identityStore: identityStore,
 	}
+	node.ecdsaPreParams = node.generatePreParams()
+
+	go peerRegistry.WatchPeersReady()
+	return node
 }
 
 func (p *Node) ID() string {
@@ -124,7 +122,7 @@ func (p *Node) createECDSAKeyGenSession(walletID string, threshold int, successQ
 		selfPartyID,
 		allPartyIDs,
 		threshold,
-		p.ecdsaPreParams,
+		p.ecdsaPreParams[0],
 		p.kvstore,
 		p.keyinfoStore,
 		successQueue,
@@ -174,7 +172,7 @@ func (p *Node) CreateSigningSession(
 			selfPartyID,
 			allPartyIDs,
 			threshold,
-			p.ecdsaPreParams,
+			p.ecdsaPreParams[0],
 			p.kvstore,
 			p.keyinfoStore,
 			resultQueue,
@@ -226,13 +224,18 @@ func (p *Node) CreateReshareSession(
 		return nil, nil
 	}
 
-	var selfPartyID *tss.PartyID
+	var (
+		selfPartyID *tss.PartyID
+		preParams   *keygen.LocalPreParams
+	)
 	oldSelf, oldAllPartyIDs := p.generatePartyIDs(PurposeKeygen, readyPeerIDs)
 	newSelf, newAllPartyIDs := p.generatePartyIDs(PurposeReshare, newPeerIDs)
 	if isNewPeer {
 		selfPartyID = newSelf
+		preParams = p.ecdsaPreParams[1]
 	} else {
 		selfPartyID = oldSelf
+		preParams = p.ecdsaPreParams[0]
 	}
 
 	switch sessionType {
@@ -247,7 +250,7 @@ func (p *Node) CreateReshareSession(
 			newAllPartyIDs,
 			oldThreshold,
 			newThreshold,
-			p.ecdsaPreParams,
+			preParams,
 			p.kvstore,
 			p.keyinfoStore,
 			successQueue,
@@ -296,4 +299,38 @@ func (p *Node) Close() {
 	if err != nil {
 		logger.Error("Resign failed", err)
 	}
+}
+
+func (p *Node) generatePreParams() []*keygen.LocalPreParams {
+	start := time.Now()
+	// Try to load from kvstore
+	preParams := make([]*keygen.LocalPreParams, 2)
+	for i := 0; i < 2; i++ {
+		key := fmt.Sprintf("pre_params_%d", i)
+		val, err := p.kvstore.Get(key)
+		if err == nil && val != nil {
+			preParams[i] = &keygen.LocalPreParams{}
+			err = json.Unmarshal(val, preParams[i])
+			if err != nil {
+				logger.Fatal("Unmarshal pre params failed", err)
+			}
+			continue
+		}
+		// Not found, generate and save
+		params, err := keygen.GeneratePreParams(5 * time.Minute)
+		if err != nil {
+			logger.Fatal("Generate pre params failed", err)
+		}
+		bytes, err := json.Marshal(params)
+		if err != nil {
+			logger.Fatal("Marshal pre params failed", err)
+		}
+		err = p.kvstore.Put(key, bytes)
+		if err != nil {
+			logger.Fatal("Save pre params failed", err)
+		}
+		preParams[i] = params
+	}
+	logger.Info("Generate pre params successfully!", "elapsed", time.Since(start).Milliseconds())
+	return preParams
 }

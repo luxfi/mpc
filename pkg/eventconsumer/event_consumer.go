@@ -482,8 +482,10 @@ func (ec *eventConsumer) consumeReshareEvent() error {
 			WalletID: walletID,
 		}
 
-		fmt.Println("oldSession", oldSession)
-		fmt.Println("newSession", newSession)
+		oldSession.Init()
+		if newSession != nil {
+			newSession.Init()
+		}
 
 		ctx := context.Background()
 		ctxOld, doneOld := context.WithCancel(ctx)
@@ -497,10 +499,16 @@ func (ec *eventConsumer) consumeReshareEvent() error {
 					wg.Done()
 					return
 				case err := <-oldSession.ErrChan():
-					logger.Error("Keygen session error", err)
+					logger.Error("Reshare session error", err)
 				}
 			}
 		}()
+		// Temporary delay to allow peer nodes to subscribe and prepare before starting key generation.
+		// This should be replaced with a proper distributed coordination mechanism later (e.g., Consul lock).
+		time.Sleep(DefaultKeyGenStartupDelayMs * time.Millisecond)
+
+		go oldSession.Reshare(doneOld)
+
 		if newSession != nil {
 			ctxNew, doneNew := context.WithCancel(ctx)
 			wg.Add(1)
@@ -512,7 +520,7 @@ func (ec *eventConsumer) consumeReshareEvent() error {
 						wg.Done()
 						return
 					case err := <-newSession.ErrChan():
-						logger.Error("Keygen session error", err)
+						logger.Error("Reshare session error", err)
 					}
 				}
 			}()
@@ -520,12 +528,6 @@ func (ec *eventConsumer) consumeReshareEvent() error {
 			go newSession.Reshare(doneNew)
 		}
 		oldSession.ListenToIncomingMessageAsync()
-
-		// Temporary delay to allow peer nodes to subscribe and prepare before starting key generation.
-		// This should be replaced with a proper distributed coordination mechanism later (e.g., Consul lock).
-		time.Sleep(DefaultKeyGenStartupDelayMs * time.Millisecond)
-
-		go oldSession.Reshare(doneOld)
 
 		wg.Wait()
 		logger.Info("Closing session successfully!", "event", successEvent)
