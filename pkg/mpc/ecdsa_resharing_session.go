@@ -106,7 +106,7 @@ func NewECDSAReshareSession(
 }
 
 func (s *ecdsaReshareSession) Init() {
-	logger.Infof("Initializing resharing session with partyID: %s, peerIDs %s", s.selfPartyID, s.partyIDs)
+	logger.Infof("Initializing resharing session with partyID: %s, newPartyIDs %s", s.selfPartyID, s.partyIDs)
 	var share keygen.LocalPartySaveData
 	if s.isNewParty {
 		// Initialize empty share data for new party

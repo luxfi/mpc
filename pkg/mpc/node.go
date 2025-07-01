@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/big"
 	"slices"
+	"strconv"
 	"time"
 
 	"github.com/bnb-chain/tss-lib/v2/ecdsa/keygen"
@@ -16,12 +17,16 @@ import (
 	"github.com/fystack/mpcium/pkg/kvstore"
 	"github.com/fystack/mpcium/pkg/logger"
 	"github.com/fystack/mpcium/pkg/messaging"
+	"github.com/google/uuid"
 )
 
 const (
 	PurposeKeygen  string = "keygen"
 	PurposeSign    string = "sign"
 	PurposeReshare string = "reshare"
+
+	BackwardCompatibleVersion int = 0
+	DefaultVersion            int = 1
 )
 
 type ID string
@@ -38,11 +43,6 @@ type Node struct {
 	identityStore  identity.Store
 
 	peerRegistry PeerRegistry
-}
-
-func CreatePartyID(nodeID string, label string) *tss.PartyID {
-	key := big.NewInt(0).SetBytes([]byte(nodeID))
-	return tss.NewPartyID(nodeID+":"+label, label, key)
 }
 
 func PartyIDToNodeID(partyID *tss.PartyID) string {
@@ -103,17 +103,17 @@ func (p *Node) CreateKeyGenSession(
 
 	switch sessionType {
 	case SessionTypeECDSA:
-		return p.createECDSAKeyGenSession(walletID, threshold, successQueue)
+		return p.createECDSAKeyGenSession(walletID, threshold, DefaultVersion, successQueue)
 	case SessionTypeEDDSA:
-		return p.createEDDSAKeyGenSession(walletID, threshold, successQueue)
+		return p.createEDDSAKeyGenSession(walletID, threshold, DefaultVersion, successQueue)
 	default:
 		return nil, fmt.Errorf("Unknown session type: %s", sessionType)
 	}
 }
 
-func (p *Node) createECDSAKeyGenSession(walletID string, threshold int, successQueue messaging.MessageQueue) (KeyGenSession, error) {
+func (p *Node) createECDSAKeyGenSession(walletID string, threshold int, version int, successQueue messaging.MessageQueue) (KeyGenSession, error) {
 	readyPeerIDs := p.peerRegistry.GetReadyPeersIncludeSelf()
-	selfPartyID, allPartyIDs := p.generatePartyIDs(PurposeKeygen, readyPeerIDs)
+	selfPartyID, allPartyIDs := p.generatePartyIDs(PurposeKeygen, readyPeerIDs, version)
 	session := newECDSAKeygenSession(
 		walletID,
 		p.pubSub,
@@ -131,9 +131,9 @@ func (p *Node) createECDSAKeyGenSession(walletID string, threshold int, successQ
 	return session, nil
 }
 
-func (p *Node) createEDDSAKeyGenSession(walletID string, threshold int, successQueue messaging.MessageQueue) (KeyGenSession, error) {
+func (p *Node) createEDDSAKeyGenSession(walletID string, threshold int, version int, successQueue messaging.MessageQueue) (KeyGenSession, error) {
 	readyPeerIDs := p.peerRegistry.GetReadyPeersIncludeSelf()
-	selfPartyID, allPartyIDs := p.generatePartyIDs(PurposeKeygen, readyPeerIDs)
+	selfPartyID, allPartyIDs := p.generatePartyIDs(PurposeKeygen, readyPeerIDs, version)
 	session := newEDDSAKeygenSession(
 		walletID,
 		p.pubSub,
@@ -158,8 +158,9 @@ func (p *Node) CreateSigningSession(
 	threshold int,
 	resultQueue messaging.MessageQueue,
 ) (SigningSession, error) {
+	version := p.getVersion(sessionType, walletID)
 	readyPeerIDs := p.peerRegistry.GetReadyPeersIncludeSelf()
-	selfPartyID, allPartyIDs := p.generatePartyIDs(PurposeKeygen, readyPeerIDs)
+	selfPartyID, allPartyIDs := p.generatePartyIDs(PurposeKeygen, readyPeerIDs, version)
 	switch sessionType {
 	case SessionTypeECDSA:
 		return newECDSASigningSession(
@@ -224,12 +225,13 @@ func (p *Node) CreateReshareSession(
 		return nil, nil
 	}
 
+	version := p.getVersion(sessionType, walletID)
 	var (
 		selfPartyID *tss.PartyID
 		preParams   *keygen.LocalPreParams
 	)
-	oldSelf, oldAllPartyIDs := p.generatePartyIDs(PurposeKeygen, readyPeerIDs)
-	newSelf, newAllPartyIDs := p.generatePartyIDs(PurposeReshare, newPeerIDs)
+	oldSelf, oldAllPartyIDs := p.generatePartyIDs(PurposeKeygen, readyPeerIDs, version)
+	newSelf, newAllPartyIDs := p.generatePartyIDs(PurposeReshare, newPeerIDs, version+1)
 	if isNewPeer {
 		selfPartyID = newSelf
 		preParams = p.ecdsaPreParams[1]
@@ -237,7 +239,6 @@ func (p *Node) CreateReshareSession(
 		selfPartyID = oldSelf
 		preParams = p.ecdsaPreParams[0]
 	}
-
 	switch sessionType {
 	case SessionTypeECDSA:
 		return NewECDSAReshareSession(
@@ -279,19 +280,44 @@ func (p *Node) CreateReshareSession(
 	}
 }
 
-func (p *Node) generatePartyIDs(purpose string, readyPeerIDs []string) (self *tss.PartyID, all []*tss.PartyID) {
-	var selfPartyID *tss.PartyID
-	partyIDs := make([]*tss.PartyID, len(readyPeerIDs))
-	for i, peerID := range readyPeerIDs {
-		if peerID == p.nodeID {
-			selfPartyID = CreatePartyID(peerID, purpose)
-			partyIDs[i] = selfPartyID
-		} else {
-			partyIDs[i] = CreatePartyID(peerID, purpose)
+// generatePartyIDs generates the party IDs for the given purpose and version
+// It returns the self party ID and all party IDs
+// It also sorts the party IDs in place
+func (n *Node) generatePartyIDs(
+	label string,
+	readyPeerIDs []string,
+	version int,
+) (self *tss.PartyID, all []*tss.PartyID) {
+	// Pre-allocate slice with exact size needed
+	partyIDs := make([]*tss.PartyID, 0, len(readyPeerIDs))
+
+	// Create all party IDs in one pass
+	for _, peerID := range readyPeerIDs {
+		partyID := createPartyID(peerID, label, version)
+		if peerID == n.nodeID {
+			self = partyID
 		}
+		partyIDs = append(partyIDs, partyID)
 	}
-	allPartyIDs := tss.SortPartyIDs(partyIDs, 0)
-	return selfPartyID, allPartyIDs
+
+	// Sort party IDs in place
+	all = tss.SortPartyIDs(partyIDs, 0)
+	return
+}
+
+// createPartyID creates a new party ID for the given node ID, label and version
+// It returns the party ID: random string
+// Moniker: for routing messages
+// Key: for mpc internal use (need persistent storage)
+func createPartyID(nodeID string, label string, version int) *tss.PartyID {
+	partyID := uuid.NewString()
+	var key *big.Int
+	if version == BackwardCompatibleVersion {
+		key = big.NewInt(0).SetBytes([]byte(nodeID))
+	} else {
+		key = big.NewInt(0).SetBytes([]byte(nodeID + ":" + strconv.Itoa(version)))
+	}
+	return tss.NewPartyID(partyID, label, key)
 }
 
 func (p *Node) Close() {
@@ -333,4 +359,22 @@ func (p *Node) generatePreParams() []*keygen.LocalPreParams {
 	}
 	logger.Info("Generate pre params successfully!", "elapsed", time.Since(start).Milliseconds())
 	return preParams
+}
+
+func (p *Node) getVersion(sessionType SessionType, walletID string) int {
+	var composeKey string
+	switch sessionType {
+	case SessionTypeECDSA:
+		composeKey = fmt.Sprintf("ecdsa:%s", walletID)
+	case SessionTypeEDDSA:
+		composeKey = fmt.Sprintf("eddsa:%s", walletID)
+	default:
+		logger.Fatal("Unknown session type", errors.New("Unknown session type"))
+	}
+	keyinfo, err := p.keyinfoStore.Get(composeKey)
+	if err != nil {
+		logger.Error("Get keyinfo failed", err, "walletID", walletID)
+		return DefaultVersion
+	}
+	return keyinfo.Version
 }

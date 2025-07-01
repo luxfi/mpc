@@ -425,13 +425,14 @@ func (ec *eventConsumer) consumeReshareEvent() error {
 		)
 		switch msg.KeyType {
 		case types.KeyTypeSecp256k1:
+			isNewNode := true
 			oldSession, err = ec.node.CreateReshareSession(
 				mpc.SessionTypeECDSA,
 				msg.WalletID,
 				ec.mpcThreshold,
 				msg.NewThreshold,
 				msg.NodeIDs,
-				false,
+				!isNewNode,
 				ec.reshareResultQueue,
 			)
 			if err != nil {
@@ -445,7 +446,7 @@ func (ec *eventConsumer) consumeReshareEvent() error {
 				ec.mpcThreshold,
 				msg.NewThreshold,
 				msg.NodeIDs,
-				false,
+				isNewNode,
 				ec.reshareResultQueue,
 			)
 		case types.KeyTypeEd25519:
@@ -499,7 +500,7 @@ func (ec *eventConsumer) consumeReshareEvent() error {
 					wg.Done()
 					return
 				case err := <-oldSession.ErrChan():
-					logger.Error("Reshare session error", err)
+					logger.Error("Reshare session error", err, "oldSession", true)
 				}
 			}
 		}()
@@ -520,7 +521,7 @@ func (ec *eventConsumer) consumeReshareEvent() error {
 						wg.Done()
 						return
 					case err := <-newSession.ErrChan():
-						logger.Error("Reshare session error", err)
+						logger.Error("Reshare session error", err, "newSession", true)
 					}
 				}
 			}()

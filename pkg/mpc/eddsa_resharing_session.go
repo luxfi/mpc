@@ -106,7 +106,6 @@ func (s *eddsaReshareSession) Init() {
 			return
 		}
 	}
-
 	s.party = resharing.NewLocalParty(s.reshareParams, share, s.outCh, s.endCh)
 	logger.Infof("[INITIALIZED] Initialized resharing session successfully partyID: %s, peerIDs %s, walletID %s, oldThreshold = %d, newThreshold = %d",
 		s.selfPartyID, s.partyIDs, s.walletID, s.threshold, s.reshareParams.NewThreshold())
