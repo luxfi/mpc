@@ -125,7 +125,7 @@ func (s *ecdsaSigningSession) Init(tx *big.Int) error {
 		}
 	} else {
 		logger.Info("Getting key data from KVStore", "walletID", s.walletID, "version", keyInfo.Version)
-		keyData, err = s.kvstore.Get(s.composeKey(s.walletID + "_v" + strconv.Itoa(s.GetVersion())))
+		keyData, err = s.kvstore.Get(s.composeKey(s.walletID + "_v" + strconv.Itoa(keyInfo.Version)))
 		if err != nil {
 			return errors.Wrap(err, "Failed to get wallet data from KVStore")
 		}

@@ -281,7 +281,7 @@ func (ec *eventConsumer) consumeTxSigningEvent() error {
 			)
 		case types.KeyTypeEd25519:
 			session, err = ec.node.CreateSigningSession(
-				mpc.SessionTypeECDSA,
+				mpc.SessionTypeEDDSA,
 				msg.WalletID,
 				msg.TxID,
 				msg.NetworkInternalCode,
@@ -455,7 +455,7 @@ func (ec *eventConsumer) consumeReshareEvent() error {
 			return
 		}
 
-		successEvent := &event.ResharingSuccessEvent{
+		successEvent := &event.ResharingResultEvent{
 			WalletID:     walletID,
 			NewThreshold: msg.NewThreshold,
 			KeyType:      msg.KeyType,

@@ -235,9 +235,13 @@ func (s *session) ErrChan() <-chan error {
 }
 
 func (s *session) GetVersion() int {
-	version, err := strconv.Atoi(strings.Split(string(s.selfPartyID.GetKey()), ":")[1])
-	if err != nil {
-		return 0
+	// For backward-compatible party IDs (version 0), the key is just nodeID (no colon)
+	parts := strings.Split(string(s.selfPartyID.GetKey()), ":")
+	if len(parts) > 1 {
+		version, err := strconv.Atoi(parts[1])
+		if err == nil {
+			return version
+		}
 	}
-	return version
+	return 0 // fallback for backward-compatible party IDs
 }

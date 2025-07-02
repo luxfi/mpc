@@ -38,7 +38,6 @@ func main() {
 		NodeIDs:      []string{"0ce02715-0ead-48ef-9772-2583316cc860", "ac37e85f-caca-4bee-8a3a-49a0fe35abff"}, // new peer IDs
 		NewThreshold: 1,                                                                                        // t+1 <= len(NodeIDs)
 		KeyType:      types.KeyTypeSecp256k1,
-		Signature:    []byte("signature"),
 	}
 	err = mpcClient.Resharing(resharingMsg)
 	if err != nil {
@@ -47,7 +46,7 @@ func main() {
 	fmt.Printf("Resharing(%q) sent, awaiting result...\n", resharingMsg.WalletID)
 
 	// 3) Listen for signing results
-	err = mpcClient.OnResharingResult(func(evt event.ResharingSuccessEvent) {
+	err = mpcClient.OnResharingResult(func(evt event.ResharingResultEvent) {
 		logger.Info("Resharing result received",
 			"walletID", evt.WalletID,
 			"pubKey", fmt.Sprintf("%x", evt.PubKey),
