@@ -4,7 +4,6 @@ import (
 	"crypto/ecdsa"
 	"encoding/json"
 	"fmt"
-	"strconv"
 
 	"github.com/bnb-chain/tss-lib/v2/ecdsa/keygen"
 	"github.com/bnb-chain/tss-lib/v2/tss"
@@ -104,7 +103,7 @@ func (s *ecdsaKeygenSession) GenerateKey(done func()) {
 				return
 			}
 
-			err = s.kvstore.Put(s.composeKey(s.walletID+"_v"+strconv.Itoa(s.GetVersion())), keyBytes)
+			err = s.kvstore.Put(s.composeKey(toKVKey(s.walletID, s.GetVersion())), keyBytes)
 			if err != nil {
 				logger.Error("Failed to save key", err, "walletID", s.walletID)
 				s.ErrCh <- err

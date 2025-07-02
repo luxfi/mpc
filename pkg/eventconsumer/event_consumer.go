@@ -426,10 +426,15 @@ func (ec *eventConsumer) consumeReshareEvent() error {
 		walletID := msg.WalletID
 		keyType := msg.KeyType
 
-		// Helper: Tạo session nếu node có tham gia
+		sessionType, err := sessionTypeFromKeyType(keyType)
+		if err != nil {
+			logger.Error("Failed to get session type", err)
+			return
+		}
+
 		createSession := func(isNewPeer bool) (mpc.ReshareSession, error) {
 			return ec.node.CreateReshareSession(
-				sessionTypeFromKeyType(keyType),
+				sessionType,
 				walletID,
 				ec.mpcThreshold,
 				msg.NewThreshold,
@@ -617,13 +622,14 @@ func (ec *eventConsumer) Close() error {
 	return nil
 }
 
-func sessionTypeFromKeyType(keyType types.KeyType) mpc.SessionType {
+func sessionTypeFromKeyType(keyType types.KeyType) (mpc.SessionType, error) {
 	switch keyType {
 	case types.KeyTypeSecp256k1:
-		return mpc.SessionTypeECDSA
+		return mpc.SessionTypeECDSA, nil
 	case types.KeyTypeEd25519:
-		return mpc.SessionTypeEDDSA
+		return mpc.SessionTypeEDDSA, nil
 	default:
-		panic(fmt.Sprintf("unsupported key type: %v", keyType))
+		logger.Warn("Unsupported key type", "keyType", keyType)
+		return "", fmt.Errorf("unsupported key type: %v", keyType)
 	}
 }

@@ -1,6 +1,7 @@
 package mpc
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -244,4 +245,42 @@ func (s *session) GetVersion() int {
 		}
 	}
 	return 0 // fallback for backward-compatible party IDs
+}
+
+// loadOldShareDataGeneric loads the old share data from kvstore with backward compatibility (versioned and unversioned keys)
+func (s *session) loadOldShareDataGeneric(walletID string, version int, dest interface{}) error {
+	var (
+		key     string
+		keyData []byte
+		err     error
+	)
+
+	// Try versioned key first if version > 0
+	if version > 0 {
+		key = s.composeKey(toKVKey(walletID, version))
+		keyData, err = s.kvstore.Get(key)
+	}
+
+	// If version == 0 or previous key not found, fall back to unversioned key
+	if err != nil || version == 0 {
+		key = s.composeKey(walletID)
+		keyData, err = s.kvstore.Get(key)
+	}
+
+	if err != nil {
+		return fmt.Errorf("failed to get wallet data from KVStore (key=%s): %w", key, err)
+	}
+
+	if err := json.Unmarshal(keyData, dest); err != nil {
+		return fmt.Errorf("failed to unmarshal wallet data: %w", err)
+	}
+	return nil
+}
+
+// toKVKey is used to compose the key for the kvstore
+func toKVKey(walletID string, version int) string {
+	if version > 0 {
+		return fmt.Sprintf("%s%d", walletID, version)
+	}
+	return walletID
 }

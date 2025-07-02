@@ -4,7 +4,6 @@ import (
 	"crypto/ecdsa"
 	"encoding/json"
 	"fmt"
-	"strconv"
 
 	"github.com/bnb-chain/tss-lib/v2/ecdsa/keygen"
 	"github.com/bnb-chain/tss-lib/v2/ecdsa/resharing"
@@ -107,32 +106,9 @@ func (s *ecdsaReshareSession) Init() {
 		share = keygen.NewLocalPartySaveData(len(s.partyIDs))
 		share.LocalPreParams = *s.preParams
 	} else {
-		// Old party → load from kvstore with backward compatibility
-		var (
-			key     string
-			keyData []byte
-			err     error
-		)
-
-		// Try versioned key first if version > 0
-		if s.GetVersion() > 0 {
-			key = s.composeKey(fmt.Sprintf("%s_v%d", s.walletID, s.GetVersion()))
-			keyData, err = s.kvstore.Get(key)
-		}
-
-		// If version == 0 or previous key not found, fall back to unversioned key
-		if err != nil || s.GetVersion() == 0 {
-			key = s.composeKey(s.walletID)
-			keyData, err = s.kvstore.Get(key)
-		}
-
+		err := s.loadOldShareDataGeneric(s.walletID, s.GetVersion(), &share)
 		if err != nil {
-			s.ErrCh <- fmt.Errorf("failed to get wallet data from KVStore (key=%s): %w", key, err)
-			return
-		}
-
-		if err := json.Unmarshal(keyData, &share); err != nil {
-			s.ErrCh <- fmt.Errorf("failed to unmarshal wallet data: %w", err)
+			s.ErrCh <- err
 			return
 		}
 	}
@@ -163,7 +139,7 @@ func (s *ecdsaReshareSession) Reshare(done func()) {
 					return
 				}
 
-				if err := s.kvstore.Put(s.composeKey(s.walletID+"_v"+strconv.Itoa(s.GetVersion())), keyBytes); err != nil {
+				if err := s.kvstore.Put(s.composeKey(toKVKey(s.walletID, s.GetVersion())), keyBytes); err != nil {
 					s.ErrCh <- err
 					return
 				}
