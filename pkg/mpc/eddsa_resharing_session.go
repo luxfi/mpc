@@ -3,12 +3,12 @@ package mpc
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 
 	"github.com/bnb-chain/tss-lib/v2/eddsa/keygen"
 	"github.com/bnb-chain/tss-lib/v2/eddsa/resharing"
 	"github.com/bnb-chain/tss-lib/v2/tss"
 	"github.com/decred/dcrd/dcrec/edwards/v2"
-	"github.com/fystack/mpcium/pkg/common/errors"
 	"github.com/fystack/mpcium/pkg/identity"
 	"github.com/fystack/mpcium/pkg/keyinfo"
 	"github.com/fystack/mpcium/pkg/kvstore"
@@ -19,6 +19,7 @@ import (
 type eddsaReshareSession struct {
 	*session
 	isNewParty    bool
+	newPeerIDs    []string
 	reshareParams *tss.ReSharingParameters
 	endCh         chan *keygen.LocalPartySaveData
 }
@@ -37,6 +38,7 @@ func NewEDDSAReshareSession(
 	keyinfoStore keyinfo.Store,
 	resultQueue messaging.MessageQueue,
 	identityStore identity.Store,
+	newPeerIDs []string,
 	isNewParty bool,
 ) *eddsaReshareSession {
 	session := session{
@@ -83,6 +85,7 @@ func NewEDDSAReshareSession(
 		session:       &session,
 		reshareParams: reshareParams,
 		isNewParty:    isNewParty,
+		newPeerIDs:    newPeerIDs,
 		endCh:         make(chan *keygen.LocalPartySaveData),
 	}
 }
@@ -94,14 +97,31 @@ func (s *eddsaReshareSession) Init() {
 		// Initialize empty share data for new party
 		share = keygen.NewLocalPartySaveData(len(s.partyIDs))
 	} else {
-		keyData, err := s.kvstore.Get(s.composeKey(s.walletID))
+		// Old party → load from kvstore with backward compatibility
+		var (
+			key     string
+			keyData []byte
+			err     error
+		)
+
+		// Try versioned key first if version > 0
+		if s.GetVersion() > 0 {
+			key = s.composeKey(fmt.Sprintf("%s_v%d", s.walletID, s.GetVersion()))
+			keyData, err = s.kvstore.Get(key)
+		}
+
+		// If version == 0 or previous key not found, fall back to unversioned key
+		if err != nil || s.GetVersion() == 0 {
+			key = s.composeKey(s.walletID)
+			keyData, err = s.kvstore.Get(key)
+		}
+
 		if err != nil {
-			s.ErrCh <- errors.Wrap(err, "Failed to get wallet data from KVStore")
+			s.ErrCh <- fmt.Errorf("failed to get wallet data from KVStore (key=%s): %w", key, err)
 			return
 		}
 
-		err = json.Unmarshal(keyData, &share)
-		if err != nil {
+		if err := json.Unmarshal(keyData, &share); err != nil {
 			s.ErrCh <- fmt.Errorf("failed to unmarshal wallet data: %w", err)
 			return
 		}
@@ -122,50 +142,52 @@ func (s *eddsaReshareSession) Reshare(done func()) {
 	for {
 		select {
 		case saveData := <-s.endCh:
-			keyBytes, err := json.Marshal(saveData)
-			if err != nil {
-				s.ErrCh <- err
-				return
-			}
-
-			if err := s.kvstore.Put(s.composeKey(s.walletID), keyBytes); err != nil {
-				s.ErrCh <- err
-				return
-			}
-
-			keyInfo := keyinfo.KeyInfo{
-				ParticipantPeerIDs: s.participantPeerIDs,
-				Threshold:          s.reshareParams.NewThreshold(),
-			}
-
-			// Save key info with resharing flag
-			if err := s.keyinfoStore.Save(s.composeKey(s.walletID), &keyInfo); err != nil {
-				s.ErrCh <- err
-				return
-			}
-
-			// skip for old committee
 			if saveData.EDDSAPub != nil {
-
-				// Get public key
-				publicKey := saveData.EDDSAPub
-				pkX, pkY := publicKey.X(), publicKey.Y()
-				pk := edwards.PublicKey{
-					Curve: tss.Edwards(),
-					X:     pkX,
-					Y:     pkY,
+				keyBytes, err := json.Marshal(saveData)
+				if err != nil {
+					s.ErrCh <- err
+					return
 				}
 
-				pubKeyBytes := pk.SerializeCompressed()
-				s.pubkeyBytes = pubKeyBytes
+				if err := s.kvstore.Put(s.composeKey(s.walletID+"_v"+strconv.Itoa(s.GetVersion())), keyBytes); err != nil {
+					s.ErrCh <- err
+					return
+				}
 
-				logger.Info("Generated public key bytes",
-					"walletID", s.walletID,
-					"pubKeyBytes", pubKeyBytes)
+				keyInfo := keyinfo.KeyInfo{
+					ParticipantPeerIDs: s.newPeerIDs,
+					Threshold:          s.reshareParams.NewThreshold(),
+					Version:            s.GetVersion(),
+				}
+
+				// Save key info with resharing flag
+				if err := s.keyinfoStore.Save(s.composeKey(s.walletID), &keyInfo); err != nil {
+					s.ErrCh <- err
+					return
+				}
+
+				// skip for old committee
+				if saveData.EDDSAPub != nil {
+
+					// Get public key
+					publicKey := saveData.EDDSAPub
+					pkX, pkY := publicKey.X(), publicKey.Y()
+					pk := edwards.PublicKey{
+						Curve: tss.Edwards(),
+						X:     pkX,
+						Y:     pkY,
+					}
+
+					pubKeyBytes := pk.SerializeCompressed()
+					s.pubkeyBytes = pubKeyBytes
+
+					logger.Info("Generated public key bytes",
+						"walletID", s.walletID,
+						"pubKeyBytes", pubKeyBytes)
+				}
 			}
-
 			done()
-			err = s.Close()
+			err := s.Close()
 			if err != nil {
 				logger.Error("Failed to close session", err)
 			}

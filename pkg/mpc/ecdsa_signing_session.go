@@ -93,6 +93,7 @@ func (s *ecdsaSigningSession) Init(tx *big.Int) error {
 	logger.Infof("Initializing signing session with partyID: %s, peerIDs %s", s.selfPartyID, s.partyIDs)
 	ctx := tss.NewPeerContext(s.partyIDs)
 	params := tss.NewParameters(tss.S256(), ctx, s.selfPartyID, len(s.partyIDs), s.threshold)
+
 	keyInfo, err := s.keyinfoStore.Get(s.composeKey(s.walletID))
 	if err != nil {
 		return errors.Wrap(err, "Failed to get key info data")

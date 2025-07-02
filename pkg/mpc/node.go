@@ -249,6 +249,7 @@ func (p *Node) CreateSigningSession(
 
 	return nil, errors.New("Unknown session type")
 }
+
 func (p *Node) CreateReshareSession(
 	sessionType SessionType,
 	walletID string,
@@ -258,7 +259,7 @@ func (p *Node) CreateReshareSession(
 	isNewPeer bool,
 	successQueue messaging.MessageQueue,
 ) (ReshareSession, error) {
-	// Ensure enough ready peers
+	// 1. Check peer readiness
 	if !p.peerRegistry.ArePeersReady() {
 		return nil, fmt.Errorf(
 			"not enough peers to create reshare session! Expected at least %d, got %d",
@@ -267,7 +268,7 @@ func (p *Node) CreateReshareSession(
 		)
 	}
 
-	// Validate all new peers are ready
+	// 2. Check all new peers are ready
 	readyPeerIDs := p.peerRegistry.GetReadyPeersIncludeSelf()
 	for _, peerID := range newPeerIDs {
 		if !slices.Contains(readyPeerIDs, peerID) {
@@ -275,46 +276,49 @@ func (p *Node) CreateReshareSession(
 		}
 	}
 
+	// 3. Load old key info
+	keyPrefix, err := sessionKeyPrefix(sessionType)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get session key prefix: %w", err)
+	}
+	keyInfoKey := fmt.Sprintf("%s:%s", keyPrefix, walletID)
+	oldKeyInfo, err := p.keyinfoStore.Get(keyInfoKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get old key info: %w", err)
+	}
+
+	isInOldCommittee := slices.Contains(oldKeyInfo.ParticipantPeerIDs, p.nodeID)
+	isInNewCommittee := slices.Contains(newPeerIDs, p.nodeID)
+
+	// 4. Skip if not relevant
+	if isNewPeer && !isInNewCommittee {
+		logger.Info("Skipping new session: node is not in new committee", "walletID", walletID, "nodeID", p.nodeID)
+		return nil, nil
+	}
+	if !isNewPeer && !isInOldCommittee {
+		logger.Info("Skipping old session: node is not in old committee", "walletID", walletID, "nodeID", p.nodeID)
+		return nil, nil
+	}
+
+	// 5. Generate party IDs
 	version := p.getVersion(sessionType, walletID)
+	oldSelf, oldAllPartyIDs := p.generatePartyIDs(PurposeKeygen, oldKeyInfo.ParticipantPeerIDs, version)
+	newSelf, newAllPartyIDs := p.generatePartyIDs(PurposeReshare, newPeerIDs, version+1)
+
+	// 6. Pick identity and call session constructor
+	var selfPartyID *tss.PartyID
+	if isNewPeer {
+		selfPartyID = newSelf
+	} else {
+		selfPartyID = oldSelf
+	}
 
 	switch sessionType {
 	case SessionTypeECDSA:
-		oldKeyInfo, err := p.keyinfoStore.Get(fmt.Sprintf("ecdsa:%s", walletID))
-		if err != nil {
-			return nil, fmt.Errorf("failed to get old key info: %w", err)
-		}
-
-		isInOldCommittee := slices.Contains(oldKeyInfo.ParticipantPeerIDs, p.nodeID)
-		isInNewCommittee := slices.Contains(newPeerIDs, p.nodeID)
-
-		// Determine whether we should run this role
-		if isNewPeer && !isInNewCommittee {
-			logger.Info("Skipping new session: this node is not in new committee",
-				"walletID", walletID, "nodeID", p.nodeID)
-			return nil, nil
-		}
-		if !isNewPeer && !isInOldCommittee {
-			logger.Info("Skipping old session: this node is not in old committee",
-				"walletID", walletID, "nodeID", p.nodeID)
-			return nil, nil
-		}
-
-		// Generate party IDs
-		oldSelf, oldAllPartyIDs := p.generatePartyIDs(PurposeKeygen, oldKeyInfo.ParticipantPeerIDs, version)
-		newSelf, newAllPartyIDs := p.generatePartyIDs(PurposeReshare, newPeerIDs, version+1)
-
-		// Pick correct identity and params
-		var selfPartyID *tss.PartyID
-		var preParams *keygen.LocalPreParams
-
+		preParams := p.ecdsaPreParams[0]
 		if isNewPeer {
-			selfPartyID = newSelf
 			preParams = p.ecdsaPreParams[1]
-		} else {
-			selfPartyID = oldSelf
-			preParams = p.ecdsaPreParams[0]
 		}
-
 		return NewECDSAReshareSession(
 			walletID,
 			p.pubSub,
@@ -334,8 +338,24 @@ func (p *Node) CreateReshareSession(
 			isNewPeer,
 		), nil
 
-	// case SessionTypeEDDSA:
-	//     return ..., nil
+	case SessionTypeEDDSA:
+		return NewEDDSAReshareSession(
+			walletID,
+			p.pubSub,
+			p.direct,
+			readyPeerIDs,
+			selfPartyID,
+			oldAllPartyIDs,
+			newAllPartyIDs,
+			oldThreshold,
+			newThreshold,
+			p.kvstore,
+			p.keyinfoStore,
+			successQueue,
+			p.identityStore,
+			newPeerIDs,
+			isNewPeer,
+		), nil
 
 	default:
 		return nil, fmt.Errorf("unsupported session type: %v", sessionType)
@@ -439,4 +459,15 @@ func (p *Node) getVersion(sessionType SessionType, walletID string) int {
 		return DefaultVersion
 	}
 	return keyinfo.Version
+}
+
+func sessionKeyPrefix(sessionType SessionType) (string, error) {
+	switch sessionType {
+	case SessionTypeECDSA:
+		return "ecdsa", nil
+	case SessionTypeEDDSA:
+		return "eddsa", nil
+	default:
+		return "", fmt.Errorf("unsupported session type: %v", sessionType)
+	}
 }
