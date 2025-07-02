@@ -109,7 +109,7 @@ func (s *session) handleTssMessage(keyshare tss.Message) {
 	for i, id := range routing.To {
 		toIDs[i] = id.String()
 	}
-	logger.Info(fmt.Sprintf("%s Sending message", s.sessionType), "from", s.selfPartyID.String(), "to", toIDs, "isBroadcast", routing.IsBroadcast)
+	logger.Debug(fmt.Sprintf("%s Sending message", s.sessionType), "from", s.selfPartyID.String(), "to", toIDs, "isBroadcast", routing.IsBroadcast)
 	if routing.IsBroadcast && len(routing.To) == 0 {
 		err := s.pubSub.Publish(s.topicComposer.ComposeBroadcastTopic(), msg)
 		if err != nil {
@@ -152,7 +152,7 @@ func (s *session) receiveTssMessage(rawMsg []byte) {
 		s.ErrCh <- errors.Wrap(err, "Broken TSS Share")
 		return
 	}
-	logger.Info("Received message", "round", round.RoundMsg, "isBroadcast", msg.IsBroadcast, "to", toIDs, "from", msg.From.String(), "self", s.selfPartyID.String())
+	logger.Debug("Received message", "round", round.RoundMsg, "isBroadcast", msg.IsBroadcast, "to", toIDs, "from", msg.From.String(), "self", s.selfPartyID.String())
 	isBroadcast := msg.IsBroadcast && len(msg.To) == 0
 	var isToSelf bool
 	for _, to := range msg.To {
@@ -235,7 +235,6 @@ func (s *session) ErrChan() <-chan error {
 }
 
 func (s *session) GetVersion() int {
-	fmt.Println("self party id", string(s.selfPartyID.GetKey()))
 	version, err := strconv.Atoi(strings.Split(string(s.selfPartyID.GetKey()), ":")[1])
 	if err != nil {
 		return 0

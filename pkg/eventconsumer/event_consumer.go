@@ -449,8 +449,6 @@ func (ec *eventConsumer) consumeReshareEvent() error {
 			logger.Error("Failed to create new reshare session", err, "walletID", walletID)
 			return
 		}
-		fmt.Println("old session", oldSession)
-		fmt.Println("new session", newSession)
 
 		if oldSession == nil && newSession == nil {
 			logger.Info("Node is not participating in this reshare (neither old nor new)", "walletID", walletID)
