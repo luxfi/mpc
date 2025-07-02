@@ -45,7 +45,7 @@ type Node struct {
 	peerRegistry PeerRegistry
 }
 
-func PartyIDToNodeID(partyID *tss.PartyID) string {
+func PartyIDToRoutingDest(partyID *tss.PartyID) string {
 	return string(partyID.KeyInt().Bytes())
 }
 
@@ -159,17 +159,41 @@ func (p *Node) CreateSigningSession(
 	resultQueue messaging.MessageQueue,
 ) (SigningSession, error) {
 	version := p.getVersion(sessionType, walletID)
-	readyPeerIDs := p.peerRegistry.GetReadyPeersIncludeSelf()
-	selfPartyID, allPartyIDs := p.generatePartyIDs(PurposeKeygen, readyPeerIDs, version)
 	switch sessionType {
 	case SessionTypeECDSA:
+		keyID := fmt.Sprintf("ecdsa:%s", walletID)
+		keyInfo, err := p.keyinfoStore.Get(keyID)
+		if err != nil {
+			return nil, err
+		}
+
+		readyPeers := p.peerRegistry.GetReadyPeersIncludeSelf()
+
+		// Ensure all participants are ready
+		for _, peerID := range keyInfo.ParticipantPeerIDs {
+			if !slices.Contains(readyPeers, peerID) {
+				return nil, fmt.Errorf("participant peer %s is not ready", peerID)
+			}
+		}
+
+		// Warn and skip if current node is not a participant
+		if !slices.Contains(keyInfo.ParticipantPeerIDs, p.nodeID) {
+			logger.Warn("This node is not in the participant list",
+				"walletID", walletID,
+				"nodeID", p.nodeID,
+			)
+			return nil, nil
+		}
+
+		selfPartyID, allPartyIDs := p.generatePartyIDs(PurposeKeygen, keyInfo.ParticipantPeerIDs, version)
+
 		return newECDSASigningSession(
 			walletID,
 			txID,
 			networkInternalCode,
 			p.pubSub,
 			p.direct,
-			readyPeerIDs,
+			keyInfo.ParticipantPeerIDs,
 			selfPartyID,
 			allPartyIDs,
 			threshold,
@@ -180,13 +204,39 @@ func (p *Node) CreateSigningSession(
 			p.identityStore,
 		), nil
 	case SessionTypeEDDSA:
+		keyID := fmt.Sprintf("eddsa:%s", walletID)
+		keyInfo, err := p.keyinfoStore.Get(keyID)
+		if err != nil {
+			return nil, err
+		}
+
+		readyPeers := p.peerRegistry.GetReadyPeersIncludeSelf()
+
+		// Ensure all participants are ready
+		for _, peerID := range keyInfo.ParticipantPeerIDs {
+			if !slices.Contains(readyPeers, peerID) {
+				return nil, fmt.Errorf("participant peer %s is not ready", peerID)
+			}
+		}
+
+		// Warn and skip if current node is not a participant
+		if !slices.Contains(keyInfo.ParticipantPeerIDs, p.nodeID) {
+			logger.Warn("This node is not in the participant list",
+				"walletID", walletID,
+				"nodeID", p.nodeID,
+			)
+			return nil, nil
+		}
+
+		selfPartyID, allPartyIDs := p.generatePartyIDs(PurposeKeygen, keyInfo.ParticipantPeerIDs, version)
+
 		return NewEDDSASigningSession(
 			walletID,
 			txID,
 			networkInternalCode,
 			p.pubSub,
 			p.direct,
-			readyPeerIDs,
+			keyInfo.ParticipantPeerIDs,
 			selfPartyID,
 			allPartyIDs,
 			threshold,
@@ -199,7 +249,6 @@ func (p *Node) CreateSigningSession(
 
 	return nil, errors.New("Unknown session type")
 }
-
 func (p *Node) CreateReshareSession(
 	sessionType SessionType,
 	walletID string,
@@ -209,38 +258,63 @@ func (p *Node) CreateReshareSession(
 	isNewPeer bool,
 	successQueue messaging.MessageQueue,
 ) (ReshareSession, error) {
+	// Ensure enough ready peers
 	if !p.peerRegistry.ArePeersReady() {
-		return nil, fmt.Errorf("Not enough peers to create reshare session! Expected %d, got %d", newThreshold+1, p.peerRegistry.GetReadyPeersCount())
-	}
-	readyPeerIDs := p.peerRegistry.GetReadyPeersIncludeSelf()
-	for _, peerID := range newPeerIDs {
-		if slices.Contains(readyPeerIDs, peerID) {
-			continue
-		}
-		return nil, fmt.Errorf("new peer %s is not ready", peerID)
+		return nil, fmt.Errorf(
+			"not enough peers to create reshare session! Expected at least %d, got %d",
+			newThreshold+1,
+			p.peerRegistry.GetReadyPeersCount(),
+		)
 	}
 
-	// if current node is not in newPeerIDs and isNewPeer is true, return nil
-	if !slices.Contains(newPeerIDs, p.nodeID) && isNewPeer {
-		return nil, nil
+	// Validate all new peers are ready
+	readyPeerIDs := p.peerRegistry.GetReadyPeersIncludeSelf()
+	for _, peerID := range newPeerIDs {
+		if !slices.Contains(readyPeerIDs, peerID) {
+			return nil, fmt.Errorf("new peer %s is not ready", peerID)
+		}
 	}
 
 	version := p.getVersion(sessionType, walletID)
-	var (
-		selfPartyID *tss.PartyID
-		preParams   *keygen.LocalPreParams
-	)
-	oldSelf, oldAllPartyIDs := p.generatePartyIDs(PurposeKeygen, readyPeerIDs, version)
-	newSelf, newAllPartyIDs := p.generatePartyIDs(PurposeReshare, newPeerIDs, version+1)
-	if isNewPeer {
-		selfPartyID = newSelf
-		preParams = p.ecdsaPreParams[1]
-	} else {
-		selfPartyID = oldSelf
-		preParams = p.ecdsaPreParams[0]
-	}
+
 	switch sessionType {
 	case SessionTypeECDSA:
+		oldKeyInfo, err := p.keyinfoStore.Get(fmt.Sprintf("ecdsa:%s", walletID))
+		if err != nil {
+			return nil, fmt.Errorf("failed to get old key info: %w", err)
+		}
+
+		isInOldCommittee := slices.Contains(oldKeyInfo.ParticipantPeerIDs, p.nodeID)
+		isInNewCommittee := slices.Contains(newPeerIDs, p.nodeID)
+
+		// Determine whether we should run this role
+		if isNewPeer && !isInNewCommittee {
+			logger.Info("Skipping new session: this node is not in new committee",
+				"walletID", walletID, "nodeID", p.nodeID)
+			return nil, nil
+		}
+		if !isNewPeer && !isInOldCommittee {
+			logger.Info("Skipping old session: this node is not in old committee",
+				"walletID", walletID, "nodeID", p.nodeID)
+			return nil, nil
+		}
+
+		// Generate party IDs
+		oldSelf, oldAllPartyIDs := p.generatePartyIDs(PurposeKeygen, oldKeyInfo.ParticipantPeerIDs, version)
+		newSelf, newAllPartyIDs := p.generatePartyIDs(PurposeReshare, newPeerIDs, version+1)
+
+		// Pick correct identity and params
+		var selfPartyID *tss.PartyID
+		var preParams *keygen.LocalPreParams
+
+		if isNewPeer {
+			selfPartyID = newSelf
+			preParams = p.ecdsaPreParams[1]
+		} else {
+			selfPartyID = oldSelf
+			preParams = p.ecdsaPreParams[0]
+		}
+
 		return NewECDSAReshareSession(
 			walletID,
 			p.pubSub,
@@ -256,27 +330,15 @@ func (p *Node) CreateReshareSession(
 			p.keyinfoStore,
 			successQueue,
 			p.identityStore,
+			newPeerIDs,
 			isNewPeer,
 		), nil
-	case SessionTypeEDDSA:
-		return NewEDDSAReshareSession(
-			walletID,
-			p.pubSub,
-			p.direct,
-			readyPeerIDs,
-			selfPartyID,
-			oldAllPartyIDs,
-			newAllPartyIDs,
-			oldThreshold,
-			newThreshold,
-			p.kvstore,
-			p.keyinfoStore,
-			successQueue,
-			p.identityStore,
-			isNewPeer,
-		), nil
+
+	// case SessionTypeEDDSA:
+	//     return ..., nil
+
 	default:
-		return nil, errors.New("Unknown session type")
+		return nil, fmt.Errorf("unsupported session type: %v", sessionType)
 	}
 }
 

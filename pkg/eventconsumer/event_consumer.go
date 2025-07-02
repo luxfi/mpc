@@ -64,6 +64,7 @@ func NewEventConsumer(
 	pubsub messaging.PubSub,
 	genKeySucecssQueue messaging.MessageQueue,
 	signingResultQueue messaging.MessageQueue,
+	reshareResultQueue messaging.MessageQueue,
 	identityStore identity.Store,
 ) EventConsumer {
 	maxConcurrentKeygen := viper.GetInt("max_concurrent_keygen")
@@ -76,6 +77,7 @@ func NewEventConsumer(
 		pubsub:              pubsub,
 		genKeySucecssQueue:  genKeySucecssQueue,
 		signingResultQueue:  signingResultQueue,
+		reshareResultQueue:  reshareResultQueue,
 		activeSessions:      make(map[string]time.Time),
 		cleanupInterval:     5 * time.Minute,  // Run cleanup every 5 minutes
 		sessionTimeout:      30 * time.Minute, // Consider sessions older than 30 minutes stale
@@ -288,6 +290,12 @@ func (ec *eventConsumer) consumeTxSigningEvent() error {
 			)
 
 		}
+		// This node is not in the participantPeerIDs, so we don't need to sign
+		if session == nil {
+			natMsg.Ack()
+			logger.Info("This node is not in the participantPeerIDs, so we don't need to sign", "walletID", msg.WalletID, "nodeID", ec.node.ID())
+			return
+		}
 
 		if err != nil {
 			ec.handleSigningSessionError(
@@ -402,159 +410,133 @@ func (ec *eventConsumer) handleSigningSessionError(walletID, txID, NetworkIntern
 		return
 	}
 }
-
 func (ec *eventConsumer) consumeReshareEvent() error {
 	sub, err := ec.pubsub.Subscribe(MPCReshareEvent, func(natMsg *nats.Msg) {
-		raw := natMsg.Data
 		var msg types.ResharingMessage
-		err := json.Unmarshal(raw, &msg)
-		if err != nil {
-			logger.Error("Failed to unmarshal signing message", err)
+		if err := json.Unmarshal(natMsg.Data, &msg); err != nil {
+			logger.Error("Failed to unmarshal resharing message", err)
 			return
 		}
-		err = ec.identityStore.VerifyInitiatorMessage(&msg)
-		if err != nil {
+
+		if err := ec.identityStore.VerifyInitiatorMessage(&msg); err != nil {
 			logger.Error("Failed to verify initiator message", err)
 			return
 		}
 
 		walletID := msg.WalletID
-		var (
-			oldSession mpc.ReshareSession
-			newSession mpc.ReshareSession
-		)
-		switch msg.KeyType {
-		case types.KeyTypeSecp256k1:
-			isNewNode := true
-			oldSession, err = ec.node.CreateReshareSession(
-				mpc.SessionTypeECDSA,
-				msg.WalletID,
-				ec.mpcThreshold,
-				msg.NewThreshold,
-				msg.NodeIDs,
-				!isNewNode,
-				ec.reshareResultQueue,
-			)
-			if err != nil {
-				logger.Error("Failed to create old reshare session", err, "walletID", walletID)
-				return
-			}
+		keyType := msg.KeyType
 
-			newSession, err = ec.node.CreateReshareSession(
-				mpc.SessionTypeECDSA,
-				msg.WalletID,
+		// Helper: Tạo session nếu node có tham gia
+		createSession := func(isNewPeer bool) (mpc.ReshareSession, error) {
+			return ec.node.CreateReshareSession(
+				sessionTypeFromKeyType(keyType),
+				walletID,
 				ec.mpcThreshold,
 				msg.NewThreshold,
 				msg.NodeIDs,
-				isNewNode,
-				ec.reshareResultQueue,
-			)
-		case types.KeyTypeEd25519:
-			oldSession, err = ec.node.CreateReshareSession(
-				mpc.SessionTypeEDDSA,
-				msg.WalletID,
-				ec.mpcThreshold,
-				msg.NewThreshold,
-				msg.NodeIDs,
-				true,
-				ec.reshareResultQueue,
-			)
-			if err != nil {
-				logger.Error("Failed to create old reshare session", err, "walletID", walletID)
-				return
-			}
-
-			newSession, err = ec.node.CreateReshareSession(
-				mpc.SessionTypeEDDSA,
-				msg.WalletID,
-				ec.mpcThreshold,
-				msg.NewThreshold,
-				msg.NodeIDs,
-				true,
+				isNewPeer,
 				ec.reshareResultQueue,
 			)
 		}
+
+		oldSession, err := createSession(false)
 		if err != nil {
-			logger.Error("Failed to create reshare session", err, "walletID", walletID)
+			logger.Error("Failed to create old reshare session", err, "walletID", walletID)
+			return
+		}
+		newSession, err := createSession(true)
+		if err != nil {
+			logger.Error("Failed to create new reshare session", err, "walletID", walletID)
+			return
+		}
+		fmt.Println("old session", oldSession)
+		fmt.Println("new session", newSession)
+
+		if oldSession == nil && newSession == nil {
+			logger.Info("Node is not participating in this reshare (neither old nor new)", "walletID", walletID)
 			return
 		}
 
 		successEvent := &event.ResharingSuccessEvent{
-			WalletID: walletID,
+			WalletID:     walletID,
+			NewThreshold: msg.NewThreshold,
+			KeyType:      msg.KeyType,
 		}
-
-		oldSession.Init()
-		if newSession != nil {
-			newSession.Init()
-		}
-
-		ctx := context.Background()
-		ctxOld, doneOld := context.WithCancel(ctx)
 
 		var wg sync.WaitGroup
-		wg.Add(1)
-		go func() {
-			for {
-				select {
-				case <-ctxOld.Done():
-					wg.Done()
-					return
-				case err := <-oldSession.ErrChan():
-					logger.Error("Reshare session error", err, "oldSession", true)
-				}
-			}
-		}()
-		// Temporary delay to allow peer nodes to subscribe and prepare before starting key generation.
-		// This should be replaced with a proper distributed coordination mechanism later (e.g., Consul lock).
+		ctx := context.Background()
+
+		// Delay để các node chuẩn bị (có thể thay bằng Consul lock sau)
 		time.Sleep(DefaultKeyGenStartupDelayMs * time.Millisecond)
 
-		go oldSession.Reshare(doneOld)
+		if oldSession != nil {
+			ctxOld, doneOld := context.WithCancel(ctx)
+			oldSession.Init()
+			oldSession.ListenToIncomingMessageAsync()
+			go oldSession.Reshare(doneOld)
+
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for {
+					select {
+					case <-ctxOld.Done():
+						return
+					case err := <-oldSession.ErrChan():
+						logger.Error("Old reshare session error", err)
+					}
+				}
+			}()
+		}
 
 		if newSession != nil {
 			ctxNew, doneNew := context.WithCancel(ctx)
+			newSession.Init()
+			newSession.ListenToIncomingMessageAsync()
+			go newSession.Reshare(doneNew)
+
 			wg.Add(1)
 			go func() {
+				defer wg.Done()
 				for {
 					select {
 					case <-ctxNew.Done():
 						successEvent.PubKey = newSession.GetPubKeyResult()
-						wg.Done()
 						return
 					case err := <-newSession.ErrChan():
-						logger.Error("Reshare session error", err, "newSession", true)
+						logger.Error("New reshare session error", err)
 					}
 				}
 			}()
-			newSession.ListenToIncomingMessageAsync()
-			go newSession.Reshare(doneNew)
 		}
-		oldSession.ListenToIncomingMessageAsync()
 
 		wg.Wait()
-		logger.Info("Closing session successfully!", "event", successEvent)
+		logger.Info("Reshare session finished", "walletID", walletID, "pubKey", fmt.Sprintf("%x", successEvent.PubKey))
 
-		successEventBytes, err := json.Marshal(successEvent)
-		if err != nil {
-			logger.Error("Failed to marshal reshare success event", err)
-			return
+		if newSession != nil {
+			successBytes, err := json.Marshal(successEvent)
+			if err != nil {
+				logger.Error("Failed to marshal reshare success event", err)
+				return
+			}
+			err = ec.reshareResultQueue.Enqueue(
+				fmt.Sprintf(mpc.TypeReshareWalletSuccess, walletID),
+				successBytes,
+				&messaging.EnqueueOptions{
+					IdempotententKey: fmt.Sprintf(mpc.TypeReshareWalletSuccess, walletID),
+				})
+			if err != nil {
+				logger.Error("Failed to publish reshare success message", err)
+				return
+			}
+			logger.Info("[COMPLETED RESHARE] Successfully published", "walletID", walletID)
+		} else {
+			logger.Info("[COMPLETED RESHARE] Done (not a new party)", "walletID", walletID)
 		}
-
-		err = ec.reshareResultQueue.Enqueue(fmt.Sprintf(mpc.TypeReshareSuccess, walletID), successEventBytes, &messaging.EnqueueOptions{
-			IdempotententKey: fmt.Sprintf(mpc.TypeReshareSuccess, walletID),
-		})
-		if err != nil {
-			logger.Error("Failed to publish reshare success message", err)
-			return
-		}
-
-		logger.Info("[COMPLETED RESHARE] Reshare completed successfully", "walletID", walletID)
 	})
 
 	ec.reshareSub = sub
-	if err != nil {
-		return err
-	}
-	return nil
+	return err
 }
 
 // Add a cleanup routine that runs periodically
@@ -635,4 +617,15 @@ func (ec *eventConsumer) Close() error {
 	}
 
 	return nil
+}
+
+func sessionTypeFromKeyType(keyType types.KeyType) mpc.SessionType {
+	switch keyType {
+	case types.KeyTypeSecp256k1:
+		return mpc.SessionTypeECDSA
+	case types.KeyTypeEd25519:
+		return mpc.SessionTypeEDDSA
+	default:
+		panic(fmt.Sprintf("unsupported key type: %v", keyType))
+	}
 }

@@ -2,6 +2,7 @@ package mpc
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -21,6 +22,7 @@ type SessionType string
 
 const (
 	TypeGenerateWalletSuccess             = "mpc.mpc_keygen_success.%s"
+	TypeReshareWalletSuccess              = "mpc.mpc_reshare_success.%s"
 	SessionTypeECDSA          SessionType = "session_ecdsa"
 	SessionTypeEDDSA          SessionType = "session_eddsa"
 )
@@ -103,7 +105,11 @@ func (s *session) handleTssMessage(keyshare tss.Message) {
 		s.ErrCh <- fmt.Errorf("failed to marshal tss message: %w", err)
 		return
 	}
-
+	toIDs := make([]string, len(routing.To))
+	for i, id := range routing.To {
+		toIDs[i] = id.String()
+	}
+	logger.Info(fmt.Sprintf("%s Sending message", s.sessionType), "from", s.selfPartyID.String(), "to", toIDs, "isBroadcast", routing.IsBroadcast)
 	if routing.IsBroadcast && len(routing.To) == 0 {
 		err := s.pubSub.Publish(s.topicComposer.ComposeBroadcastTopic(), msg)
 		if err != nil {
@@ -112,7 +118,7 @@ func (s *session) handleTssMessage(keyshare tss.Message) {
 		}
 	} else {
 		for _, to := range routing.To {
-			nodeID := PartyIDToNodeID(to)
+			nodeID := PartyIDToRoutingDest(to)
 			topic := s.topicComposer.ComposeDirectTopic(nodeID)
 			err := s.direct.Send(topic, msg)
 			if err != nil {
@@ -146,10 +152,15 @@ func (s *session) receiveTssMessage(rawMsg []byte) {
 		s.ErrCh <- errors.Wrap(err, "Broken TSS Share")
 		return
 	}
-
-	logger.Debug(fmt.Sprintf("%s Received message", s.sessionType), "from", msg.From.String(), "to", strings.Join(toIDs, ","), "isBroadcast", msg.IsBroadcast, "round", round.RoundMsg)
+	logger.Info("Received message", "round", round.RoundMsg, "isBroadcast", msg.IsBroadcast, "to", toIDs, "from", msg.From.String(), "self", s.selfPartyID.String())
 	isBroadcast := msg.IsBroadcast && len(msg.To) == 0
-	isToSelf := len(msg.To) == 1 && ComparePartyIDs(msg.To[0], s.selfPartyID)
+	var isToSelf bool
+	for _, to := range msg.To {
+		if ComparePartyIDs(to, s.selfPartyID) {
+			isToSelf = true
+			break
+		}
+	}
 
 	if isBroadcast || isToSelf {
 		s.mu.Lock()
@@ -191,7 +202,7 @@ func (s *session) ListenToIncomingMessageAsync() {
 		s.broadcastSub = sub
 	}()
 
-	nodeID := PartyIDToNodeID(s.selfPartyID)
+	nodeID := PartyIDToRoutingDest(s.selfPartyID)
 	targetID := s.topicComposer.ComposeDirectTopic(nodeID)
 	sub, err := s.direct.Listen(targetID, func(msg []byte) {
 		go s.receiveTssMessage(msg) // async for avoid timeout
@@ -221,4 +232,13 @@ func (s *session) GetPubKeyResult() []byte {
 
 func (s *session) ErrChan() <-chan error {
 	return s.ErrCh
+}
+
+func (s *session) GetVersion() int {
+	fmt.Println("self party id", string(s.selfPartyID.GetKey()))
+	version, err := strconv.Atoi(strings.Split(string(s.selfPartyID.GetKey()), ":")[1])
+	if err != nil {
+		return 0
+	}
+	return version
 }

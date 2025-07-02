@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"strconv"
 
 	"github.com/bnb-chain/tss-lib/v2/common"
 	"github.com/bnb-chain/tss-lib/v2/ecdsa/keygen"
@@ -92,12 +93,6 @@ func (s *ecdsaSigningSession) Init(tx *big.Int) error {
 	logger.Infof("Initializing signing session with partyID: %s, peerIDs %s", s.selfPartyID, s.partyIDs)
 	ctx := tss.NewPeerContext(s.partyIDs)
 	params := tss.NewParameters(tss.S256(), ctx, s.selfPartyID, len(s.partyIDs), s.threshold)
-
-	keyData, err := s.kvstore.Get(s.composeKey(s.walletID))
-	if err != nil {
-		return errors.Wrap(err, "Failed to get wallet data from KVStore")
-	}
-
 	keyInfo, err := s.keyinfoStore.Get(s.composeKey(s.walletID))
 	if err != nil {
 		return errors.Wrap(err, "Failed to get key info data")
@@ -119,6 +114,21 @@ func (s *ecdsaSigningSession) Init(tx *big.Int) error {
 	}
 
 	logger.Info("Have enough participants to sign", "participants", s.participantPeerIDs)
+
+	var keyData []byte
+	if keyInfo.Version == 0 {
+		logger.Info("Getting key data from KVStore", "walletID", s.walletID, "version", keyInfo.Version)
+		keyData, err = s.kvstore.Get(s.composeKey(s.walletID))
+		if err != nil {
+			return errors.Wrap(err, "Failed to get wallet data from KVStore")
+		}
+	} else {
+		logger.Info("Getting key data from KVStore", "walletID", s.walletID, "version", keyInfo.Version)
+		keyData, err = s.kvstore.Get(s.composeKey(s.walletID + "_v" + strconv.Itoa(s.GetVersion())))
+		if err != nil {
+			return errors.Wrap(err, "Failed to get wallet data from KVStore")
+		}
+	}
 	// Check if all the participants of the key are present
 	var data keygen.LocalPartySaveData
 	err = json.Unmarshal(keyData, &data)

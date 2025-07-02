@@ -36,6 +36,6 @@ import (
 
 func TestPartyIDToNodeID(t *testing.T) {
 	partyID := createPartyID("4d8cb873-dc86-4776-b6f6-cf5c668f6468", "keygen", 1)
-	nodeID := PartyIDToNodeID(partyID)
-	assert.Equal(t, nodeID, "4d8cb873-dc86-4776-b6f6-cf5c668f6468", "NodeID should be equal")
+	nodeID := PartyIDToRoutingDest(partyID)
+	assert.Equal(t, nodeID, "4d8cb873-dc86-4776-b6f6-cf5c668f6468:1", "NodeID should be equal")
 }

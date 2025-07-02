@@ -127,6 +127,7 @@ func NewMPCClient(opts Options) MPCClient {
 	manager := messaging.NewNATsMessageQueueManager("mpc", []string{
 		"mpc.mpc_keygen_success.*",
 		"mpc.signing_result.*",
+		"mpc.mpc_reshare_success.*",
 	}, opts.NatsConn)
 
 	genKeySuccessQueue := manager.NewMessageQueue("mpc_keygen_success")
@@ -272,11 +273,14 @@ func (c *mpcClient) Resharing(msg *types.ResharingMessage) error {
 func (c *mpcClient) OnResharingResult(callback func(event event.ResharingSuccessEvent)) error {
 
 	err := c.reshareSuccessQueue.Dequeue(ResharingSuccessTopic, func(msg []byte) error {
+		logger.Info("Received reshare success message", "raw", string(msg))
 		var event event.ResharingSuccessEvent
 		err := json.Unmarshal(msg, &event)
 		if err != nil {
+			logger.Error("Failed to unmarshal reshare success event", err, "raw", string(msg))
 			return err
 		}
+		logger.Info("Deserialized reshare success event", "event", event)
 		callback(event)
 		return nil
 	})

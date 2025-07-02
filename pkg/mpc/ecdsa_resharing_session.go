@@ -4,21 +4,17 @@ import (
 	"crypto/ecdsa"
 	"encoding/json"
 	"fmt"
+	"strconv"
 
 	"github.com/bnb-chain/tss-lib/v2/ecdsa/keygen"
 	"github.com/bnb-chain/tss-lib/v2/ecdsa/resharing"
 	"github.com/bnb-chain/tss-lib/v2/tss"
-	"github.com/fystack/mpcium/pkg/common/errors"
 	"github.com/fystack/mpcium/pkg/encoding"
 	"github.com/fystack/mpcium/pkg/identity"
 	"github.com/fystack/mpcium/pkg/keyinfo"
 	"github.com/fystack/mpcium/pkg/kvstore"
 	"github.com/fystack/mpcium/pkg/logger"
 	"github.com/fystack/mpcium/pkg/messaging"
-)
-
-const (
-	TypeReshareSuccess = "mpc.mpc_reshare_success.%s"
 )
 
 type ReshareSession interface {
@@ -31,14 +27,9 @@ type ReshareSession interface {
 type ecdsaReshareSession struct {
 	*session
 	isNewParty    bool
+	newPeerIDs    []string
 	reshareParams *tss.ReSharingParameters
 	endCh         chan *keygen.LocalPartySaveData
-}
-
-type ReshareSuccessEvent struct {
-	WalletID    string `json:"wallet_id"`
-	ECDSAPubKey []byte `json:"ecdsa_pub_key"`
-	EDDSAPubKey []byte `json:"eddsa_pub_key"`
 }
 
 func NewECDSAReshareSession(
@@ -56,6 +47,7 @@ func NewECDSAReshareSession(
 	keyinfoStore keyinfo.Store,
 	resultQueue messaging.MessageQueue,
 	identityStore identity.Store,
+	newPeerIDs []string,
 	isNewParty bool,
 ) *ecdsaReshareSession {
 	session := session{
@@ -101,6 +93,7 @@ func NewECDSAReshareSession(
 		session:       &session,
 		reshareParams: reshareParams,
 		isNewParty:    isNewParty,
+		newPeerIDs:    newPeerIDs,
 		endCh:         make(chan *keygen.LocalPartySaveData),
 	}
 }
@@ -108,25 +101,44 @@ func NewECDSAReshareSession(
 func (s *ecdsaReshareSession) Init() {
 	logger.Infof("Initializing resharing session with partyID: %s, newPartyIDs %s", s.selfPartyID, s.partyIDs)
 	var share keygen.LocalPartySaveData
+
 	if s.isNewParty {
-		// Initialize empty share data for new party
+		// New party → generate empty share
 		share = keygen.NewLocalPartySaveData(len(s.partyIDs))
 		share.LocalPreParams = *s.preParams
 	} else {
-		keyData, err := s.kvstore.Get(s.composeKey(s.walletID))
+		// Old party → load from kvstore with backward compatibility
+		var (
+			key     string
+			keyData []byte
+			err     error
+		)
+
+		// Try versioned key first if version > 0
+		if s.GetVersion() > 0 {
+			key = s.composeKey(fmt.Sprintf("%s_v%d", s.walletID, s.GetVersion()))
+			keyData, err = s.kvstore.Get(key)
+		}
+
+		// If version == 0 or previous key not found, fall back to unversioned key
+		if err != nil || s.GetVersion() == 0 {
+			key = s.composeKey(s.walletID)
+			keyData, err = s.kvstore.Get(key)
+		}
+
 		if err != nil {
-			s.ErrCh <- errors.Wrap(err, "Failed to get wallet data from KVStore")
+			s.ErrCh <- fmt.Errorf("failed to get wallet data from KVStore (key=%s): %w", key, err)
 			return
 		}
 
-		err = json.Unmarshal(keyData, &share)
-		if err != nil {
+		if err := json.Unmarshal(keyData, &share); err != nil {
 			s.ErrCh <- fmt.Errorf("failed to unmarshal wallet data: %w", err)
 			return
 		}
 	}
 
 	s.party = resharing.NewLocalParty(s.reshareParams, share, s.outCh, s.endCh)
+
 	logger.Infof("[INITIALIZED] Initialized resharing session successfully partyID: %s, peerIDs %s, walletID %s, oldThreshold = %d, newThreshold = %d",
 		s.selfPartyID, s.partyIDs, s.walletID, s.threshold, s.reshareParams.NewThreshold())
 }
@@ -142,30 +154,31 @@ func (s *ecdsaReshareSession) Reshare(done func()) {
 	for {
 		select {
 		case saveData := <-s.endCh:
-			keyBytes, err := json.Marshal(saveData)
-			if err != nil {
-				s.ErrCh <- err
-				return
-			}
-
-			if err := s.kvstore.Put(s.composeKey(s.walletID), keyBytes); err != nil {
-				s.ErrCh <- err
-				return
-			}
-
-			keyInfo := keyinfo.KeyInfo{
-				ParticipantPeerIDs: s.participantPeerIDs,
-				Threshold:          s.reshareParams.NewThreshold(),
-			}
-
-			// Save key info with resharing flag
-			if err := s.keyinfoStore.Save(s.composeKey(s.walletID), &keyInfo); err != nil {
-				s.ErrCh <- err
-				return
-			}
-
 			// skip for old committee
 			if saveData.ECDSAPub != nil {
+
+				keyBytes, err := json.Marshal(saveData)
+				if err != nil {
+					s.ErrCh <- err
+					return
+				}
+
+				if err := s.kvstore.Put(s.composeKey(s.walletID+"_v"+strconv.Itoa(s.GetVersion())), keyBytes); err != nil {
+					s.ErrCh <- err
+					return
+				}
+
+				keyInfo := keyinfo.KeyInfo{
+					ParticipantPeerIDs: s.newPeerIDs,
+					Threshold:          s.reshareParams.NewThreshold(),
+					Version:            s.GetVersion(),
+				}
+
+				// Save key info with resharing flag
+				if err := s.keyinfoStore.Save(s.composeKey(s.walletID), &keyInfo); err != nil {
+					s.ErrCh <- err
+					return
+				}
 				// Get public key
 				publicKey := saveData.ECDSAPub
 				pubKey := &ecdsa.PublicKey{
@@ -189,7 +202,7 @@ func (s *ecdsaReshareSession) Reshare(done func()) {
 			}
 
 			done()
-			err = s.Close()
+			err := s.Close()
 			if err != nil {
 				logger.Error("Failed to close session", err)
 			}
