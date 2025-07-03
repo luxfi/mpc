@@ -376,29 +376,42 @@ func (ec *eventConsumer) consumeTxSigningEvent() error {
 	return nil
 }
 
-func (ec *eventConsumer) handleSigningSessionError(walletID, txID, NetworkInternalCode string, err error, errMsg string, natMsg *nats.Msg) {
-	logger.Error("Signing session error", err, "walletID", walletID, "txID", txID, "error", errMsg)
+func (ec *eventConsumer) handleSigningSessionError(walletID, txID, networkInternalCode string, err error, contextMsg string, natMsg *nats.Msg) {
+	fullErrMsg := fmt.Sprintf("%s: %v", contextMsg, err)
+	logger.Warn("Signing session error",
+		"walletID", walletID,
+		"txID", txID,
+		"networkInternalCode", networkInternalCode,
+		"error", err.Error(),
+		"context", contextMsg,
+	)
+
 	signingResult := event.SigningResultEvent{
 		ResultType:          event.SigningResultTypeError,
-		NetworkInternalCode: NetworkInternalCode,
+		NetworkInternalCode: networkInternalCode,
 		WalletID:            walletID,
 		TxID:                txID,
-		ErrorReason:         errMsg,
+		ErrorReason:         fullErrMsg,
 	}
 
 	signingResultBytes, err := json.Marshal(signingResult)
 	if err != nil {
-		logger.Error("Failed to marshal signing result event", err)
+		logger.Error("Failed to marshal signing result event", err,
+			"walletID", walletID,
+			"txID", txID,
+		)
 		return
 	}
 
-	natMsg.Ack()
 	err = ec.signingResultQueue.Enqueue(event.SigningResultCompleteTopic, signingResultBytes, &messaging.EnqueueOptions{
 		IdempotententKey: txID,
 	})
 	if err != nil {
-		logger.Error("Failed to publish signing result event", err)
-		return
+		logger.Error("Failed to enqueue signing result event", err,
+			"walletID", walletID,
+			"txID", txID,
+			"payload", string(signingResultBytes),
+		)
 	}
 }
 func (ec *eventConsumer) consumeReshareEvent() error {
