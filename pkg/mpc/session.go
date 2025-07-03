@@ -3,8 +3,6 @@ package mpc
 import (
 	"encoding/json"
 	"fmt"
-	"strconv"
-	"strings"
 	"sync"
 
 	"github.com/bnb-chain/tss-lib/v2/ecdsa/keygen"
@@ -56,6 +54,7 @@ type session struct {
 	outCh    chan tss.Message
 	ErrCh    chan error
 	party    tss.Party
+	version  int
 
 	// preParams is nil for EDDSA session
 	preParams     *keygen.LocalPreParams
@@ -236,15 +235,7 @@ func (s *session) ErrChan() <-chan error {
 }
 
 func (s *session) GetVersion() int {
-	// For backward-compatible party IDs (version 0), the key is just nodeID (no colon)
-	parts := strings.Split(string(s.selfPartyID.GetKey()), ":")
-	if len(parts) > 1 {
-		version, err := strconv.Atoi(parts[1])
-		if err == nil {
-			return version
-		}
-	}
-	return 0 // fallback for backward-compatible party IDs
+	return s.version
 }
 
 // loadOldShareDataGeneric loads the old share data from kvstore with backward compatibility (versioned and unversioned keys)
@@ -257,7 +248,7 @@ func (s *session) loadOldShareDataGeneric(walletID string, version int, dest int
 
 	// Try versioned key first if version > 0
 	if version > 0 {
-		key = s.composeKey(toKVKey(walletID, version))
+		key = s.composeKey(walletIDWithVersion(walletID, version))
 		keyData, err = s.kvstore.Get(key)
 	}
 
@@ -277,10 +268,10 @@ func (s *session) loadOldShareDataGeneric(walletID string, version int, dest int
 	return nil
 }
 
-// toKVKey is used to compose the key for the kvstore
-func toKVKey(walletID string, version int) string {
+// walletIDWithVersion is used to compose the key for the kvstore
+func walletIDWithVersion(walletID string, version int) string {
 	if version > 0 {
-		return fmt.Sprintf("%s%d", walletID, version)
+		return fmt.Sprintf("%s_v%d", walletID, version)
 	}
 	return walletID
 }

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
-	"strconv"
 
 	"github.com/bnb-chain/tss-lib/v2/common"
 	"github.com/bnb-chain/tss-lib/v2/eddsa/keygen"
@@ -107,19 +106,9 @@ func (s *eddsaSigningSession) Init(tx *big.Int) error {
 
 	logger.Info("Have enough participants to sign", "participants", s.participantPeerIDs)
 
-	var keyData []byte
-	if keyInfo.Version == 0 {
-		logger.Info("Getting key data from KVStore", "walletID", s.walletID, "version", keyInfo.Version)
-		keyData, err = s.kvstore.Get(s.composeKey(s.walletID))
-		if err != nil {
-			return errors.Wrap(err, "Failed to get wallet data from KVStore")
-		}
-	} else {
-		logger.Info("Getting key data from KVStore", "walletID", s.walletID, "version", keyInfo.Version)
-		keyData, err = s.kvstore.Get(s.composeKey(s.walletID + "_v" + strconv.Itoa(keyInfo.Version)))
-		if err != nil {
-			return errors.Wrap(err, "Failed to get wallet data from KVStore")
-		}
+	keyData, err := s.kvstore.Get(s.composeKey(walletIDWithVersion(s.walletID, keyInfo.Version)))
+	if err != nil {
+		return errors.Wrap(err, "Failed to get wallet data from KVStore")
 	}
 
 	// Check if all the participants of the key are present

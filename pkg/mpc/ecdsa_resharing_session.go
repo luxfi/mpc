@@ -48,6 +48,7 @@ func NewECDSAReshareSession(
 	identityStore identity.Store,
 	newPeerIDs []string,
 	isNewParty bool,
+	version int,
 ) *ecdsaReshareSession {
 	session := session{
 		walletID:           walletID,
@@ -62,6 +63,7 @@ func NewECDSAReshareSession(
 		preParams:          preParams,
 		kvstore:            kvstore,
 		keyinfoStore:       keyinfoStore,
+		version:            version,
 		topicComposer: &TopicComposer{
 			ComposeBroadcastTopic: func() string {
 				return fmt.Sprintf("resharing:broadcast:ecdsa:%s", walletID)
@@ -139,7 +141,9 @@ func (s *ecdsaReshareSession) Reshare(done func()) {
 					return
 				}
 
-				if err := s.kvstore.Put(s.composeKey(toKVKey(s.walletID, s.GetVersion())), keyBytes); err != nil {
+				newVersion := s.GetVersion() + 1
+				key := s.composeKey(walletIDWithVersion(s.walletID, newVersion))
+				if err := s.kvstore.Put(key, keyBytes); err != nil {
 					s.ErrCh <- err
 					return
 				}
@@ -147,7 +151,7 @@ func (s *ecdsaReshareSession) Reshare(done func()) {
 				keyInfo := keyinfo.KeyInfo{
 					ParticipantPeerIDs: s.newPeerIDs,
 					Threshold:          s.reshareParams.NewThreshold(),
-					Version:            s.GetVersion(),
+					Version:            newVersion,
 				}
 
 				// Save key info with resharing flag

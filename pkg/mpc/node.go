@@ -98,7 +98,11 @@ func (p *Node) CreateKeyGenSession(
 	successQueue messaging.MessageQueue,
 ) (KeyGenSession, error) {
 	if !p.peerRegistry.ArePeersReady() {
-		return nil, fmt.Errorf("Not enough peers to create gen session! Expected %d, got %d", threshold+1, p.peerRegistry.GetReadyPeersCount())
+		return nil, fmt.Errorf(
+			"Not enough peers to create gen session! Expected %d, got %d",
+			p.peerRegistry.GetTotalPeersCount(),
+			p.peerRegistry.GetReadyPeersCount(),
+		)
 	}
 
 	switch sessionType {
@@ -336,6 +340,7 @@ func (p *Node) CreateReshareSession(
 			p.identityStore,
 			newPeerIDs,
 			isNewPeer,
+			oldKeyInfo.Version,
 		), nil
 
 	case SessionTypeEDDSA:
@@ -355,6 +360,7 @@ func (p *Node) CreateReshareSession(
 			p.identityStore,
 			newPeerIDs,
 			isNewPeer,
+			oldKeyInfo.Version,
 		), nil
 
 	default:
