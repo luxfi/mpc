@@ -20,8 +20,8 @@ import (
 )
 
 const (
-	GenerateWalletSuccessTopic = "mpc.mpc_keygen_success.*"  // wildcard to listen to all success events
-	ResharingSuccessTopic      = "mpc.mpc_reshare_success.*" // wildcard to listen to all success events
+	GenerateWalletSuccessTopic = "mpc.mpc_keygen_result.*"  // wildcard to listen to all success events
+	ResharingSuccessTopic      = "mpc.mpc_reshare_result.*" // wildcard to listen to all success events
 )
 
 type MPCClient interface {
@@ -125,14 +125,14 @@ func NewMPCClient(opts Options) MPCClient {
 	pubsub := messaging.NewNATSPubSub(opts.NatsConn)
 
 	manager := messaging.NewNATsMessageQueueManager("mpc", []string{
-		"mpc.mpc_keygen_success.*",
-		"mpc.signing_result.*",
-		"mpc.mpc_reshare_success.*",
+		"mpc.mpc_keygen_result.*",
+		"mpc.mpc_signing_result.*",
+		"mpc.mpc_reshare_result.*",
 	}, opts.NatsConn)
 
-	genKeySuccessQueue := manager.NewMessageQueue("mpc_keygen_success")
-	signResultQueue := manager.NewMessageQueue("signing_result")
-	reshareSuccessQueue := manager.NewMessageQueue("mpc_reshare_success")
+	genKeySuccessQueue := manager.NewMessageQueue("mpc_keygen_result")
+	signResultQueue := manager.NewMessageQueue("mpc_signing_result")
+	reshareSuccessQueue := manager.NewMessageQueue("mpc_reshare_result")
 
 	return &mpcClient{
 		signingStream:       signingStream,

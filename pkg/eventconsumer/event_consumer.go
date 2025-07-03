@@ -39,7 +39,7 @@ type eventConsumer struct {
 	pubsub       messaging.PubSub
 	mpcThreshold int
 
-	genKeySucecssQueue messaging.MessageQueue
+	genKeyResultQueue  messaging.MessageQueue
 	signingResultQueue messaging.MessageQueue
 	reshareResultQueue messaging.MessageQueue
 
@@ -62,7 +62,7 @@ type eventConsumer struct {
 func NewEventConsumer(
 	node *mpc.Node,
 	pubsub messaging.PubSub,
-	genKeySucecssQueue messaging.MessageQueue,
+	genKeyResultQueue messaging.MessageQueue,
 	signingResultQueue messaging.MessageQueue,
 	reshareResultQueue messaging.MessageQueue,
 	identityStore identity.Store,
@@ -75,7 +75,7 @@ func NewEventConsumer(
 	ec := &eventConsumer{
 		node:                node,
 		pubsub:              pubsub,
-		genKeySucecssQueue:  genKeySucecssQueue,
+		genKeyResultQueue:   genKeyResultQueue,
 		signingResultQueue:  signingResultQueue,
 		reshareResultQueue:  reshareResultQueue,
 		activeSessions:      make(map[string]time.Time),
@@ -129,12 +129,12 @@ func (ec *eventConsumer) handleKeyGenEvent(natMsg *nats.Msg) {
 	}
 
 	walletID := msg.WalletID
-	ecdsaSession, err := ec.node.CreateKeyGenSession(mpc.SessionTypeECDSA, walletID, ec.mpcThreshold, ec.genKeySucecssQueue)
+	ecdsaSession, err := ec.node.CreateKeyGenSession(mpc.SessionTypeECDSA, walletID, ec.mpcThreshold, ec.genKeyResultQueue)
 	if err != nil {
 		logger.Error("Failed to create key generation session", err, "walletID", walletID)
 		return
 	}
-	eddsaSession, err := ec.node.CreateKeyGenSession(mpc.SessionTypeEDDSA, walletID, ec.mpcThreshold, ec.genKeySucecssQueue)
+	eddsaSession, err := ec.node.CreateKeyGenSession(mpc.SessionTypeEDDSA, walletID, ec.mpcThreshold, ec.genKeyResultQueue)
 	if err != nil {
 		logger.Error("Failed to create key generation session", err, "walletID", walletID)
 		return
@@ -198,8 +198,9 @@ func (ec *eventConsumer) handleKeyGenEvent(natMsg *nats.Msg) {
 		return
 	}
 
-	err = ec.genKeySucecssQueue.Enqueue(fmt.Sprintf(mpc.TypeGenerateWalletSuccess, walletID), successEventBytes, &messaging.EnqueueOptions{
-		IdempotententKey: fmt.Sprintf(mpc.TypeGenerateWalletSuccess, walletID),
+	key := fmt.Sprintf(mpc.TypeGenerateWalletResultFmt, walletID)
+	err = ec.genKeyResultQueue.Enqueue(key, successEventBytes, &messaging.EnqueueOptions{
+		IdempotententKey: key,
 	})
 	if err != nil {
 		logger.Error("Failed to publish key generation success message", err)
@@ -383,7 +384,7 @@ func (ec *eventConsumer) handleSigningSessionError(walletID, txID, networkIntern
 	)
 
 	signingResult := event.SigningResultEvent{
-		ResultType:          event.SigningResultTypeError,
+		ResultType:          event.ResultTypeError,
 		NetworkInternalCode: networkInternalCode,
 		WalletID:            walletID,
 		TxID:                txID,
@@ -521,11 +522,13 @@ func (ec *eventConsumer) consumeReshareEvent() error {
 				logger.Error("Failed to marshal reshare success event", err)
 				return
 			}
+
+			key := fmt.Sprintf(mpc.TypeReshareWalletResultFmt, walletID)
 			err = ec.reshareResultQueue.Enqueue(
-				fmt.Sprintf(mpc.TypeReshareWalletSuccess, walletID),
+				key,
 				successBytes,
 				&messaging.EnqueueOptions{
-					IdempotententKey: fmt.Sprintf(mpc.TypeReshareWalletSuccess, walletID),
+					IdempotententKey: key,
 				})
 			if err != nil {
 				logger.Error("Failed to publish reshare success message", err)

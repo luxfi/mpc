@@ -20,10 +20,11 @@ import (
 type SessionType string
 
 const (
-	TypeGenerateWalletSuccess             = "mpc.mpc_keygen_success.%s"
-	TypeReshareWalletSuccess              = "mpc.mpc_reshare_success.%s"
-	SessionTypeECDSA          SessionType = "session_ecdsa"
-	SessionTypeEDDSA          SessionType = "session_eddsa"
+	TypeGenerateWalletResultFmt = "mpc.mpc_keygen_result.%s"
+	TypeReshareWalletResultFmt  = "mpc.mpc_reshare_result.%s"
+
+	SessionTypeECDSA SessionType = "session_ecdsa"
+	SessionTypeEDDSA SessionType = "session_eddsa"
 )
 
 var (

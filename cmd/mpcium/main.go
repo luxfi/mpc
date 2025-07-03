@@ -131,16 +131,16 @@ func runNode(ctx context.Context, c *cli.Command) error {
 
 	directMessaging := messaging.NewNatsDirectMessaging(natsConn)
 	mqManager := messaging.NewNATsMessageQueueManager("mpc", []string{
-		"mpc.mpc_keygen_success.*",
+		"mpc.mpc_keygen_result.*",
 		event.SigningResultTopic,
-		"mpc.mpc_reshare_success.*",
+		"mpc.mpc_reshare_result.*",
 	}, natsConn)
 
-	genKeySuccessQueue := mqManager.NewMessageQueue("mpc_keygen_success")
-	defer genKeySuccessQueue.Close()
-	singingResultQueue := mqManager.NewMessageQueue("signing_result")
+	genKeyResultQueue := mqManager.NewMessageQueue("mpc_keygen_result")
+	defer genKeyResultQueue.Close()
+	singingResultQueue := mqManager.NewMessageQueue("mpc_signing_result")
 	defer singingResultQueue.Close()
-	reshareResultQueue := mqManager.NewMessageQueue("mpc_reshare_success")
+	reshareResultQueue := mqManager.NewMessageQueue("mpc_reshare_result")
 	defer reshareResultQueue.Close()
 
 	logger.Info("Node is running", "peerID", nodeID, "name", nodeName)
@@ -163,7 +163,7 @@ func runNode(ctx context.Context, c *cli.Command) error {
 	eventConsumer := eventconsumer.NewEventConsumer(
 		mpcNode,
 		pubsub,
-		genKeySuccessQueue,
+		genKeyResultQueue,
 		singingResultQueue,
 		reshareResultQueue,
 		identityStore,

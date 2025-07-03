@@ -153,7 +153,7 @@ func (s *eddsaSigningSession) Sign(onSuccess func(data []byte)) {
 			}
 
 			r := event.SigningResultEvent{
-				ResultType:          event.SigningResultTypeSuccess,
+				ResultType:          event.ResultTypeSuccess,
 				NetworkInternalCode: s.networkInternalCode,
 				WalletID:            s.walletID,
 				TxID:                s.txID,
