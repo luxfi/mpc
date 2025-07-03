@@ -8,8 +8,10 @@ import (
 	"github.com/fystack/mpcium/pkg/event"
 	"github.com/fystack/mpcium/pkg/logger"
 	"github.com/fystack/mpcium/pkg/messaging"
+	"github.com/fystack/mpcium/pkg/mpc"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
+	"github.com/spf13/viper"
 )
 
 const (
@@ -17,6 +19,8 @@ const (
 	signingResponseTimeout = 30 * time.Second
 	// How often to poll for the reply message.
 	signingPollingInterval = 500 * time.Millisecond
+	// How often to check if enough peers are ready
+	readinessCheckInterval = 2 * time.Second
 )
 
 // SigningConsumer represents a consumer that processes signing events.
@@ -29,25 +33,65 @@ type SigningConsumer interface {
 
 // signingConsumer implements SigningConsumer.
 type signingConsumer struct {
-	natsConn *nats.Conn
-	pubsub   messaging.PubSub
-	jsPubsub messaging.StreamPubsub
+	natsConn     *nats.Conn
+	pubsub       messaging.PubSub
+	jsPubsub     messaging.StreamPubsub
+	peerRegistry mpc.PeerRegistry
+	mpcThreshold int
 
 	// jsSub holds the JetStream subscription, so it can be cleaned up during Close().
 	jsSub messaging.Subscription
 }
 
 // NewSigningConsumer returns a new instance of SigningConsumer.
-func NewSigningConsumer(natsConn *nats.Conn, jsPubsub messaging.StreamPubsub, pubsub messaging.PubSub) SigningConsumer {
+func NewSigningConsumer(natsConn *nats.Conn, jsPubsub messaging.StreamPubsub, pubsub messaging.PubSub, peerRegistry mpc.PeerRegistry) SigningConsumer {
+	mpcThreshold := viper.GetInt("mpc_threshold")
 	return &signingConsumer{
-		natsConn: natsConn,
-		pubsub:   pubsub,
-		jsPubsub: jsPubsub,
+		natsConn:     natsConn,
+		pubsub:       pubsub,
+		jsPubsub:     jsPubsub,
+		peerRegistry: peerRegistry,
+		mpcThreshold: mpcThreshold,
+	}
+}
+
+// waitForSufficientPeers waits until enough peers are ready to handle signing requests
+func (sc *signingConsumer) waitForSufficientPeers(ctx context.Context) error {
+	requiredPeers := int64(sc.mpcThreshold + 1) // t+1 peers needed for signing
+
+	logger.Info("SigningConsumer: Waiting for sufficient peers before consuming messages",
+		"required", requiredPeers,
+		"threshold", sc.mpcThreshold)
+
+	ticker := time.NewTicker(readinessCheckInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			readyPeers := sc.peerRegistry.GetReadyPeersCount()
+			if readyPeers >= requiredPeers {
+				logger.Info("SigningConsumer: Sufficient peers ready, starting message consumption",
+					"ready", readyPeers,
+					"t+1", requiredPeers)
+				return nil
+			}
+			logger.Info("SigningConsumer: Waiting for more peers to be ready",
+				"ready", readyPeers,
+				"t+1", requiredPeers)
+		}
 	}
 }
 
 // Run subscribes to signing events and processes them until the context is canceled.
 func (sc *signingConsumer) Run(ctx context.Context) error {
+	// Wait for sufficient peers before starting to consume messages
+	if err := sc.waitForSufficientPeers(ctx); err != nil {
+		return fmt.Errorf("failed to wait for sufficient peers: %w", err)
+	}
+
 	sub, err := sc.jsPubsub.Subscribe(
 		event.SigningConsumerStream,
 		event.SigningRequestEventTopic,
@@ -83,6 +127,17 @@ func (sc *signingConsumer) Run(ctx context.Context) error {
 // When signing completes, the session publishes the result to a queue and calls the onSuccess callback, which sends a reply to the inbox that the SigningConsumer is monitoring.
 // The reply signals completion, allowing the SigningConsumer to acknowledge the original message.
 func (sc *signingConsumer) handleSigningEvent(msg jetstream.Msg) {
+	// Check if we still have enough peers before processing the message
+	requiredPeers := int64(sc.mpcThreshold + 1)
+	readyPeers := sc.peerRegistry.GetReadyPeersCount()
+
+	if readyPeers < requiredPeers {
+		logger.Warn("SigningConsumer: Not enough peers to process signing request, rejecting message",
+			"ready", readyPeers,
+			"required", requiredPeers)
+		return
+	}
+
 	// Create a reply inbox to receive the signing event response.
 	replyInbox := nats.NewInbox()
 
@@ -95,7 +150,7 @@ func (sc *signingConsumer) handleSigningEvent(msg jetstream.Msg) {
 	}
 	defer func() {
 		if err := replySub.Unsubscribe(); err != nil {
-			logger.Warn("SigningConsumer: Failed to unsubscribe from reply inbox", err)
+			logger.Warn("SigningConsumer: Failed to unsubscribe from reply inbox", "error", err)
 		}
 	}()
 

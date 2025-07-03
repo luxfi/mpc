@@ -178,7 +178,7 @@ func runNode(ctx context.Context, c *cli.Command) error {
 
 	timeoutConsumer.Run()
 	defer timeoutConsumer.Close()
-	signingConsumer := eventconsumer.NewSigningConsumer(natsConn, signingStream, pubsub)
+	signingConsumer := eventconsumer.NewSigningConsumer(natsConn, signingStream, pubsub, peerRegistry)
 
 	// Make the node ready before starting the signing consumer
 	peerRegistry.Ready()
