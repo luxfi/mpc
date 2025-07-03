@@ -116,7 +116,7 @@ func (mq *msgQueue) Enqueue(topic string, message []byte, options *EnqueueOption
 
 	if err != nil {
 		logger.Error("Failed to publish message to JetStream", err, "topic", topic, "consumerName", mq.consumerName)
-		return fmt.Errorf("Error enqueueing message: %w", err)
+		return fmt.Errorf("error enqueueing message: %w", err)
 	}
 
 	return nil

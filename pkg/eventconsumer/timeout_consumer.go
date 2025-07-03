@@ -61,6 +61,7 @@ func (tc *timeOutConsumer) Run() {
 			}
 
 			signErrorResult.ResultType = event.ResultTypeError
+			signErrorResult.ErrorCode = event.ErrorCodeMaxDeliveryAttempts
 			signErrorResult.IsTimeout = true
 			signErrorResult.ErrorReason = "Signing failed: maximum delivery attempts exceeded"
 

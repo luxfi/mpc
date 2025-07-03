@@ -123,7 +123,8 @@ func (s *session) handleTssMessage(keyshare tss.Message) {
 			topic := s.topicComposer.ComposeDirectTopic(nodeID)
 			err := s.direct.Send(topic, msg)
 			if err != nil {
-				s.ErrCh <- fmt.Errorf("Failed to send direct message to %s: %w", topic, err)
+				logger.Error("Failed to send direct message to", err, "topic", topic)
+				s.ErrCh <- fmt.Errorf("Failed to send direct message to %s", topic)
 			}
 
 		}
