@@ -25,8 +25,8 @@ const (
 	MPCSignEvent     = "mpc:sign"
 	MPCReshareEvent  = "mpc:reshare"
 
-	DefaultConcurrentKeygen     = 2
-	DefaultKeyGenStartupDelayMs = 500
+	DefaultConcurrentKeygen    = 2
+	DefaultSessionStartupDelay = 500
 )
 
 type EventConsumer interface {
@@ -184,7 +184,7 @@ func (ec *eventConsumer) handleKeyGenEvent(natMsg *nats.Msg) {
 
 	// Temporary delay to allow peer nodes to subscribe and prepare before starting key generation.
 	// This should be replaced with a proper distributed coordination mechanism later (e.g., Consul lock).
-	time.Sleep(DefaultKeyGenStartupDelayMs * time.Millisecond)
+	time.Sleep(DefaultSessionStartupDelay * time.Millisecond)
 
 	go ecdsaSession.GenerateKey(doneEcdsa)
 	go eddsaSession.GenerateKey(doneEddsa)
@@ -276,7 +276,6 @@ func (ec *eventConsumer) consumeTxSigningEvent() error {
 				msg.WalletID,
 				msg.TxID,
 				msg.NetworkInternalCode,
-				ec.mpcThreshold,
 				ec.signingResultQueue,
 			)
 		case types.KeyTypeEd25519:
@@ -285,7 +284,6 @@ func (ec *eventConsumer) consumeTxSigningEvent() error {
 				msg.WalletID,
 				msg.TxID,
 				msg.NetworkInternalCode,
-				ec.mpcThreshold,
 				ec.signingResultQueue,
 			)
 
@@ -361,7 +359,7 @@ func (ec *eventConsumer) consumeTxSigningEvent() error {
 		// One solution:
 		// The messaging includes mechanisms for direct point-to-point communication (in point2point.go).
 		// The nodes could explicitly coordinate through request-response patterns before starting signing
-		time.Sleep(1 * time.Second)
+		time.Sleep(DefaultSessionStartupDelay * time.Millisecond)
 
 		onSuccess := func(data []byte) {
 			done()
@@ -469,8 +467,7 @@ func (ec *eventConsumer) consumeReshareEvent() error {
 		var wg sync.WaitGroup
 		ctx := context.Background()
 
-		// Delay để các node chuẩn bị (có thể thay bằng Consul lock sau)
-		time.Sleep(DefaultKeyGenStartupDelayMs * time.Millisecond)
+		time.Sleep(DefaultSessionStartupDelay * time.Millisecond)
 
 		if oldSession != nil {
 			ctxOld, doneOld := context.WithCancel(ctx)

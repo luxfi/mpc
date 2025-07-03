@@ -159,80 +159,58 @@ func (p *Node) CreateSigningSession(
 	walletID string,
 	txID string,
 	networkInternalCode string,
-	threshold int,
 	resultQueue messaging.MessageQueue,
 ) (SigningSession, error) {
 	version := p.getVersion(sessionType, walletID)
+	keyInfo, err := p.getKeyInfo(sessionType, walletID)
+	if err != nil {
+		return nil, err
+	}
+
+	readyPeers := p.peerRegistry.GetReadyPeersIncludeSelf()
+	readyParticipantIDs := p.getReadyPeersForSigning(keyInfo, readyPeers)
+
+	logger.Info("Creating signing session",
+		"type", sessionType,
+		"readyPeers", readyPeers,
+		"participantPeerIDs", keyInfo.ParticipantPeerIDs,
+		"readyCount", len(readyParticipantIDs),
+		"threshold", keyInfo.Threshold+1,
+	)
+
+	if len(readyParticipantIDs) < keyInfo.Threshold+1 {
+		return nil, fmt.Errorf("not enough peers to create signing session! expected %d, got %d", keyInfo.Threshold+1, len(readyParticipantIDs))
+	}
+
+	if err := p.ensureNodeIsParticipant(keyInfo); err != nil {
+		return nil, err
+	}
+
+	selfPartyID, allPartyIDs := p.generatePartyIDs(PurposeKeygen, readyParticipantIDs, version)
+
 	switch sessionType {
 	case SessionTypeECDSA:
-		keyID := fmt.Sprintf("ecdsa:%s", walletID)
-		keyInfo, err := p.keyinfoStore.Get(keyID)
-		if err != nil {
-			return nil, err
-		}
-
-		readyPeers := p.peerRegistry.GetReadyPeersIncludeSelf()
-
-		// Ensure all participants are ready
-		for _, peerID := range keyInfo.ParticipantPeerIDs {
-			if !slices.Contains(readyPeers, peerID) {
-				return nil, fmt.Errorf("participant peer %s is not ready", peerID)
-			}
-		}
-
-		// Warn and skip if current node is not a participant
-		if !slices.Contains(keyInfo.ParticipantPeerIDs, p.nodeID) {
-			logger.Warn("This node is not in the participant list",
-				"walletID", walletID,
-				"nodeID", p.nodeID,
-			)
-			return nil, nil
-		}
-
-		selfPartyID, allPartyIDs := p.generatePartyIDs(PurposeKeygen, keyInfo.ParticipantPeerIDs, version)
-
 		return newECDSASigningSession(
 			walletID,
 			txID,
 			networkInternalCode,
 			p.pubSub,
 			p.direct,
-			keyInfo.ParticipantPeerIDs,
+			readyParticipantIDs,
 			selfPartyID,
 			allPartyIDs,
-			threshold,
+			keyInfo.Threshold,
 			p.ecdsaPreParams[0],
 			p.kvstore,
 			p.keyinfoStore,
 			resultQueue,
 			p.identityStore,
 		), nil
+
 	case SessionTypeEDDSA:
-		keyID := fmt.Sprintf("eddsa:%s", walletID)
-		keyInfo, err := p.keyinfoStore.Get(keyID)
-		if err != nil {
-			return nil, err
+		if len(readyParticipantIDs) != len(keyInfo.ParticipantPeerIDs) {
+			return nil, fmt.Errorf("not all participants are ready")
 		}
-
-		readyPeers := p.peerRegistry.GetReadyPeersIncludeSelf()
-
-		// Ensure all participants are ready
-		for _, peerID := range keyInfo.ParticipantPeerIDs {
-			if !slices.Contains(readyPeers, peerID) {
-				return nil, fmt.Errorf("participant peer %s is not ready", peerID)
-			}
-		}
-
-		// Warn and skip if current node is not a participant
-		if !slices.Contains(keyInfo.ParticipantPeerIDs, p.nodeID) {
-			logger.Warn("This node is not in the participant list",
-				"walletID", walletID,
-				"nodeID", p.nodeID,
-			)
-			return nil, nil
-		}
-
-		selfPartyID, allPartyIDs := p.generatePartyIDs(PurposeKeygen, keyInfo.ParticipantPeerIDs, version)
 
 		return NewEDDSASigningSession(
 			walletID,
@@ -240,10 +218,10 @@ func (p *Node) CreateSigningSession(
 			networkInternalCode,
 			p.pubSub,
 			p.direct,
-			keyInfo.ParticipantPeerIDs,
+			readyParticipantIDs,
 			selfPartyID,
 			allPartyIDs,
-			threshold,
+			keyInfo.Threshold,
 			p.kvstore,
 			p.keyinfoStore,
 			resultQueue,
@@ -251,7 +229,39 @@ func (p *Node) CreateSigningSession(
 		), nil
 	}
 
-	return nil, errors.New("Unknown session type")
+	return nil, errors.New("unknown session type")
+}
+
+func (p *Node) getKeyInfo(sessionType SessionType, walletID string) (*keyinfo.KeyInfo, error) {
+	var keyID string
+	switch sessionType {
+	case SessionTypeECDSA:
+		keyID = fmt.Sprintf("ecdsa:%s", walletID)
+	case SessionTypeEDDSA:
+		keyID = fmt.Sprintf("eddsa:%s", walletID)
+	default:
+		return nil, errors.New("unsupported session type")
+	}
+	return p.keyinfoStore.Get(keyID)
+}
+
+func (p *Node) getReadyPeersForSigning(keyInfo *keyinfo.KeyInfo, readyPeers []string) []string {
+	// Ensure all participants are ready
+	readyParticipantIDs := make([]string, 0, len(keyInfo.ParticipantPeerIDs))
+	for _, peerID := range keyInfo.ParticipantPeerIDs {
+		if slices.Contains(readyPeers, peerID) {
+			readyParticipantIDs = append(readyParticipantIDs, peerID)
+		}
+	}
+
+	return readyParticipantIDs
+}
+
+func (p *Node) ensureNodeIsParticipant(keyInfo *keyinfo.KeyInfo) error {
+	if !slices.Contains(keyInfo.ParticipantPeerIDs, p.nodeID) {
+		return fmt.Errorf("this node %s is not in the participant list", p.nodeID)
+	}
+	return nil
 }
 
 func (p *Node) CreateReshareSession(
@@ -264,11 +274,12 @@ func (p *Node) CreateReshareSession(
 	successQueue messaging.MessageQueue,
 ) (ReshareSession, error) {
 	// 1. Check peer readiness
-	if !p.peerRegistry.ArePeersReady() {
+	count := p.peerRegistry.GetReadyPeersCount()
+	if count < int64(newThreshold)+1 {
 		return nil, fmt.Errorf(
 			"not enough peers to create reshare session! Expected at least %d, got %d",
 			newThreshold+1,
-			p.peerRegistry.GetReadyPeersCount(),
+			count,
 		)
 	}
 
