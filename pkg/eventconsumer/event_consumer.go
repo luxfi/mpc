@@ -295,7 +295,6 @@ func (ec *eventConsumer) consumeTxSigningEvent() error {
 				msg.NetworkInternalCode,
 				err,
 				"Failed to create signing session",
-				natMsg,
 			)
 			return
 		}
@@ -314,7 +313,6 @@ func (ec *eventConsumer) consumeTxSigningEvent() error {
 				msg.NetworkInternalCode,
 				err,
 				"Failed to init signing session",
-				natMsg,
 			)
 			return
 		}
@@ -336,7 +334,6 @@ func (ec *eventConsumer) consumeTxSigningEvent() error {
 							msg.NetworkInternalCode,
 							err,
 							"Failed to sign tx",
-							natMsg,
 						)
 						return
 					}
@@ -375,8 +372,7 @@ func (ec *eventConsumer) consumeTxSigningEvent() error {
 
 	return nil
 }
-
-func (ec *eventConsumer) handleSigningSessionError(walletID, txID, networkInternalCode string, err error, contextMsg string, natMsg *nats.Msg) {
+func (ec *eventConsumer) handleSigningSessionError(walletID, txID, networkInternalCode string, err error, contextMsg string) {
 	fullErrMsg := fmt.Sprintf("%s: %v", contextMsg, err)
 	logger.Warn("Signing session error",
 		"walletID", walletID,

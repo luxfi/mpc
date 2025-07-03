@@ -48,6 +48,7 @@ func newECDSAKeygenSession(
 			pubSub:             pubSub,
 			direct:             direct,
 			threshold:          threshold,
+			version:            DefaultVersion,
 			participantPeerIDs: participantPeerIDs,
 			selfPartyID:        selfID,
 			partyIDs:           partyIDs,

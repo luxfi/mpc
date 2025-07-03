@@ -29,7 +29,7 @@ type eddsaSigningSession struct {
 	networkInternalCode string
 }
 
-func NewEDDSASigningSession(
+func newEDDSASigningSession(
 	walletID string,
 	txID string,
 	networkInternalCode string,
@@ -105,12 +105,11 @@ func (s *eddsaSigningSession) Init(tx *big.Int) error {
 	}
 
 	logger.Info("Have enough participants to sign", "participants", s.participantPeerIDs)
-
-	keyData, err := s.kvstore.Get(s.composeKey(walletIDWithVersion(s.walletID, keyInfo.Version)))
+	key := s.composeKey(walletIDWithVersion(s.walletID, keyInfo.Version))
+	keyData, err := s.kvstore.Get(key)
 	if err != nil {
 		return errors.Wrap(err, "Failed to get wallet data from KVStore")
 	}
-
 	// Check if all the participants of the key are present
 	var data keygen.LocalPartySaveData
 	err = json.Unmarshal(keyData, &data)

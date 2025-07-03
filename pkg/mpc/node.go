@@ -214,11 +214,7 @@ func (p *Node) CreateSigningSession(
 		), nil
 
 	case SessionTypeEDDSA:
-		if len(readyParticipantIDs) != len(keyInfo.ParticipantPeerIDs) {
-			return nil, fmt.Errorf("not all participants are ready")
-		}
-
-		return NewEDDSASigningSession(
+		return newEDDSASigningSession(
 			walletID,
 			txID,
 			networkInternalCode,
