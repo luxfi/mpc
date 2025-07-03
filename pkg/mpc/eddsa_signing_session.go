@@ -120,6 +120,7 @@ func (s *eddsaSigningSession) Init(tx *big.Int) error {
 
 	s.party = signing.NewLocalParty(tx, params, data, s.outCh, s.endCh)
 	s.data = &data
+	s.version = keyInfo.Version
 	s.tx = tx
 	logger.Info("Initialized sigining session successfully!")
 	return nil
