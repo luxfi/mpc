@@ -264,7 +264,6 @@ func (ec *eventConsumer) consumeTxSigningEvent() error {
 
 		// Check for duplicate session and track if new
 		if ec.checkDuplicateSession(msg.WalletID, msg.TxID) {
-			natMsg.Term()
 			return
 		}
 
@@ -288,14 +287,8 @@ func (ec *eventConsumer) consumeTxSigningEvent() error {
 			)
 
 		}
-		// This node is not in the participantPeerIDs, so we don't need to sign
-		if session == nil {
-			natMsg.Ack()
-			logger.Info("This node is not in the participantPeerIDs, so we don't need to sign", "walletID", msg.WalletID, "nodeID", ec.node.ID())
-			return
-		}
-
 		if err != nil {
+			logger.Error("Failed to create signing session", err)
 			ec.handleSigningSessionError(
 				msg.WalletID,
 				msg.TxID,
@@ -612,6 +605,10 @@ func (ec *eventConsumer) Close() error {
 		return err
 	}
 	err = ec.signingSub.Unsubscribe()
+	if err != nil {
+		return err
+	}
+	err = ec.reshareSub.Unsubscribe()
 	if err != nil {
 		return err
 	}

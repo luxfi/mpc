@@ -105,6 +105,11 @@ func (p *Node) CreateKeyGenSession(
 		)
 	}
 
+	keyInfo, _ := p.getKeyInfo(sessionType, walletID)
+	if keyInfo != nil {
+		return nil, fmt.Errorf("Key already exists: %s", walletID)
+	}
+
 	switch sessionType {
 	case SessionTypeECDSA:
 		return p.createECDSAKeyGenSession(walletID, threshold, DefaultVersion, successQueue)
@@ -174,8 +179,9 @@ func (p *Node) CreateSigningSession(
 		"type", sessionType,
 		"readyPeers", readyPeers,
 		"participantPeerIDs", keyInfo.ParticipantPeerIDs,
-		"readyCount", len(readyParticipantIDs),
-		"threshold", keyInfo.Threshold+1,
+		"ready count", len(readyParticipantIDs),
+		"min ready", keyInfo.Threshold+1,
+		"version", version,
 	)
 
 	if len(readyParticipantIDs) < keyInfo.Threshold+1 {
@@ -281,6 +287,10 @@ func (p *Node) CreateReshareSession(
 			newThreshold+1,
 			count,
 		)
+	}
+
+	if len(newPeerIDs) < newThreshold+1 {
+		return nil, fmt.Errorf("new peer list is smaller than required t+1")
 	}
 
 	// 2. Check all new peers are ready
