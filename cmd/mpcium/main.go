@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	"github.com/fystack/mpcium/pkg/config"
 	"github.com/fystack/mpcium/pkg/constant"
@@ -344,16 +345,32 @@ func NewBadgerKV(nodeName string) *kvstore.BadgerKVStore {
 }
 
 func GetNATSConnection(environment string) (*nats.Conn, error) {
-	if environment != constant.EnvProduction {
-		return nats.Connect(viper.GetString("nats.url"))
+	url := viper.GetString("nats.url")
+	opts := []nats.Option{
+		nats.MaxReconnects(-1), // retry forever
+		nats.ReconnectWait(2 * time.Second),
+		nats.DisconnectHandler(func(nc *nats.Conn) {
+			logger.Warn("Disconnected from NATS")
+		}),
+		nats.ReconnectHandler(func(nc *nats.Conn) {
+			logger.Info("Reconnected to NATS", "url", nc.ConnectedUrl())
+		}),
+		nats.ClosedHandler(func(nc *nats.Conn) {
+			logger.Info("NATS connection closed!")
+		}),
 	}
-	clientCert := filepath.Join(".", "certs", "client-cert.pem")
-	clientKey := filepath.Join(".", "certs", "client-key.pem")
-	caCert := filepath.Join(".", "certs", "rootCA.pem")
 
-	return nats.Connect(viper.GetString("nats.url"),
-		nats.ClientCert(clientCert, clientKey),
-		nats.RootCAs(caCert),
-		nats.UserInfo(viper.GetString("nats.username"), viper.GetString("nats.password")),
-	)
+	if environment == constant.EnvProduction {
+		clientCert := filepath.Join(".", "certs", "client-cert.pem")
+		clientKey := filepath.Join(".", "certs", "client-key.pem")
+		caCert := filepath.Join(".", "certs", "rootCA.pem")
+
+		opts = append(opts,
+			nats.ClientCert(clientCert, clientKey),
+			nats.RootCAs(caCert),
+			nats.UserInfo(viper.GetString("nats.username"), viper.GetString("nats.password")),
+		)
+	}
+
+	return nats.Connect(url, opts...)
 }
