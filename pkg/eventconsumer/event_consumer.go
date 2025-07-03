@@ -152,7 +152,7 @@ func (ec *eventConsumer) handleKeyGenEvent(natMsg *nats.Msg) {
 	ctxEcdsa, doneEcdsa := context.WithCancel(baseCtx)
 	ctxEddsa, doneEddsa := context.WithCancel(baseCtx)
 
-	successEvent := &event.KeygenSuccessEvent{WalletID: walletID, ResultType: event.ResultTypeSuccess}
+	successEvent := &event.KeygenResultEvent{WalletID: walletID, ResultType: event.ResultTypeSuccess}
 	var wg sync.WaitGroup
 	wg.Add(2)
 
@@ -233,7 +233,7 @@ func (ec *eventConsumer) handleKeygenSessionError(walletID string, err error, co
 		"context", contextMsg,
 	)
 
-	keygenResult := event.KeygenSuccessEvent{
+	keygenResult := event.KeygenResultEvent{
 		ResultType:  event.ResultTypeError,
 		ErrorCode:   string(errorCode),
 		WalletID:    walletID,

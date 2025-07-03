@@ -26,7 +26,7 @@ const (
 
 type MPCClient interface {
 	CreateWallet(walletID string) error
-	OnWalletCreationResult(callback func(event event.KeygenSuccessEvent)) error
+	OnWalletCreationResult(callback func(event event.KeygenResultEvent)) error
 
 	SignTransaction(msg *types.SignTxMessage) error
 	OnSignResult(callback func(event event.SigningResultEvent)) error
@@ -193,9 +193,9 @@ func (c *mpcClient) CreateWallet(walletID string) error {
 }
 
 // The callback will be invoked whenever a wallet creation result is received.
-func (c *mpcClient) OnWalletCreationResult(callback func(event event.KeygenSuccessEvent)) error {
+func (c *mpcClient) OnWalletCreationResult(callback func(event event.KeygenResultEvent)) error {
 	err := c.genKeySuccessQueue.Dequeue(GenerateWalletSuccessTopic, func(msg []byte) error {
-		var event event.KeygenSuccessEvent
+		var event event.KeygenResultEvent
 		err := json.Unmarshal(msg, &event)
 		if err != nil {
 			return err
