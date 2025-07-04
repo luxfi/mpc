@@ -470,24 +470,18 @@ func (ec *eventConsumer) consumeReshareEvent() error {
 		var msg types.ResharingMessage
 		if err := json.Unmarshal(natMsg.Data, &msg); err != nil {
 			logger.Error("Failed to unmarshal resharing message", err)
-			ec.handleReshareSessionError(msg.WalletID, msg.KeyType, msg.NewThreshold, err, "Failed to unmarshal resharing message")
+			ec.handleReshareSessionError(msg, err, "Failed to unmarshal resharing message")
 			return
 		}
 
 		if msg.SessionID == "" {
-			ec.handleReshareSessionError(
-				msg.WalletID,
-				msg.KeyType,
-				msg.NewThreshold,
-				errors.New("validation: session ID is empty"),
-				"Session ID is empty",
-			)
+			ec.handleReshareSessionError(msg, errors.New("validation: session ID is empty"), "Session ID is empty")
 			return
 		}
 
 		if err := ec.identityStore.VerifyInitiatorMessage(&msg); err != nil {
 			logger.Error("Failed to verify initiator message", err)
-			ec.handleReshareSessionError(msg.WalletID, msg.KeyType, msg.NewThreshold, err, "Failed to verify initiator message")
+			ec.handleReshareSessionError(msg, err, "Failed to verify initiator message")
 			return
 		}
 
@@ -497,7 +491,7 @@ func (ec *eventConsumer) consumeReshareEvent() error {
 		sessionType, err := sessionTypeFromKeyType(keyType)
 		if err != nil {
 			logger.Error("Failed to get session type", err)
-			ec.handleReshareSessionError(walletID, keyType, msg.NewThreshold, err, "Failed to get session type")
+			ec.handleReshareSessionError(msg, err, "Failed to get session type")
 			return
 		}
 
@@ -516,13 +510,13 @@ func (ec *eventConsumer) consumeReshareEvent() error {
 		oldSession, err := createSession(false)
 		if err != nil {
 			logger.Error("Failed to create old reshare session", err, "walletID", walletID)
-			ec.handleReshareSessionError(walletID, keyType, msg.NewThreshold, err, "Failed to create old reshare session")
+			ec.handleReshareSessionError(msg, err, "Failed to create old reshare session")
 			return
 		}
 		newSession, err := createSession(true)
 		if err != nil {
 			logger.Error("Failed to create new reshare session", err, "walletID", walletID)
-			ec.handleReshareSessionError(walletID, keyType, msg.NewThreshold, err, "Failed to create new reshare session")
+			ec.handleReshareSessionError(msg, err, "Failed to create new reshare session")
 			return
 		}
 
@@ -558,7 +552,7 @@ func (ec *eventConsumer) consumeReshareEvent() error {
 						return
 					case err := <-oldSession.ErrChan():
 						logger.Error("Old reshare session error", err)
-						ec.handleReshareSessionError(walletID, keyType, msg.NewThreshold, err, "Old reshare session error")
+						ec.handleReshareSessionError(msg, err, "Old reshare session error")
 						doneOld() // Cancel the context to stop this session
 						return
 					}
@@ -582,7 +576,7 @@ func (ec *eventConsumer) consumeReshareEvent() error {
 						return
 					case err := <-newSession.ErrChan():
 						logger.Error("New reshare session error", err)
-						ec.handleReshareSessionError(walletID, keyType, msg.NewThreshold, err, "New reshare session error")
+						ec.handleReshareSessionError(msg, err, "New reshare session error")
 						doneNew() // Cancel the context to stop this session
 						return
 					}
@@ -598,7 +592,7 @@ func (ec *eventConsumer) consumeReshareEvent() error {
 			successBytes, err := json.Marshal(successEvent)
 			if err != nil {
 				logger.Error("Failed to marshal reshare success event", err)
-				ec.handleReshareSessionError(walletID, keyType, msg.NewThreshold, err, "Failed to marshal reshare success event")
+				ec.handleReshareSessionError(msg, err, "Failed to marshal reshare success event")
 				return
 			}
 
@@ -611,7 +605,7 @@ func (ec *eventConsumer) consumeReshareEvent() error {
 				})
 			if err != nil {
 				logger.Error("Failed to publish reshare success message", err)
-				ec.handleReshareSessionError(walletID, keyType, msg.NewThreshold, err, "Failed to publish reshare success message")
+				ec.handleReshareSessionError(msg, err, "Failed to publish reshare success message")
 				return
 			}
 			logger.Info("[COMPLETED RESHARE] Successfully published", "walletID", walletID)
@@ -625,14 +619,19 @@ func (ec *eventConsumer) consumeReshareEvent() error {
 }
 
 // handleReshareSessionError handles errors that occur during reshare operations
-func (ec *eventConsumer) handleReshareSessionError(walletID string, keyType types.KeyType, newThreshold int, err error, contextMsg string) {
+func (ec *eventConsumer) handleReshareSessionError(
+	msg types.ResharingMessage,
+	err error,
+	contextMsg string,
+) {
 	fullErrMsg := fmt.Sprintf("%s: %v", contextMsg, err)
 	errorCode := event.GetErrorCodeFromError(err)
 
 	logger.Warn("Reshare session error",
-		"walletID", walletID,
-		"keyType", keyType,
-		"newThreshold", newThreshold,
+		"walletID", msg.WalletID,
+		"keyType", msg.KeyType,
+		"newThreshold", msg.NewThreshold,
+		"sessionID", msg.SessionID,
 		"error", err.Error(),
 		"errorCode", errorCode,
 		"context", contextMsg,
@@ -641,27 +640,28 @@ func (ec *eventConsumer) handleReshareSessionError(walletID string, keyType type
 	reshareResult := event.ResharingResultEvent{
 		ResultType:   event.ResultTypeError,
 		ErrorCode:    string(errorCode),
-		WalletID:     walletID,
-		KeyType:      keyType,
-		NewThreshold: newThreshold,
+		WalletID:     msg.WalletID,
+		KeyType:      msg.KeyType,
+		NewThreshold: msg.NewThreshold,
 		ErrorReason:  fullErrMsg,
 	}
 
 	reshareResultBytes, err := json.Marshal(reshareResult)
 	if err != nil {
 		logger.Error("Failed to marshal reshare result event", err,
-			"walletID", walletID,
+			"walletID", msg.WalletID,
 		)
 		return
 	}
 
-	key := fmt.Sprintf(mpc.TypeReshareWalletResultFmt, walletID)
+	key := fmt.Sprintf(mpc.TypeReshareWalletResultFmt, msg.SessionID)
 	err = ec.reshareResultQueue.Enqueue(key, reshareResultBytes, &messaging.EnqueueOptions{
 		IdempotententKey: key,
 	})
 	if err != nil {
 		logger.Error("Failed to enqueue reshare result event", err,
-			"walletID", walletID,
+			"walletID", msg.WalletID,
+			"sessionID", msg.SessionID,
 			"payload", string(reshareResultBytes),
 		)
 	}
