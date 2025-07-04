@@ -135,6 +135,7 @@ func (sc *signingConsumer) handleSigningEvent(msg jetstream.Msg) {
 		logger.Warn("SigningConsumer: Not enough peers to process signing request, rejecting message",
 			"ready", readyPeers,
 			"required", requiredPeers)
+		// Immediately return and let nats redeliver the message with backoff
 		return
 	}
 
