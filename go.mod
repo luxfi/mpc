@@ -19,7 +19,6 @@ require (
 	github.com/spf13/viper v1.18.0
 	github.com/stretchr/testify v1.10.0
 	github.com/urfave/cli/v3 v3.3.2
-	go.uber.org/mock v0.3.0
 	golang.org/x/term v0.31.0
 )
 
@@ -68,7 +67,7 @@ require (
 	github.com/pelletier/go-toml/v2 v2.1.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
-	github.com/rogpeppe/go-internal v1.13.1 // indirect
+	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/sagikazarmark/locafero v0.4.0 // indirect
 	github.com/sagikazarmark/slog-shim v0.1.0 // indirect
 	github.com/sourcegraph/conc v0.3.0 // indirect

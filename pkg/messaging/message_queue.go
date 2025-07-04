@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/fystack/mpcium/pkg/logger"
 	"github.com/nats-io/nats.go"
@@ -57,14 +58,14 @@ func NewNATsMessageQueueManager(queueName string, subjectWildCards []string, nc 
 		Name:        queueName,
 		Description: "Stream for " + queueName,
 		Subjects:    subjectWildCards,
-		MaxBytes:    1024,
+		MaxBytes:    10_485_760, // Light Production (Low Traffic) (10 MB)
 		Storage:     jetstream.FileStorage,
 		Retention:   jetstream.WorkQueuePolicy,
 	})
 	if err != nil {
 		logger.Fatal("Error creating JetStream stream: ", err)
 	}
-	logger.Info("Creating apex NATs Jetstream context successfully!")
+	logger.Info("Creating apex NATs Jetstream context successfully!", "streamName", queueName, "subjects", subjectWildCards)
 
 	return &NATsMessageQueueManager{
 		queueName: queueName,
@@ -81,13 +82,16 @@ func (m *NATsMessageQueueManager) NewMessageQueue(consumerName string) MessageQu
 	cfg := jetstream.ConsumerConfig{
 		Name:          consumerName,
 		Durable:       consumerName,
-		MaxAckPending: 4,
+		MaxAckPending: 1000,
+		// If a message isn't acked within AckWait, it will be redelivered up to MaxDelive
+		AckWait:   30 * time.Second,
+		AckPolicy: jetstream.AckExplicitPolicy,
 		FilterSubjects: []string{
 			consumerWildCard,
 		},
 		MaxDeliver: 3,
 	}
-	logger.Info("Creating consumer for subject", "config", cfg)
+	logger.Info("Creating consumer for subject", "consumerName", consumerName, "queueName", m.queueName, "filterSubject", consumerWildCard, "config", cfg)
 	consumer, err := m.js.CreateOrUpdateConsumer(context.Background(), m.queueName, cfg)
 	if err != nil {
 		logger.Fatal("Error creating JetStream consumer: ", err)
@@ -103,7 +107,7 @@ func (mq *msgQueue) Enqueue(topic string, message []byte, options *EnqueueOption
 		header.Add("Nats-Msg-Id", options.IdempotententKey)
 	}
 
-	logger.Info("Publishing message", "topic", topic)
+	logger.Info("Publishing message", "topic", topic, "consumerName", mq.consumerName)
 	_, err := mq.js.PublishMsg(context.Background(), &nats.Msg{
 		Subject: topic,
 		Data:    message,
@@ -111,7 +115,8 @@ func (mq *msgQueue) Enqueue(topic string, message []byte, options *EnqueueOption
 	})
 
 	if err != nil {
-		return fmt.Errorf("Error enqueueing message: %w", err)
+		logger.Error("Failed to publish message to JetStream", err, "topic", topic, "consumerName", mq.consumerName)
+		return fmt.Errorf("error enqueueing message: %w", err)
 	}
 
 	return nil

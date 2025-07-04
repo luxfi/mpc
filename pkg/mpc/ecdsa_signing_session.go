@@ -93,11 +93,6 @@ func (s *ecdsaSigningSession) Init(tx *big.Int) error {
 	ctx := tss.NewPeerContext(s.partyIDs)
 	params := tss.NewParameters(tss.S256(), ctx, s.selfPartyID, len(s.partyIDs), s.threshold)
 
-	keyData, err := s.kvstore.Get(s.composeKey(s.walletID))
-	if err != nil {
-		return errors.Wrap(err, "Failed to get wallet data from KVStore")
-	}
-
 	keyInfo, err := s.keyinfoStore.Get(s.composeKey(s.walletID))
 	if err != nil {
 		return errors.Wrap(err, "Failed to get key info data")
@@ -119,6 +114,11 @@ func (s *ecdsaSigningSession) Init(tx *big.Int) error {
 	}
 
 	logger.Info("Have enough participants to sign", "participants", s.participantPeerIDs)
+
+	keyData, err := s.kvstore.Get(s.composeKey(walletIDWithVersion(s.walletID, keyInfo.Version)))
+	if err != nil {
+		return errors.Wrap(err, "Failed to get wallet data from KVStore")
+	}
 	// Check if all the participants of the key are present
 	var data keygen.LocalPartySaveData
 	err = json.Unmarshal(keyData, &data)
@@ -128,6 +128,7 @@ func (s *ecdsaSigningSession) Init(tx *big.Int) error {
 
 	s.party = signing.NewLocalParty(tx, params, data, s.outCh, s.endCh)
 	s.data = &data
+	s.version = keyInfo.Version
 	s.tx = tx
 	logger.Info("Initialized sigining session successfully!")
 	return nil
@@ -161,7 +162,7 @@ func (s *ecdsaSigningSession) Sign(onSuccess func(data []byte)) {
 			}
 
 			r := event.SigningResultEvent{
-				ResultType:          event.SigningResultTypeSuccess,
+				ResultType:          event.ResultTypeSuccess,
 				NetworkInternalCode: s.networkInternalCode,
 				WalletID:            s.walletID,
 				TxID:                s.txID,

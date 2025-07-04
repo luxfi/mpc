@@ -223,10 +223,11 @@ func (j *jetStreamPubSub) Subscribe(name string, topic string, handler func(msg 
 
 	logger.Info("Subscribing to topic", sanitizeConsumerName(name), topic)
 	consumerConfig := jetstream.ConsumerConfig{
-		Name:          sanitizeConsumerName(name),
-		Durable:       sanitizeConsumerName(name),
-		AckPolicy:     jetstream.AckExplicitPolicy,
-		MaxDeliver:    4,
+		Name:       sanitizeConsumerName(name),
+		Durable:    sanitizeConsumerName(name),
+		AckPolicy:  jetstream.AckExplicitPolicy,
+		MaxDeliver: 4,
+		// backoff is NOT applied to naked messages.
 		BackOff:       []time.Duration{30 * time.Second, 30 * time.Second, 30 * time.Second},
 		DeliverPolicy: jetstream.DeliverAllPolicy, // Deliver all messages
 		FilterSubject: topic,
@@ -245,7 +246,7 @@ func (j *jetStreamPubSub) Subscribe(name string, topic string, handler func(msg 
 	}
 
 	_, err = consumer.Consume(func(msg jetstream.Msg) {
-		logger.Info("Received jetStreamPubSub message", "subject", msg.Data())
+		logger.Info("Received jetStreamPubSub message")
 		handler(msg)
 	})
 

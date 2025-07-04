@@ -2,7 +2,6 @@ package eventconsumer
 
 import (
 	"encoding/json"
-	"fmt"
 
 	"github.com/fystack/mpcium/pkg/event"
 	"github.com/fystack/mpcium/pkg/logger"
@@ -61,9 +60,10 @@ func (tc *timeOutConsumer) Run() {
 				return
 			}
 
-			signErrorResult.ResultType = event.SigningResultTypeError
+			signErrorResult.ResultType = event.ResultTypeError
+			signErrorResult.ErrorCode = event.ErrorCodeMaxDeliveryAttempts
 			signErrorResult.IsTimeout = true
-			signErrorResult.ErrorReason = fmt.Sprintf("Message delivery exceeded for stream %s", advisory.Stream)
+			signErrorResult.ErrorReason = "Signing failed: maximum delivery attempts exceeded"
 
 			signErrorResultBytes, err := json.Marshal(signErrorResult)
 			if err != nil {

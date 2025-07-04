@@ -48,6 +48,7 @@ func newECDSAKeygenSession(
 			pubSub:             pubSub,
 			direct:             direct,
 			threshold:          threshold,
+			version:            DefaultVersion,
 			participantPeerIDs: participantPeerIDs,
 			selfPartyID:        selfID,
 			partyIDs:           partyIDs,
@@ -103,7 +104,7 @@ func (s *ecdsaKeygenSession) GenerateKey(done func()) {
 				return
 			}
 
-			err = s.kvstore.Put(s.composeKey(s.walletID), keyBytes)
+			err = s.kvstore.Put(s.composeKey(walletIDWithVersion(s.walletID, s.GetVersion())), keyBytes)
 			if err != nil {
 				logger.Error("Failed to save key", err, "walletID", s.walletID)
 				s.ErrCh <- err
@@ -113,6 +114,7 @@ func (s *ecdsaKeygenSession) GenerateKey(done func()) {
 			keyInfo := keyinfo.KeyInfo{
 				ParticipantPeerIDs: s.participantPeerIDs,
 				Threshold:          s.threshold,
+				Version:            s.GetVersion(),
 			}
 
 			err = s.keyinfoStore.Save(s.composeKey(s.walletID), &keyInfo)

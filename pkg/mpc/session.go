@@ -1,8 +1,8 @@
 package mpc
 
 import (
+	"encoding/json"
 	"fmt"
-	"strings"
 	"sync"
 
 	"github.com/bnb-chain/tss-lib/v2/ecdsa/keygen"
@@ -20,9 +20,11 @@ import (
 type SessionType string
 
 const (
-	TypeGenerateWalletSuccess             = "mpc.mpc_keygen_success.%s"
-	SessionTypeECDSA          SessionType = "session_ecdsa"
-	SessionTypeEDDSA          SessionType = "session_eddsa"
+	TypeGenerateWalletResultFmt = "mpc.mpc_keygen_result.%s"
+	TypeReshareWalletResultFmt  = "mpc.mpc_reshare_result.%s"
+
+	SessionTypeECDSA SessionType = "session_ecdsa"
+	SessionTypeEDDSA SessionType = "session_eddsa"
 )
 
 var (
@@ -53,6 +55,7 @@ type session struct {
 	outCh    chan tss.Message
 	ErrCh    chan error
 	party    tss.Party
+	version  int
 
 	// preParams is nil for EDDSA session
 	preParams     *keygen.LocalPreParams
@@ -103,7 +106,11 @@ func (s *session) handleTssMessage(keyshare tss.Message) {
 		s.ErrCh <- fmt.Errorf("failed to marshal tss message: %w", err)
 		return
 	}
-
+	toIDs := make([]string, len(routing.To))
+	for i, id := range routing.To {
+		toIDs[i] = id.String()
+	}
+	logger.Debug(fmt.Sprintf("%s Sending message", s.sessionType), "from", s.selfPartyID.String(), "to", toIDs, "isBroadcast", routing.IsBroadcast)
 	if routing.IsBroadcast && len(routing.To) == 0 {
 		err := s.pubSub.Publish(s.topicComposer.ComposeBroadcastTopic(), msg)
 		if err != nil {
@@ -112,11 +119,12 @@ func (s *session) handleTssMessage(keyshare tss.Message) {
 		}
 	} else {
 		for _, to := range routing.To {
-			nodeID := PartyIDToNodeID(to)
+			nodeID := PartyIDToRoutingDest(to)
 			topic := s.topicComposer.ComposeDirectTopic(nodeID)
 			err := s.direct.Send(topic, msg)
 			if err != nil {
-				s.ErrCh <- fmt.Errorf("Failed to send direct message to %s: %w", topic, err)
+				logger.Error("Failed to send direct message to", err, "topic", topic)
+				s.ErrCh <- fmt.Errorf("Failed to send direct message to %s", topic)
 			}
 
 		}
@@ -146,10 +154,15 @@ func (s *session) receiveTssMessage(rawMsg []byte) {
 		s.ErrCh <- errors.Wrap(err, "Broken TSS Share")
 		return
 	}
-
-	logger.Debug(fmt.Sprintf("%s Received message", s.sessionType), "from", msg.From.String(), "to", strings.Join(toIDs, ","), "isBroadcast", msg.IsBroadcast, "round", round.RoundMsg)
+	logger.Debug("Received message", "round", round.RoundMsg, "isBroadcast", msg.IsBroadcast, "to", toIDs, "from", msg.From.String(), "self", s.selfPartyID.String())
 	isBroadcast := msg.IsBroadcast && len(msg.To) == 0
-	isToSelf := len(msg.To) == 1 && ComparePartyIDs(msg.To[0], s.selfPartyID)
+	var isToSelf bool
+	for _, to := range msg.To {
+		if ComparePartyIDs(to, s.selfPartyID) {
+			isToSelf = true
+			break
+		}
+	}
 
 	if isBroadcast || isToSelf {
 		s.mu.Lock()
@@ -191,7 +204,7 @@ func (s *session) ListenToIncomingMessageAsync() {
 		s.broadcastSub = sub
 	}()
 
-	nodeID := PartyIDToNodeID(s.selfPartyID)
+	nodeID := PartyIDToRoutingDest(s.selfPartyID)
 	targetID := s.topicComposer.ComposeDirectTopic(nodeID)
 	sub, err := s.direct.Listen(targetID, func(msg []byte) {
 		go s.receiveTssMessage(msg) // async for avoid timeout
@@ -221,4 +234,46 @@ func (s *session) GetPubKeyResult() []byte {
 
 func (s *session) ErrChan() <-chan error {
 	return s.ErrCh
+}
+
+func (s *session) GetVersion() int {
+	return s.version
+}
+
+// loadOldShareDataGeneric loads the old share data from kvstore with backward compatibility (versioned and unversioned keys)
+func (s *session) loadOldShareDataGeneric(walletID string, version int, dest interface{}) error {
+	var (
+		key     string
+		keyData []byte
+		err     error
+	)
+
+	// Try versioned key first if version > 0
+	if version > 0 {
+		key = s.composeKey(walletIDWithVersion(walletID, version))
+		keyData, err = s.kvstore.Get(key)
+	}
+
+	// If version == 0 or previous key not found, fall back to unversioned key
+	if err != nil || version == 0 {
+		key = s.composeKey(walletID)
+		keyData, err = s.kvstore.Get(key)
+	}
+
+	if err != nil {
+		return fmt.Errorf("failed to get wallet data from KVStore (key=%s): %w", key, err)
+	}
+
+	if err := json.Unmarshal(keyData, dest); err != nil {
+		return fmt.Errorf("failed to unmarshal wallet data: %w", err)
+	}
+	return nil
+}
+
+// walletIDWithVersion is used to compose the key for the kvstore
+func walletIDWithVersion(walletID string, version int) string {
+	if version > 0 {
+		return fmt.Sprintf("%s_v%d", walletID, version)
+	}
+	return walletID
 }
