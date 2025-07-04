@@ -11,6 +11,7 @@ import (
 	"github.com/fystack/mpcium/pkg/event"
 	"github.com/fystack/mpcium/pkg/logger"
 	"github.com/fystack/mpcium/pkg/types"
+	"github.com/google/uuid"
 	"github.com/nats-io/nats.go"
 	"github.com/spf13/viper"
 )
@@ -33,18 +34,6 @@ func main() {
 		KeyPath:  "./event_initiator.key",
 	})
 
-	resharingMsg := &types.ResharingMessage{
-		WalletID:     "98f6a23c-e78c-445e-92d9-95ccf927ca35",
-		NodeIDs:      []string{"0ce02715-0ead-48ef-9772-2583316cc860", "ac37e85f-caca-4bee-8a3a-49a0fe35abff"}, // new peer IDs
-		NewThreshold: 1,                                                                                        // t+1 <= len(NodeIDs)
-		KeyType:      types.KeyTypeSecp256k1,
-	}
-	err = mpcClient.Resharing(resharingMsg)
-	if err != nil {
-		logger.Fatal("Resharing failed", err)
-	}
-	fmt.Printf("Resharing(%q) sent, awaiting result...\n", resharingMsg.WalletID)
-
 	// 3) Listen for signing results
 	err = mpcClient.OnResharingResult(func(evt event.ResharingResultEvent) {
 		logger.Info("Resharing result received",
@@ -57,6 +46,20 @@ func main() {
 	if err != nil {
 		logger.Fatal("Failed to subscribe to OnResharingResult", err)
 	}
+
+	resharingMsg := &types.ResharingMessage{
+		SessionID: uuid.NewString(),
+		WalletID:  "bf2cc849-8e55-47e4-ab73-e17fb1eb690c",
+		NodeIDs:   []string{"d926fa75-72c7-4538-9052-4a064a84981d", "7b1090cd-ffe3-46ff-8375-594dd3204169"}, // new peer IDs
+
+		NewThreshold: 2, // t+1 <= len(NodeIDs)
+		KeyType:      types.KeyTypeEd25519,
+	}
+	err = mpcClient.Resharing(resharingMsg)
+	if err != nil {
+		logger.Fatal("Resharing failed", err)
+	}
+	fmt.Printf("Resharing(%q) sent, awaiting result...\n", resharingMsg.WalletID)
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)

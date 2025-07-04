@@ -48,6 +48,7 @@ const (
 	ErrorCodeKeyInfoLoad      ErrorCode = "ERROR_KEY_INFO_LOAD"
 	ErrorCodeKeyEncoding      ErrorCode = "ERROR_KEY_ENCODING"
 	ErrorCodeKeyDecoding      ErrorCode = "ERROR_KEY_DECODING"
+	ErrorCodeMsgValidation    ErrorCode = "ERROR_MSG_VALIDATION"
 
 	// Cryptographic operation errors
 	ErrorCodeSignatureGeneration   ErrorCode = "ERROR_SIGNATURE_GENERATION"
@@ -101,6 +102,8 @@ func GetErrorCodeFromError(err error) ErrorCode {
 
 	// Check for specific error patterns
 	switch {
+	case contains(errStr, "validation"):
+		return ErrorCodeMsgValidation
 	case contains(errStr, "timeout", "timed out"):
 		return ErrorCodeNetworkTimeout
 	case contains(errStr, "connection", "connect"):

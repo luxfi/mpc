@@ -474,6 +474,17 @@ func (ec *eventConsumer) consumeReshareEvent() error {
 			return
 		}
 
+		if msg.SessionID == "" {
+			ec.handleReshareSessionError(
+				msg.WalletID,
+				msg.KeyType,
+				msg.NewThreshold,
+				errors.New("validation: session ID is empty"),
+				"Session ID is empty",
+			)
+			return
+		}
+
 		if err := ec.identityStore.VerifyInitiatorMessage(&msg); err != nil {
 			logger.Error("Failed to verify initiator message", err)
 			ec.handleReshareSessionError(msg.WalletID, msg.KeyType, msg.NewThreshold, err, "Failed to verify initiator message")
@@ -591,7 +602,7 @@ func (ec *eventConsumer) consumeReshareEvent() error {
 				return
 			}
 
-			key := fmt.Sprintf(mpc.TypeReshareWalletResultFmt, walletID)
+			key := fmt.Sprintf(mpc.TypeReshareWalletResultFmt, msg.SessionID)
 			err = ec.reshareResultQueue.Enqueue(
 				key,
 				successBytes,

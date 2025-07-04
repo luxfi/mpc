@@ -34,11 +34,12 @@ type SignTxMessage struct {
 }
 
 type ResharingMessage struct {
+	SessionID    string   `json:"session_id"`
 	NodeIDs      []string `json:"node_ids"` // new peer IDs
 	NewThreshold int      `json:"new_threshold"`
 	KeyType      KeyType  `json:"key_type"`
 	WalletID     string   `json:"wallet_id"`
-	Signature    []byte   `json:"signature"`
+	Signature    []byte   `json:"signature,omitempty"`
 }
 
 func (m *SignTxMessage) Raw() ([]byte, error) {
@@ -80,7 +81,9 @@ func (m *GenerateKeyMessage) InitiatorID() string {
 }
 
 func (m *ResharingMessage) Raw() ([]byte, error) {
-	return []byte(m.WalletID), nil
+	copy := *m           // create a shallow copy
+	copy.Signature = nil // modify only the copy
+	return json.Marshal(&copy)
 }
 
 func (m *ResharingMessage) Sig() []byte {

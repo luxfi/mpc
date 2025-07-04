@@ -173,7 +173,7 @@ func (p *Node) CreateSigningSession(
 	}
 
 	readyPeers := p.peerRegistry.GetReadyPeersIncludeSelf()
-	readyParticipantIDs := p.getReadyPeersForSigning(keyInfo, readyPeers)
+	readyParticipantIDs := p.getReadyPeersForSession(keyInfo, readyPeers)
 
 	logger.Info("Creating signing session",
 		"type", sessionType,
@@ -247,7 +247,7 @@ func (p *Node) getKeyInfo(sessionType SessionType, walletID string) (*keyinfo.Ke
 	return p.keyinfoStore.Get(keyID)
 }
 
-func (p *Node) getReadyPeersForSigning(keyInfo *keyinfo.KeyInfo, readyPeers []string) []string {
+func (p *Node) getReadyPeersForSession(keyInfo *keyinfo.KeyInfo, readyPeers []string) []string {
 	// Ensure all participants are ready
 	readyParticipantIDs := make([]string, 0, len(keyInfo.ParticipantPeerIDs))
 	for _, peerID := range keyInfo.ParticipantPeerIDs {
@@ -289,10 +289,10 @@ func (p *Node) CreateReshareSession(
 		return nil, fmt.Errorf("new peer list is smaller than required t+1")
 	}
 
-	// 2. Check all new peers are ready
-	readyPeerIDs := p.peerRegistry.GetReadyPeersIncludeSelf()
+	// 2. Make sure all new peers are ready
+	readyNewPeerIDs := p.peerRegistry.GetReadyPeersIncludeSelf()
 	for _, peerID := range newPeerIDs {
-		if !slices.Contains(readyPeerIDs, peerID) {
+		if !slices.Contains(readyNewPeerIDs, peerID) {
 			return nil, fmt.Errorf("new peer %s is not ready", peerID)
 		}
 	}
@@ -308,6 +308,9 @@ func (p *Node) CreateReshareSession(
 		return nil, fmt.Errorf("failed to get old key info: %w", err)
 	}
 
+	readyPeers := p.peerRegistry.GetReadyPeersIncludeSelf()
+	readyOldParticipantIDs := p.getReadyPeersForSession(oldKeyInfo, readyPeers)
+
 	isInOldCommittee := slices.Contains(oldKeyInfo.ParticipantPeerIDs, p.nodeID)
 	isInNewCommittee := slices.Contains(newPeerIDs, p.nodeID)
 
@@ -321,17 +324,37 @@ func (p *Node) CreateReshareSession(
 		return nil, nil
 	}
 
+	logger.Info("Creating resharing session",
+		"type", sessionType,
+		"readyPeers", readyPeers,
+		"participantPeerIDs", oldKeyInfo.ParticipantPeerIDs,
+		"ready count", len(readyOldParticipantIDs),
+		"min ready", oldKeyInfo.Threshold+1,
+		"version", oldKeyInfo.Version,
+	)
+
+	if len(readyOldParticipantIDs) < oldKeyInfo.Threshold+1 {
+		return nil, fmt.Errorf("not enough peers to create resharing session! expected %d, got %d", oldKeyInfo.Threshold+1, len(readyOldParticipantIDs))
+	}
+
+	if err := p.ensureNodeIsParticipant(oldKeyInfo); err != nil {
+		return nil, err
+	}
+
 	// 5. Generate party IDs
 	version := p.getVersion(sessionType, walletID)
-	oldSelf, oldAllPartyIDs := p.generatePartyIDs(PurposeKeygen, oldKeyInfo.ParticipantPeerIDs, version)
+	oldSelf, oldAllPartyIDs := p.generatePartyIDs(PurposeKeygen, readyOldParticipantIDs, version)
 	newSelf, newAllPartyIDs := p.generatePartyIDs(PurposeReshare, newPeerIDs, version+1)
 
 	// 6. Pick identity and call session constructor
 	var selfPartyID *tss.PartyID
+	var participantPeerIDs []string
 	if isNewPeer {
 		selfPartyID = newSelf
+		participantPeerIDs = newPeerIDs
 	} else {
 		selfPartyID = oldSelf
+		participantPeerIDs = readyOldParticipantIDs
 	}
 
 	switch sessionType {
@@ -339,12 +362,16 @@ func (p *Node) CreateReshareSession(
 		preParams := p.ecdsaPreParams[0]
 		if isNewPeer {
 			preParams = p.ecdsaPreParams[1]
+			participantPeerIDs = newPeerIDs
+		} else {
+			participantPeerIDs = oldKeyInfo.ParticipantPeerIDs
 		}
+
 		return NewECDSAReshareSession(
 			walletID,
 			p.pubSub,
 			p.direct,
-			readyPeerIDs,
+			participantPeerIDs,
 			selfPartyID,
 			oldAllPartyIDs,
 			newAllPartyIDs,
@@ -365,7 +392,7 @@ func (p *Node) CreateReshareSession(
 			walletID,
 			p.pubSub,
 			p.direct,
-			readyPeerIDs,
+			participantPeerIDs,
 			selfPartyID,
 			oldAllPartyIDs,
 			newAllPartyIDs,
