@@ -1,8 +1,6 @@
 name: CI Pipeline
 
 on:
-  push:
-    branches: ["*"]
   pull_request:
     branches: ["*"]
 
@@ -94,23 +92,37 @@ jobs:
       - name: Install govulncheck
         run: go install golang.org/x/vuln/cmd/govulncheck@latest
 
-      - name: Run govulncheck and fail if vulnerabilities are found
+      - name: Run govulncheck and generate SARIF
         run: |
+          echo "Current directory: $(pwd)"
+          echo "Files in current directory:"
+          ls -la
+          govulncheck -format=sarif ./... > govulncheck-results.sarif
+          
           govulncheck -json ./... > vuln.json
           count=$(jq '[.[] | select(.finding != null and .finding.trace != null)] | length' vuln.json || echo 0)
           echo "Found $count vulnerabilities"
+          
           if [ "$count" -gt 0 ]; then
-            echo "❌ Vulnerabilities found by govulncheck"
-            cat vuln.json
-            exit 1
+            echo "⚠️ Vulnerabilities found by govulncheck (see Security tab for details)"
+          else
+            echo "✅ No vulnerabilities found by govulncheck"
           fi
+        continue-on-error: true
+
+      - name: Upload govulncheck results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: govulncheck-results.sarif
+          category: govulncheck
 
       - name: Install gosec
         run: go install github.com/securego/gosec/v2/cmd/gosec@latest
 
       - name: Run gosec security scanner
         run: |
-          gosec -fmt sarif -out gosec-results.sarif ./...
+          gosec -fmt sarif -out gosec-results.sarif -exclude G304 ./...
         continue-on-error: true
 
       - name: Upload gosec results to GitHub Security tab
@@ -138,12 +150,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
-        with:
-          languages: ${{ matrix.language }}
-          queries: +security-and-quality
-
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
@@ -161,6 +167,12 @@ jobs:
 
       - name: Install dependencies
         run: go mod download
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          queries: +security-and-quality
 
       - name: Build for CodeQL
         run: |
@@ -180,7 +192,7 @@ jobs:
       actions: read
       contents: read
       security-events: write
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4

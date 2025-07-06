@@ -33,7 +33,7 @@ func generatePeers(ctx context.Context, c *cli.Command) error {
 	// Create directory if it doesn't exist
 	dir := filepath.Dir(outputPath)
 	if dir != "." {
-		if err := os.MkdirAll(dir, 0755); err != nil {
+		if err := os.MkdirAll(dir, 0750); err != nil {
 			return fmt.Errorf("failed to create directory: %w", err)
 		}
 	}
@@ -56,7 +56,7 @@ func generatePeers(ctx context.Context, c *cli.Command) error {
 	}
 
 	// Write to file
-	if err := os.WriteFile(outputPath, peersJSON, 0644); err != nil {
+	if err := os.WriteFile(outputPath, peersJSON, 0600); err != nil {
 		return fmt.Errorf("failed to write file: %w", err)
 	}
 

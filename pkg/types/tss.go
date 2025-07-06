@@ -4,7 +4,6 @@ package types
 
 import (
 	"encoding/json"
-	"os"
 	"sort"
 
 	"github.com/bnb-chain/tss-lib/v2/tss"
@@ -109,18 +108,6 @@ func UnmarshalStartMessage(msgBytes []byte) (*StartMessage, error) {
 	}
 
 	return msg, nil
-}
-
-func SaveStructToJsonFile(s interface{}, filename string) error {
-	data, err := json.Marshal(s)
-	if err != nil {
-		return err
-	}
-	err = os.WriteFile(filename, data, 0644)
-	if err != nil {
-		return err
-	}
-	return nil
 }
 
 // MarshalForSigning returns the deterministic JSON bytes for signing

@@ -8,17 +8,18 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
 
 	"filippo.io/age"
 	"github.com/bnb-chain/tss-lib/v2/tss"
+	"golang.org/x/term"
+
+	"github.com/fystack/mpcium/pkg/common/pathutil"
 	"github.com/fystack/mpcium/pkg/logger"
 	"github.com/fystack/mpcium/pkg/types"
 	"github.com/spf13/viper"
-	"golang.org/x/term"
 )
 
 // NodeIdentity represents a node's identity information
@@ -54,7 +55,7 @@ type fileStore struct {
 
 // NewFileStore creates a new identity store
 func NewFileStore(identityDir, nodeName string, decrypt bool) (*fileStore, error) {
-	if err := os.MkdirAll(identityDir, 0755); err != nil {
+	if err := os.MkdirAll(identityDir, 0750); err != nil {
 		return nil, fmt.Errorf("failed to create identity directory: %w", err)
 	}
 
@@ -100,7 +101,12 @@ func NewFileStore(identityDir, nodeName string, decrypt bool) (*fileStore, error
 
 	// Check that each node in peers.json has an identity file
 	for nodeName, nodeID := range peers {
-		identityFilePath := filepath.Join(identityDir, fmt.Sprintf("%s_identity.json", nodeName))
+		identityFileName := fmt.Sprintf("%s_identity.json", nodeName)
+		identityFilePath, err := pathutil.SafePath(identityDir, identityFileName)
+		if err != nil {
+			return nil, fmt.Errorf("invalid identity file path for node %s: %w", nodeName, err)
+		}
+
 		data, err := os.ReadFile(identityFilePath)
 		if err != nil {
 			return nil, fmt.Errorf("missing identity file for node %s (%s): %w", nodeName, nodeID, err)
@@ -131,8 +137,18 @@ func NewFileStore(identityDir, nodeName string, decrypt bool) (*fileStore, error
 // loadPrivateKey loads the private key from file, decrypting if necessary
 func loadPrivateKey(identityDir, nodeName string, decrypt bool) (string, error) {
 	// Check for encrypted or unencrypted private key
-	encryptedKeyPath := filepath.Join(identityDir, fmt.Sprintf("%s_private.key.age", nodeName))
-	unencryptedKeyPath := filepath.Join(identityDir, fmt.Sprintf("%s_private.key", nodeName))
+	encryptedKeyFileName := fmt.Sprintf("%s_private.key.age", nodeName)
+	unencryptedKeyFileName := fmt.Sprintf("%s_private.key", nodeName)
+
+	encryptedKeyPath, err := pathutil.SafePath(identityDir, encryptedKeyFileName)
+	if err != nil {
+		return "", fmt.Errorf("invalid encrypted key path for node %s: %w", nodeName, err)
+	}
+
+	unencryptedKeyPath, err := pathutil.SafePath(identityDir, unencryptedKeyFileName)
+	if err != nil {
+		return "", fmt.Errorf("invalid unencrypted key path for node %s: %w", nodeName, err)
+	}
 
 	if decrypt {
 		// Use the encrypted age file

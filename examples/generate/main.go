@@ -111,7 +111,7 @@ func main() {
 		if err != nil {
 			logger.Error("Failed to marshal wallet IDs", err)
 		} else {
-			err = os.WriteFile("wallets.json", data, 0644)
+			err = os.WriteFile("wallets.json", data, 0600)
 			if err != nil {
 				logger.Error("Failed to write wallets.json", err)
 			} else {

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"filippo.io/age"
+	"github.com/fystack/mpcium/pkg/common/pathutil"
 	"github.com/urfave/cli/v3"
 	"golang.org/x/term"
 )
@@ -92,6 +93,11 @@ func generateIdentity(ctx context.Context, c *cli.Command) error {
 		return fmt.Errorf("error checking peers file: %w", err)
 	}
 
+	// Validate the peers file path for security
+	if err := pathutil.ValidateFilePath(peersPath); err != nil {
+		return fmt.Errorf("invalid peers file path: %w", err)
+	}
+
 	// Read peers file
 	peersData, err := os.ReadFile(peersPath)
 	if err != nil {
@@ -111,7 +117,7 @@ func generateIdentity(ctx context.Context, c *cli.Command) error {
 	}
 
 	// Create identity directory
-	if err := os.MkdirAll(identityDir, 0755); err != nil {
+	if err := os.MkdirAll(identityDir, 0750); err != nil {
 		return fmt.Errorf("failed to create identity directory: %w", err)
 	}
 
@@ -152,7 +158,7 @@ func generateNodeIdentity(nodeName, nodeID, identityDir string, encrypt bool, pa
 	if err != nil {
 		return fmt.Errorf("failed to marshal identity: %w", err)
 	}
-	if err := os.WriteFile(identityPath, identityBytes, 0644); err != nil {
+	if err := os.WriteFile(identityPath, identityBytes, 0600); err != nil {
 		return fmt.Errorf("failed to write identity JSON: %w", err)
 	}
 
@@ -166,6 +172,11 @@ func generateNodeIdentity(nodeName, nodeID, identityDir string, encrypt bool, pa
 		// Check if encrypted key file already exists
 		if _, err := os.Stat(encryptedKeyPath); err == nil && !overwrite {
 			return fmt.Errorf("encrypted key file %s already exists. Use --overwrite to force", encryptedKeyPath)
+		}
+
+		// Validate the encrypted key path for security
+		if err := pathutil.ValidateFilePath(encryptedKeyPath); err != nil {
+			return fmt.Errorf("invalid encrypted key file path: %w", err)
 		}
 
 		// Encrypt with age and passphrase
