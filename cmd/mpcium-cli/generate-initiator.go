@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"filippo.io/age"
+	"github.com/fystack/mpcium/pkg/common/pathutil"
 	"github.com/urfave/cli/v3"
 )
 
@@ -34,7 +35,7 @@ func generateInitiatorIdentity(ctx context.Context, c *cli.Command) error {
 	overwrite := c.Bool("overwrite")
 
 	// Create output directory if it doesn't exist
-	if err := os.MkdirAll(outputDir, 0755); err != nil {
+	if err := os.MkdirAll(outputDir, 0750); err != nil {
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 
@@ -97,7 +98,7 @@ func generateInitiatorIdentity(ctx context.Context, c *cli.Command) error {
 		return fmt.Errorf("failed to marshal identity JSON: %w", err)
 	}
 
-	if err := os.WriteFile(identityPath, identityBytes, 0643); err != nil {
+	if err := os.WriteFile(identityPath, identityBytes, 0600); err != nil {
 		return fmt.Errorf("failed to save identity file: %w", err)
 	}
 
@@ -111,6 +112,12 @@ func generateInitiatorIdentity(ctx context.Context, c *cli.Command) error {
 
 		// Create encrypted key file
 		encKeyPath := keyPath + ".age"
+
+		// Validate the encrypted key path for security
+		if err := pathutil.ValidateFilePath(encKeyPath); err != nil {
+			return fmt.Errorf("invalid encrypted key file path: %w", err)
+		}
+
 		outFile, err := os.Create(encKeyPath)
 		if err != nil {
 			return fmt.Errorf("failed to create encrypted private key file: %w", err)

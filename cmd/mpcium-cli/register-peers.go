@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/fystack/mpcium/pkg/common/pathutil"
 	"github.com/fystack/mpcium/pkg/config"
 	"github.com/fystack/mpcium/pkg/infra"
 	"github.com/fystack/mpcium/pkg/logger"
@@ -19,6 +20,11 @@ func registerPeers(ctx context.Context, c *cli.Command) error {
 
 	// Hardcoded prefix for MPC peers in Consul
 	prefix := "mpc_peers/"
+
+	// Validate the input file path for security
+	if err := pathutil.ValidateFilePath(inputPath); err != nil {
+		return fmt.Errorf("invalid input file path: %w", err)
+	}
 
 	// Check if input file exists
 	if _, err := os.Stat(inputPath); os.IsNotExist(err) {
