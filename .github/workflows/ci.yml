@@ -96,15 +96,15 @@ jobs:
 
       - name: Run govulncheck and generate SARIF
         run: |
-          # Generate SARIF output
-          govulncheck -format sarif -scan=module ./... > govulncheck-results.sarif
+          echo "Current directory: $(pwd)"
+          echo "Files in current directory:"
+          ls -la
+          govulncheck -format=sarif ./... > govulncheck-results.sarif
           
-          # Also generate JSON for counting (optional)
           govulncheck -json ./... > vuln.json
           count=$(jq '[.[] | select(.finding != null and .finding.trace != null)] | length' vuln.json || echo 0)
           echo "Found $count vulnerabilities"
           
-          # Note: We don't fail the build here since we want to upload the SARIF file
           if [ "$count" -gt 0 ]; then
             echo "⚠️ Vulnerabilities found by govulncheck (see Security tab for details)"
           else
@@ -194,7 +194,7 @@ jobs:
       actions: read
       contents: read
       security-events: write
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
