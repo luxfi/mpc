@@ -127,6 +127,7 @@ func (ec *eventConsumer) handleKeyGenEvent(natMsg *nats.Msg) {
 		ec.handleKeygenSessionError(msg.WalletID, err, "Failed to unmarshal keygen message")
 		return
 	}
+
 	if err := ec.identityStore.VerifyInitiatorMessage(&msg); err != nil {
 		logger.Error("Failed to verify initiator message", err)
 		ec.handleKeygenSessionError(msg.WalletID, err, "Failed to verify initiator message")
@@ -216,7 +217,6 @@ func (ec *eventConsumer) handleKeyGenEvent(natMsg *nats.Msg) {
 		return
 	}
 
-	logger.Info("Closing session successfully!", "event", successEvent)
 	payload, err := json.Marshal(successEvent)
 	if err != nil {
 		logger.Error("Failed to marshal keygen success event", err)
@@ -351,6 +351,16 @@ func (ec *eventConsumer) consumeTxSigningEvent() error {
 
 		}
 		if err != nil {
+			// Check if the error is due to node not being in participant list
+			if errors.Is(err, mpc.ErrNotInParticipantList) {
+				logger.Info("Node is not in participant list for this wallet, skipping signing",
+					"walletID", msg.WalletID,
+					"txID", msg.TxID,
+					"nodeID", ec.node.ID(),
+				)
+				return // Skip signing instead of treating as error
+			}
+
 			logger.Error("Failed to create signing session", err)
 			ec.handleSigningSessionError(
 				msg.WalletID,
@@ -718,14 +728,6 @@ func (ec *eventConsumer) addSession(walletID, txID string) {
 	sessionID := fmt.Sprintf("%s-%s", walletID, txID)
 	ec.sessionsLock.Lock()
 	ec.activeSessions[sessionID] = time.Now()
-	ec.sessionsLock.Unlock()
-}
-
-// Remove a session from tracking
-func (ec *eventConsumer) removeSession(walletID, txID string) {
-	sessionID := fmt.Sprintf("%s-%s", walletID, txID)
-	ec.sessionsLock.Lock()
-	delete(ec.activeSessions, sessionID)
 	ec.sessionsLock.Unlock()
 }
 

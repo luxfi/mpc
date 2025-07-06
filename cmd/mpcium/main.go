@@ -181,8 +181,10 @@ func runNode(ctx context.Context, c *cli.Command) error {
 	signingConsumer := eventconsumer.NewSigningConsumer(natsConn, signingStream, pubsub, peerRegistry)
 
 	// Make the node ready before starting the signing consumer
-	peerRegistry.Ready()
-
+	if err := peerRegistry.Ready(); err != nil {
+		logger.Error("Failed to mark peer registry as ready", err)
+	}
+	logger.Info("[READY] Node is ready", "nodeID", nodeID)
 	appContext, cancel := context.WithCancel(context.Background())
 	// Setup signal handling to cancel context on termination signals.
 	go func() {
@@ -247,7 +249,9 @@ func promptForSensitiveCredentials() {
 	// Prompt for initiator public key (using regular input since it's not as sensitive)
 	var initiatorKey string
 	fmt.Print("Enter event initiator public key (hex): ")
-	fmt.Scanln(&initiatorKey)
+	if _, err := fmt.Scanln(&initiatorKey); err != nil {
+		logger.Fatal("Failed to read initiator key", err)
+	}
 
 	if initiatorKey == "" {
 		logger.Fatal("Initiator public key cannot be empty", nil)
@@ -332,7 +336,13 @@ func GetIDFromName(name string, peers []config.Peer) string {
 
 func NewBadgerKV(nodeName string) *kvstore.BadgerKVStore {
 	// Badger KV DB
-	dbPath := filepath.Join(".", "db", nodeName)
+	// Use configured db_path or default to current directory + "db"
+	basePath := viper.GetString("db_path")
+	if basePath == "" {
+		basePath = filepath.Join(".", "db")
+	}
+	dbPath := filepath.Join(basePath, nodeName)
+
 	badgerKv, err := kvstore.NewBadgerKVStore(
 		dbPath,
 		[]byte(viper.GetString("badger_password")),
