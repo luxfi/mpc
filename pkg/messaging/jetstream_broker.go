@@ -133,13 +133,12 @@ func NewJetStreamBroker(
 	subjects []string,
 	opts ...BrokerOption,
 ) (MessageBroker, error) {
-
 	config := brokerConfiguration{
 		streamName:          streamName,
 		subjects:            subjects,
 		description:         fmt.Sprintf("Stream for %s", streamName),
 		retention:           nats.InterestPolicy,
-		storage:             nats.MemoryStorage,
+		storage:             nats.FileStorage,
 		maxAge:              DefaultStreamMaxAge,
 		discard:             nats.DiscardOld,
 		ackWait:             DefaultAckWait,

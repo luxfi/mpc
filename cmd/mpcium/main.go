@@ -201,6 +201,14 @@ func runNode(ctx context.Context, c *cli.Command) error {
 		<-sigChan
 		logger.Warn("Shutdown signal received, canceling context...")
 		cancel()
+
+		// Gracefully close consumers
+		if err := keygenConsumer.Close(); err != nil {
+			logger.Error("Failed to close keygen consumer", err)
+		}
+		if err := signingConsumer.Close(); err != nil {
+			logger.Error("Failed to close signing consumer", err)
+		}
 	}()
 
 	var wg sync.WaitGroup
