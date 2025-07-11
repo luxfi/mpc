@@ -168,6 +168,7 @@ func (ec *eventConsumer) handleKeyGenEvent(natMsg *nats.Msg) {
 		case err := <-ecdsaSession.ErrChan():
 			logger.Error("ECDSA keygen session error", err)
 			ec.handleKeygenSessionError(walletID, err, "ECDSA keygen session error", natMsg)
+			errorChan <- err
 			doneEcdsa()
 		}
 	}()
@@ -179,6 +180,7 @@ func (ec *eventConsumer) handleKeyGenEvent(natMsg *nats.Msg) {
 		case err := <-eddsaSession.ErrChan():
 			logger.Error("EdDSA keygen session error", err)
 			ec.handleKeygenSessionError(walletID, err, "EdDSA keygen session error", natMsg)
+			errorChan <- err
 			doneEddsa()
 		}
 	}()
