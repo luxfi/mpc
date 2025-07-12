@@ -61,6 +61,7 @@ func main() {
 
 	// STEP 2: Register the result handler AFTER all walletIDs are stored
 	err = mpcClient.OnWalletCreationResult(func(event event.KeygenResultEvent) {
+		logger.Info("Received wallet creation result", "event", event)
 		now := time.Now()
 		startTimeAny, ok := walletStartTimes.Load(event.WalletID)
 		if ok {
