@@ -9,6 +9,7 @@ import (
 	"github.com/fystack/mpcium/pkg/logger"
 	"github.com/fystack/mpcium/pkg/messaging"
 	"github.com/fystack/mpcium/pkg/mpc"
+	"github.com/google/uuid"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 )
@@ -142,7 +143,10 @@ func (sc *keygenConsumer) handleKeygenEvent(msg jetstream.Msg) {
 	}()
 
 	// Publish the signing event with the reply inbox.
-	if err := sc.pubsub.PublishWithReply(MPCGenerateEvent, replyInbox, msg.Data()); err != nil {
+	headers := map[string]string{
+		"SessionID": uuid.New().String(),
+	}
+	if err := sc.pubsub.PublishWithReply(MPCGenerateEvent, replyInbox, msg.Data(), headers); err != nil {
 		logger.Error("KeygenConsumer: Failed to publish signing event with reply", err)
 		_ = msg.Nak()
 		return

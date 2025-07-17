@@ -9,6 +9,7 @@ import (
 	"github.com/fystack/mpcium/pkg/logger"
 	"github.com/fystack/mpcium/pkg/messaging"
 	"github.com/fystack/mpcium/pkg/mpc"
+	"github.com/google/uuid"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 	"github.com/spf13/viper"
@@ -158,7 +159,10 @@ func (sc *signingConsumer) handleSigningEvent(msg jetstream.Msg) {
 	}()
 
 	// Publish the signing event with the reply inbox.
-	if err := sc.pubsub.PublishWithReply(MPCSignEvent, replyInbox, msg.Data()); err != nil {
+	headers := map[string]string{
+		"SessionID": uuid.New().String(),
+	}
+	if err := sc.pubsub.PublishWithReply(MPCSignEvent, replyInbox, msg.Data(), headers); err != nil {
 		logger.Error("SigningConsumer: Failed to publish signing event with reply", err)
 		_ = msg.Nak()
 		return

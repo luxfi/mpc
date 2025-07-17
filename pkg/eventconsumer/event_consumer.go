@@ -137,13 +137,11 @@ func (ec *eventConsumer) handleKeyGenEvent(natMsg *nats.Msg) {
 	walletID := msg.WalletID
 	ecdsaSession, err := ec.node.CreateKeyGenSession(mpc.SessionTypeECDSA, walletID, ec.mpcThreshold, ec.genKeyResultQueue)
 	if err != nil {
-		logger.Error("Failed to create ECDSA key generation session", err, "walletID", walletID)
 		ec.handleKeygenSessionError(walletID, err, "Failed to create ECDSA key generation session", natMsg)
 		return
 	}
 	eddsaSession, err := ec.node.CreateKeyGenSession(mpc.SessionTypeEDDSA, walletID, ec.mpcThreshold, ec.genKeyResultQueue)
 	if err != nil {
-		logger.Error("Failed to create EdDSA key generation session", err, "walletID", walletID)
 		ec.handleKeygenSessionError(walletID, err, "Failed to create EdDSA key generation session", natMsg)
 		return
 	}
@@ -225,7 +223,11 @@ func (ec *eventConsumer) handleKeyGenEvent(natMsg *nats.Msg) {
 	}
 
 	key := fmt.Sprintf(mpc.TypeGenerateWalletResultFmt, walletID)
-	if err := ec.genKeyResultQueue.Enqueue(key, payload, &messaging.EnqueueOptions{IdempotententKey: key}); err != nil {
+	if err := ec.genKeyResultQueue.Enqueue(
+		key,
+		payload,
+		&messaging.EnqueueOptions{IdempotententKey: composeKeygenIdempotentKey(walletID, natMsg)},
+	); err != nil {
 		logger.Error("Failed to publish key generation success message", err)
 		ec.handleKeygenSessionError(walletID, err, "Failed to publish key generation success message", natMsg)
 		return
@@ -238,14 +240,6 @@ func (ec *eventConsumer) handleKeyGenEvent(natMsg *nats.Msg) {
 func (ec *eventConsumer) handleKeygenSessionError(walletID string, err error, contextMsg string, natMsg *nats.Msg) {
 	fullErrMsg := fmt.Sprintf("%s: %v", contextMsg, err)
 	errorCode := event.GetErrorCodeFromError(err)
-
-	logger.Warn("Keygen session error",
-		"walletID", walletID,
-		"error", err.Error(),
-		"errorCode", errorCode,
-		"context", contextMsg,
-	)
-
 	keygenResult := event.KeygenResultEvent{
 		ResultType:  event.ResultTypeError,
 		ErrorCode:   string(errorCode),
@@ -263,7 +257,7 @@ func (ec *eventConsumer) handleKeygenSessionError(walletID string, err error, co
 
 	key := fmt.Sprintf(mpc.TypeGenerateWalletResultFmt, walletID)
 	err = ec.genKeyResultQueue.Enqueue(key, keygenResultBytes, &messaging.EnqueueOptions{
-		IdempotententKey: key,
+		IdempotententKey: composeKeygenIdempotentKey(walletID, natMsg),
 	})
 	if err != nil {
 		logger.Error("Failed to enqueue keygen result event", err,
@@ -794,4 +788,15 @@ func sessionTypeFromKeyType(keyType types.KeyType) (mpc.SessionType, error) {
 		logger.Warn("Unsupported key type", "keyType", keyType)
 		return "", fmt.Errorf("unsupported key type: %v", keyType)
 	}
+}
+
+func composeKeygenIdempotentKey(walletID string, natMsg *nats.Msg) string {
+	var uniqueKey string
+	sid := natMsg.Header.Get("SessionID")
+	if sid != "" {
+		uniqueKey = fmt.Sprintf("%s:%s", walletID, sid)
+	} else {
+		uniqueKey = walletID
+	}
+	return fmt.Sprintf(mpc.TypeGenerateWalletResultFmt, uniqueKey)
 }
