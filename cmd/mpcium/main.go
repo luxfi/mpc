@@ -104,12 +104,20 @@ func runNode(ctx context.Context, c *cli.Command) error {
 	}
 
 	consulClient := infra.GetConsulClient(environment)
-	badgerKV := NewBadgerKV(nodeName)
-	defer badgerKV.Close()
-
 	keyinfoStore := keyinfo.NewStore(consulClient.KV())
 	peers := LoadPeersFromConsul(consulClient)
 	nodeID := GetIDFromName(nodeName, peers)
+
+	badgerKV := NewBadgerKV(nodeName, nodeID)
+	defer badgerKV.Close()
+
+	// Start background backup job
+	backupEnabled := viper.GetBool("backup_enabled")
+	if backupEnabled {
+		backupPeriod := viper.GetInt("backup_period")
+		stopBackup := StartPeriodicBackup(ctx, badgerKV, backupPeriod)
+		defer stopBackup()
+	}
 
 	identityStore, err := identity.NewFileStore("identity", nodeName, decryptPrivateKey)
 	if err != nil {
@@ -384,7 +392,7 @@ func GetIDFromName(name string, peers []config.Peer) string {
 	return nodeID
 }
 
-func NewBadgerKV(nodeName string) *kvstore.BadgerKVStore {
+func NewBadgerKV(nodeName, nodeID string) *kvstore.BadgerKVStore {
 	// Badger KV DB
 	// Use configured db_path or default to current directory + "db"
 	basePath := viper.GetString("db_path")
@@ -393,15 +401,53 @@ func NewBadgerKV(nodeName string) *kvstore.BadgerKVStore {
 	}
 	dbPath := filepath.Join(basePath, nodeName)
 
-	badgerKv, err := kvstore.NewBadgerKVStore(
-		dbPath,
-		[]byte(viper.GetString("badger_password")),
-	)
+	// Use configured backup_dir or default to current directory + "backups"
+	backupDir := viper.GetString("backup_dir")
+	if backupDir == "" {
+		backupDir = filepath.Join(".", "backups")
+	}
+
+	// Create BadgerConfig struct
+	config := kvstore.BadgerConfig{
+		NodeID:              nodeName,
+		EncryptionKey:       []byte(viper.GetString("badger_password")),
+		BackupEncryptionKey: []byte(viper.GetString("badger_password")), // Using same key for backup encryption
+		BackupDir:           backupDir,
+		DBPath:              dbPath,
+	}
+
+	badgerKv, err := kvstore.NewBadgerKVStore(config)
 	if err != nil {
 		logger.Fatal("Failed to create badger kv store", err)
 	}
-	logger.Info("Connected to badger kv store", "path", dbPath)
+	logger.Info("Connected to badger kv store", "path", dbPath, "backup_dir", backupDir)
 	return badgerKv
+}
+
+func StartPeriodicBackup(ctx context.Context, badgerKV *kvstore.BadgerKVStore, periodMinutes int) func() {
+	if periodMinutes <= 0 {
+		periodMinutes = 5 // default to 5 minutes
+	}
+	backupTicker := time.NewTicker(time.Duration(periodMinutes) * time.Minute)
+	backupCtx, backupCancel := context.WithCancel(ctx)
+	go func() {
+		for {
+			select {
+			case <-backupCtx.Done():
+				logger.Info("Backup background job stopped")
+				return
+			case <-backupTicker.C:
+				logger.Info("Running periodic BadgerDB backup...")
+				err := badgerKV.Backup()
+				if err != nil {
+					logger.Error("Periodic BadgerDB backup failed", err)
+				} else {
+					logger.Info("Periodic BadgerDB backup completed successfully")
+				}
+			}
+		}
+	}()
+	return backupCancel
 }
 
 func GetNATSConnection(environment string) (*nats.Conn, error) {

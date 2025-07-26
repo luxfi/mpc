@@ -13,4 +13,6 @@ type KVStore interface {
 
 	// Close closes the key-value store.
 	Close() error
+
+	Backup() error
 }

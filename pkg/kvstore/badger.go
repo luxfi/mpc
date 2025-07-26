@@ -9,37 +9,57 @@ import (
 )
 
 var (
-	ErrEncryptionKeyNotProvided = errors.New("encryption key not provided")
+	ErrEncryptionKeyNotProvided       = errors.New("encryption key not provided")
+	ErrBackupEncryptionKeyNotProvided = errors.New("backup encryption key not provided")
 )
 
 // BadgerKVStore is an implementation of the KVStore interface using BadgerDB.
 type BadgerKVStore struct {
-	DB *badger.DB
+	DB             *badger.DB
+	BackupExecutor *badgerBackupExecutor
+}
+
+type BadgerConfig struct {
+	NodeID              string
+	EncryptionKey       []byte
+	BackupEncryptionKey []byte
+	BackupDir           string
+	DBPath              string
 }
 
 // NewBadgerKVStore creates a new BadgerKVStore instance.
-func NewBadgerKVStore(dbPath string, encryptionKey []byte) (*BadgerKVStore, error) {
+func NewBadgerKVStore(config BadgerConfig) (*BadgerKVStore, error) {
 	// must ensure encryption key is provided
-	if len(encryptionKey) == 0 {
+	if len(config.EncryptionKey) == 0 {
 		return nil, ErrEncryptionKeyNotProvided
 	}
+	if len(config.BackupEncryptionKey) == 0 {
+		return nil, ErrBackupEncryptionKeyNotProvided
+	}
 
-	opts := badger.DefaultOptions(dbPath).
+	opts := badger.DefaultOptions(config.DBPath).
 		WithCompression(options.ZSTD).
-		WithEncryptionKey(encryptionKey).
+		WithEncryptionKey(config.EncryptionKey).
 		WithIndexCacheSize(128 << 20).
 		WithBlockCacheSize(256 << 20).
 		WithSyncWrites(true).
-		WithVerifyValueChecksum(true). // validate every value-log entry’s checksum on read, surfacing corruption instead of masking it
+		WithVerifyValueChecksum(true). // validate every value-log entry's checksum on read, surfacing corruption instead of masking it
 		WithCompactL0OnClose(true)     // compacts level-0 SSTables on shutdown, reducing startup work and avoiding stalls on open
 	db, err := badger.Open(opts)
 	if err != nil {
 		return nil, err
 	}
 
-	logger.Info("Connected to BadgerDB successfully!", "path", dbPath)
+	logger.Info("Connected to BadgerDB successfully!", "path", config.DBPath)
 
-	return &BadgerKVStore{DB: db}, nil
+	backupExecutor := NewBadgerBackupExecutor(
+		config.NodeID,
+		db,
+		config.BackupEncryptionKey,
+		config.BackupDir,
+	)
+
+	return &BadgerKVStore{DB: db, BackupExecutor: backupExecutor}, nil
 }
 
 // Put stores a key-value pair in the BadgerDB.
@@ -89,6 +109,13 @@ func (b *BadgerKVStore) Delete(key string) error {
 	return b.DB.Update(func(txn *badger.Txn) error {
 		return txn.Delete([]byte(key))
 	})
+}
+
+func (b *BadgerKVStore) Backup() error {
+	if b.BackupExecutor == nil {
+		return errors.New("backup executor is not initialized")
+	}
+	return b.BackupExecutor.Execute()
 }
 
 // Close closes the BadgerDB.
