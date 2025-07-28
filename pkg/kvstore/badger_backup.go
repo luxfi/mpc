@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -115,7 +116,13 @@ func (b *badgerBackupExecutor) Execute() error {
 	if _, err := f.Write([]byte(magic)); err != nil {
 		return err
 	}
-	if err := binary.Write(f, binary.BigEndian, uint32(len(metaJSON))); err != nil {
+
+	metaLen := len(metaJSON)
+	if metaLen > math.MaxUint32 {
+		return fmt.Errorf("metaJSON too large")
+	}
+
+	if err := binary.Write(f, binary.BigEndian, uint32(metaLen)); err != nil {
 		return err
 	}
 	if _, err := f.Write(metaJSON); err != nil {

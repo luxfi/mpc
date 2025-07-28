@@ -17,12 +17,10 @@ func recoverDatabase(ctx context.Context, c *cli.Command) error {
 	recoveryPath := c.String("recovery-path")
 	force := c.Bool("force")
 
-	// Validate backup directory
 	if _, err := os.Stat(backupDir); os.IsNotExist(err) {
 		return fmt.Errorf("backup directory does not exist: %s", backupDir)
 	}
 
-	// Check if recovery path already exists
 	if _, err := os.Stat(recoveryPath); err == nil && !force {
 		return fmt.Errorf("recovery path already exists: %s (use --force to overwrite)", recoveryPath)
 	}
