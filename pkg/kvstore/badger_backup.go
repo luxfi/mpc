@@ -17,6 +17,7 @@ import (
 
 	"github.com/dgraph-io/badger/v4"
 	"github.com/fystack/mpcium/pkg/encryption"
+	"github.com/rs/zerolog/log"
 )
 
 const (
@@ -180,7 +181,7 @@ func (b *badgerBackupExecutor) SortedEncryptedBackups() []string {
 }
 
 func (b *badgerBackupExecutor) RestoreAllBackupsEncrypted(restorePath string, encryptionKey []byte) error {
-	err := os.MkdirAll(restorePath, 0755)
+	err := os.MkdirAll(restorePath, 0700)
 	if err != nil {
 		return fmt.Errorf("failed to create restore directory: %w", err)
 	}
@@ -197,12 +198,17 @@ func (b *badgerBackupExecutor) RestoreAllBackupsEncrypted(restorePath string, en
 	for _, file := range b.SortedEncryptedBackups() {
 		fmt.Println("Restoring:", file)
 		if err := b.loadEncryptedBackup(restoreDB, file); err != nil {
-			restoreDB.Close()
+			closeDBErr := restoreDB.Close()
+			if closeDBErr != nil {
+				log.Printf("Failed to close restoreDB: %v", closeDBErr)
+			}
 			return err
 		}
 	}
 
-	restoreDB.Close()
+	if err := restoreDB.Close(); err != nil {
+		return fmt.Errorf("failed to close restore database: %w", err)
+	}
 	fmt.Println("✅ Restore complete:", restorePath)
 	return nil
 }
