@@ -141,11 +141,6 @@ func main() {
 						Usage:    "Target path for database recovery",
 						Required: true,
 					},
-					&cli.StringFlag{
-						Name:    "backup-encryption-key",
-						Aliases: []string{"k"},
-						Usage:   "Encryption key for backup files (will prompt if not provided)",
-					},
 					&cli.BoolFlag{
 						Name:    "force",
 						Aliases: []string{"f"},

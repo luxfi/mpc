@@ -200,7 +200,7 @@ func TestBadgerBackupExecutor_BackupMetadata(t *testing.T) {
 		assert.NotEmpty(t, meta.NonceB64)
 		assert.NotEmpty(t, meta.CreatedAt)
 		assert.GreaterOrEqual(t, meta.Since, uint64(0)) // Since can be 0 for first backup
-		assert.Greater(t, meta.NextVersion, meta.Since)
+		assert.Greater(t, meta.NextSince, meta.Since)
 		assert.NotEmpty(t, meta.EncryptionKeyID)
 	})
 
@@ -234,7 +234,8 @@ func TestBadgerBackupExecutor_VersionTracking(t *testing.T) {
 
 	t.Run("should create version file on first save", func(t *testing.T) {
 		version := uint64(12345)
-		err := executor.SaveVersionInfo(version)
+		since := uint64(100)
+		err := executor.SaveVersionInfo(version, since)
 		require.NoError(t, err)
 
 		// Check file was created
@@ -260,7 +261,8 @@ func TestBadgerBackupExecutor_VersionTracking(t *testing.T) {
 		time.Sleep(100 * time.Millisecond) // Increased from 10ms to 100ms
 
 		newVersion := uint64(67890)
-		err = executor.SaveVersionInfo(newVersion)
+		newSince := uint64(200)
+		err = executor.SaveVersionInfo(newVersion, newSince)
 		require.NoError(t, err)
 
 		// Check that the file modification time changed

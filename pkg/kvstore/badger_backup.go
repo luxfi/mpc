@@ -180,7 +180,8 @@ func (b *badgerBackupExecutor) RestoreAllBackupsEncrypted(restorePath string, en
 
 	opts := badger.DefaultOptions(restorePath).
 		WithEncryptionKey(encryptionKey).
-		WithIndexCacheSize(10 << 20)
+		WithIndexCacheSize(10 << 20).
+		WithLogger(newQuietBadgerLogger())
 	restoreDB, err := badger.Open(opts)
 	if err != nil {
 		return err

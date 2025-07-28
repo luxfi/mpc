@@ -107,6 +107,32 @@ Each Mpcium node:
 - **Scalable and pluggable**: Easily expand the cluster or integrate additional tools
 - **Secure peer authentication**: All inter-node messages are signed and verified using Ed25519
 
+## Configuration
+
+The application uses a YAML configuration file (`config.yaml`) with the following key settings:
+
+### Database Configuration
+
+- `badger_password`: Password for encrypting the BadgerDB database
+- `db_path`: Path where the database files are stored
+
+### Backup Configuration
+
+- `backup_enabled`: Enable/disable automatic backups (default: true)
+- `backup_period_seconds`: How often to perform backups in seconds (default: 300)
+- `backup_dir`: Directory where encrypted backups are stored
+
+### Network Configuration
+
+- `nats.url`: NATS server URL
+- `consul.address`: Consul server address
+
+### MPC Configuration
+
+- `mpc_threshold`: Threshold for multi-party computation
+- `event_initiator_pubkey`: Public key of the event initiator
+- `max_concurrent_keygen`: Maximum concurrent key generation operations
+
 ## Installation and Run
 
 For full installation and run instructions, see [INSTALLATION.md](./INSTALLATION.md).
@@ -176,4 +202,3 @@ go test ./... -v
 cd e2e
 make test
 ```
-

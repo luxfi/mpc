@@ -44,7 +44,9 @@ func NewBadgerKVStore(config BadgerConfig) (*BadgerKVStore, error) {
 		WithBlockCacheSize(256 << 20).
 		WithSyncWrites(true).
 		WithVerifyValueChecksum(true). // validate every value-log entry's checksum on read, surfacing corruption instead of masking it
-		WithCompactL0OnClose(true)     // compacts level-0 SSTables on shutdown, reducing startup work and avoiding stalls on open
+		WithCompactL0OnClose(true).    // compacts level-0 SSTables on shutdown, reducing startup work and avoiding stalls on open
+		WithLogger(newQuietBadgerLogger())
+
 	db, err := badger.Open(opts)
 	if err != nil {
 		return nil, err

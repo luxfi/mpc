@@ -15,7 +15,6 @@ import (
 func recoverDatabase(ctx context.Context, c *cli.Command) error {
 	backupDir := c.String("backup-dir")
 	recoveryPath := c.String("recovery-path")
-	encryptionKey := c.String("backup-encryption-key")
 	force := c.Bool("force")
 
 	// Validate backup directory
@@ -28,21 +27,15 @@ func recoverDatabase(ctx context.Context, c *cli.Command) error {
 		return fmt.Errorf("recovery path already exists: %s (use --force to overwrite)", recoveryPath)
 	}
 
-	// Get encryption key
+	// Prompt for encryption key
 	var key []byte
-	if encryptionKey != "" {
-		key = []byte(encryptionKey)
-	} else {
-		// Prompt for encryption key
-		fmt.Print("Enter backup encryption key: ")
-		keyBytes, err := term.ReadPassword(int(syscall.Stdin))
-		if err != nil {
-			return fmt.Errorf("failed to read encryption key: %w", err)
-		}
-		fmt.Println() // Add newline after password input
-		key = keyBytes
+	fmt.Print("Enter backup encryption key: ")
+	keyBytes, err := term.ReadPassword(int(syscall.Stdin))
+	if err != nil {
+		return fmt.Errorf("failed to read encryption key: %w", err)
 	}
-
+	fmt.Println() // Add newline after password input
+	key = keyBytes
 	if len(key) == 0 {
 		return fmt.Errorf("encryption key cannot be empty")
 	}
