@@ -29,15 +29,15 @@ import (
 )
 
 const (
-	// Version information
-	VERSION = "0.2.1"
+	Version                    = "0.2.1"
+	DefaultBackupPeriodSeconds = 300 // (5 minutes)
 )
 
 func main() {
 	app := &cli.Command{
 		Name:    "mpcium",
 		Usage:   "Multi-Party Computation node for threshold signatures",
-		Version: VERSION,
+		Version: Version,
 		Commands: []*cli.Command{
 			{
 				Name:  "start",
@@ -72,7 +72,7 @@ func main() {
 				Name:  "version",
 				Usage: "Display detailed version information",
 				Action: func(ctx context.Context, c *cli.Command) error {
-					fmt.Printf("mpcium version %s\n", VERSION)
+					fmt.Printf("mpcium version %s\n", Version)
 					return nil
 				},
 			},
@@ -114,8 +114,8 @@ func runNode(ctx context.Context, c *cli.Command) error {
 	// Start background backup job
 	backupEnabled := viper.GetBool("backup_enabled")
 	if backupEnabled {
-		backupPeriod := viper.GetInt("backup_period")
-		stopBackup := StartPeriodicBackup(ctx, badgerKV, backupPeriod)
+		backupPeriodSeconds := viper.GetInt("backup_period_seconds")
+		stopBackup := StartPeriodicBackup(ctx, badgerKV, backupPeriodSeconds)
 		defer stopBackup()
 	}
 
@@ -424,11 +424,11 @@ func NewBadgerKV(nodeName, nodeID string) *kvstore.BadgerKVStore {
 	return badgerKv
 }
 
-func StartPeriodicBackup(ctx context.Context, badgerKV *kvstore.BadgerKVStore, periodMinutes int) func() {
-	if periodMinutes <= 0 {
-		periodMinutes = 5 // default to 5 minutes
+func StartPeriodicBackup(ctx context.Context, badgerKV *kvstore.BadgerKVStore, periodSeconds int) func() {
+	if periodSeconds <= 0 {
+		periodSeconds = DefaultBackupPeriodSeconds
 	}
-	backupTicker := time.NewTicker(time.Duration(periodMinutes) * time.Minute)
+	backupTicker := time.NewTicker(time.Duration(periodSeconds) * time.Second)
 	backupCtx, backupCancel := context.WithCancel(ctx)
 	go func() {
 		for {

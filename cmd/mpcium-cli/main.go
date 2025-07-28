@@ -126,6 +126,36 @@ func main() {
 				Action: generateInitiatorIdentity,
 			},
 			{
+				Name:  "recover",
+				Usage: "Recover database from encrypted backup files",
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:     "backup-dir",
+						Aliases:  []string{"b"},
+						Usage:    "Directory containing encrypted backup files",
+						Required: true,
+					},
+					&cli.StringFlag{
+						Name:     "recovery-path",
+						Aliases:  []string{"r"},
+						Usage:    "Target path for database recovery",
+						Required: true,
+					},
+					&cli.StringFlag{
+						Name:    "backup-encryption-key",
+						Aliases: []string{"k"},
+						Usage:   "Encryption key for backup files (will prompt if not provided)",
+					},
+					&cli.BoolFlag{
+						Name:    "force",
+						Aliases: []string{"f"},
+						Value:   false,
+						Usage:   "Force overwrite if recovery path already exists",
+					},
+				},
+				Action: recoverDatabase,
+			},
+			{
 				Name:  "version",
 				Usage: "Display detailed version information",
 				Action: func(ctx context.Context, c *cli.Command) error {

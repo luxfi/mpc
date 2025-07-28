@@ -21,7 +21,6 @@ import (
 const (
 	magic            = "MPCIUM_BACKUP"
 	dbPath           = "./db"
-	restoreDBPath    = "./restored_db"
 	defaultBackupDir = "./backups"
 )
 
@@ -35,7 +34,7 @@ type BadgerBackupMeta struct {
 }
 
 type BadgerBackupVersionInfo struct {
-	Counter   uint64 `json:"version"`    // Human-readable counter
+	Version   uint64 `json:"version"`    // Human-readable counter
 	Since     uint64 `json:"since"`      // Badger internal backup offset
 	UpdatedAt string `json:"updated_at"` // RFC3339
 }
@@ -75,9 +74,9 @@ func (b *badgerBackupExecutor) Execute() error {
 	}
 
 	since := info.Since
-	counter := info.Counter + 1
+	version := info.Version + 1
 	now := time.Now()
-	filename := fmt.Sprintf("backup-%s-%s-%d.enc", b.NodeID, now.Format("2006-01-02_15-04-05"), counter)
+	filename := fmt.Sprintf("backup-%s-%s-%d.enc", b.NodeID, now.Format("2006-01-02_15-04-05"), version)
 	outPath := filepath.Join(b.BackupDir, filename)
 
 	var plain bytes.Buffer
@@ -126,8 +125,8 @@ func (b *badgerBackupExecutor) Execute() error {
 		return err
 	}
 
-	fmt.Println("Encrypted backup successfully:", filename, "next version:", counter)
-	if err := b.SaveVersionInfo(counter, nextSince); err != nil {
+	fmt.Println("Encrypted backup successfully:", filename, "next version:", version)
+	if err := b.SaveVersionInfo(version, nextSince); err != nil {
 		fmt.Println("Warning: Failed to save latest.version:", err)
 	}
 
@@ -136,7 +135,7 @@ func (b *badgerBackupExecutor) Execute() error {
 
 func (b *badgerBackupExecutor) SaveVersionInfo(counter, since uint64) error {
 	info := BadgerBackupVersionInfo{
-		Counter:   counter,
+		Version:   counter,
 		Since:     since,
 		UpdatedAt: time.Now().UTC().Format(time.RFC3339),
 	}
@@ -156,7 +155,7 @@ func (b *badgerBackupExecutor) LoadVersionInfo() (BadgerBackupVersionInfo, error
 		if errors.Is(err, os.ErrNotExist) {
 			// Return default info and no error
 			return BadgerBackupVersionInfo{
-				Counter:   0,
+				Version:   0,
 				Since:     0,
 				UpdatedAt: time.Now().Format(time.RFC3339),
 			}, nil
