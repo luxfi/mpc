@@ -19,10 +19,17 @@ func main() {
 	}
 
 	dbPath := fmt.Sprintf("./db/%s", *nodeName)
-	badgerKv, err := kvstore.NewBadgerKVStore(
-		dbPath,
-		[]byte(""),
-	)
+
+	// Create BadgerConfig struct
+	config := kvstore.BadgerConfig{
+		NodeID:              *nodeName,
+		EncryptionKey:       []byte(""), // Empty key for migration
+		BackupEncryptionKey: []byte(""), // Empty key for migration
+		BackupDir:           "./backups",
+		DBPath:              dbPath,
+	}
+
+	badgerKv, err := kvstore.NewBadgerKVStore(config)
 	if err != nil {
 		logger.Fatal("Failed to create badger kv store", err)
 	}
