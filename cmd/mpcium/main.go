@@ -91,6 +91,7 @@ func runNode(ctx context.Context, c *cli.Command) error {
 	usePrompts := c.Bool("prompt-credentials")
 	debug := c.Bool("debug")
 
+	viper.SetDefault("backup_enabled", true)
 	config.InitViperConfig()
 	environment := viper.GetString("environment")
 	logger.Init(environment, debug)
