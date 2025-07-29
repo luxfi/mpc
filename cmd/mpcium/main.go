@@ -29,7 +29,7 @@ import (
 )
 
 const (
-	Version                    = "0.2.1"
+	Version                    = "0.3.1"
 	DefaultBackupPeriodSeconds = 300 // (5 minutes)
 )
 
