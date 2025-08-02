@@ -6,8 +6,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/fystack/mpcium/pkg/infra"
-	"github.com/fystack/mpcium/pkg/logger"
+	"github.com/luxfi/mpc/pkg/infra"
+	"github.com/luxfi/mpc/pkg/logger"
 	"github.com/hashicorp/consul/api"
 	"github.com/samber/lo"
 )

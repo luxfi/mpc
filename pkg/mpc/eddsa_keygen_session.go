@@ -7,11 +7,11 @@ import (
 	"github.com/bnb-chain/tss-lib/v2/eddsa/keygen"
 	"github.com/bnb-chain/tss-lib/v2/tss"
 	"github.com/decred/dcrd/dcrec/edwards/v2"
-	"github.com/fystack/mpcium/pkg/identity"
-	"github.com/fystack/mpcium/pkg/keyinfo"
-	"github.com/fystack/mpcium/pkg/kvstore"
-	"github.com/fystack/mpcium/pkg/logger"
-	"github.com/fystack/mpcium/pkg/messaging"
+	"github.com/luxfi/mpc/pkg/identity"
+	"github.com/luxfi/mpc/pkg/keyinfo"
+	"github.com/luxfi/mpc/pkg/kvstore"
+	"github.com/luxfi/mpc/pkg/logger"
+	"github.com/luxfi/mpc/pkg/messaging"
 )
 
 type eddsaKeygenSession struct {

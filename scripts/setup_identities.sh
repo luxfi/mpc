@@ -22,7 +22,7 @@ echo "🔑 Generating identities for each node..."
 for i in $(seq 0 $((NUM_NODES-1))); do
     echo "📝 Generating identity for node$i..."
     cd "node$i"
-    mpcium-cli generate-identity --node "node$i"
+    lux-mpc-cli generate-identity --node "node$i"
     cd ..
 done
 
@@ -54,6 +54,6 @@ echo "    ├── identity/"
 echo "    └── peers.json"
 echo
 echo "✅ You can now start your nodes with:"
-echo "cd node0 && mpcium start -n node0"
-echo "cd node1 && mpcium start -n node1"
-echo "cd node2 && mpcium start -n node2" 
+echo "cd node0 && lux-mpc start -n node0"
+echo "cd node1 && lux-mpc start -n node1"
+echo "cd node2 && lux-mpc start -n node2" 

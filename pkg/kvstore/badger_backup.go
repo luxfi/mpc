@@ -16,12 +16,12 @@ import (
 	"time"
 
 	"github.com/dgraph-io/badger/v4"
-	"github.com/fystack/mpcium/pkg/encryption"
+	"github.com/luxfi/mpc/pkg/encryption"
 	"github.com/rs/zerolog/log"
 )
 
 const (
-	magic            = "MPCIUM_BACKUP"
+	magic            = "LUX_MPC_BACKUP"
 	dbPath           = "./db"
 	defaultBackupDir = "./backups"
 )

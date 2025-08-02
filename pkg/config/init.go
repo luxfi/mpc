@@ -5,7 +5,7 @@ import (
 	"log"
 	"strings"
 
-	"github.com/fystack/mpcium/pkg/logger"
+	"github.com/luxfi/mpc/pkg/logger"
 	"github.com/mitchellh/mapstructure"
 	"github.com/spf13/viper"
 )

@@ -6,7 +6,7 @@ import (
 	"os"
 	"syscall"
 
-	"github.com/fystack/mpcium/pkg/kvstore"
+	"github.com/luxfi/mpc/pkg/kvstore"
 	"github.com/urfave/cli/v3"
 	"golang.org/x/term"
 )

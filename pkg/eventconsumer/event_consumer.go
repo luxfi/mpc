@@ -10,12 +10,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/fystack/mpcium/pkg/event"
-	"github.com/fystack/mpcium/pkg/identity"
-	"github.com/fystack/mpcium/pkg/logger"
-	"github.com/fystack/mpcium/pkg/messaging"
-	"github.com/fystack/mpcium/pkg/mpc"
-	"github.com/fystack/mpcium/pkg/types"
+	"github.com/luxfi/mpc/pkg/event"
+	"github.com/luxfi/mpc/pkg/identity"
+	"github.com/luxfi/mpc/pkg/logger"
+	"github.com/luxfi/mpc/pkg/messaging"
+	"github.com/luxfi/mpc/pkg/mpc"
+	"github.com/luxfi/mpc/pkg/types"
 	"github.com/nats-io/nats.go"
 	"github.com/spf13/viper"
 )

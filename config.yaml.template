@@ -4,7 +4,7 @@ consul:
   address: localhost:8500
 
 mpc_threshold: 2
-environment: development
+environment: local # Options: mainnet, testnet, local
 badger_password: "your_badger_password"
 event_initiator_pubkey: "event_initiator_pubkey"
 max_concurrent_keygen: 2

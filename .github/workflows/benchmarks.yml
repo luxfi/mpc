@@ -1,0 +1,180 @@
+name: Benchmarks
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+    inputs:
+      benchmark_time:
+        description: 'Benchmark time per test (e.g., 10s, 1m)'
+        required: false
+        default: '10s'
+
+jobs:
+  unit-benchmarks:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: "1.23"
+
+      - name: Cache Go modules
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Install dependencies
+        run: go mod download
+
+      - name: Run unit benchmarks
+        run: |
+          go test -bench=. -benchmem -benchtime=${{ github.event.inputs.benchmark_time || '10s' }} ./pkg/... | tee benchmark_results.txt
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v3
+        with:
+          name: unit-benchmark-results
+          path: benchmark_results.txt
+
+  e2e-benchmarks:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: "1.23"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Cache Go modules
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Build binaries
+        run: |
+          go build -o lux-mpc ./cmd/lux-mpc
+          go build -o lux-mpc-cli ./cmd/lux-mpc-cli
+          chmod +x lux-mpc lux-mpc-cli
+
+      - name: Install binaries
+        run: |
+          sudo mv lux-mpc /usr/local/bin/
+          sudo mv lux-mpc-cli /usr/local/bin/
+
+      - name: Install E2E dependencies
+        run: |
+          cd e2e
+          go mod download
+
+      - name: Setup test environment
+        run: |
+          cd e2e
+          docker compose -f docker-compose.test.yaml up -d
+          sleep 10
+          docker compose -f docker-compose.test.yaml ps
+
+      - name: Run E2E benchmarks
+        run: |
+          cd e2e
+          go test -bench=. -benchmem -benchtime=${{ github.event.inputs.benchmark_time || '10s' }} -timeout=30m | tee e2e_benchmark_results.txt
+
+      - name: Upload E2E benchmark results
+        uses: actions/upload-artifact@v3
+        with:
+          name: e2e-benchmark-results
+          path: e2e/e2e_benchmark_results.txt
+
+      - name: Cleanup
+        if: always()
+        run: |
+          cd e2e
+          docker compose -f docker-compose.test.yaml down -v
+          ./cleanup_test_env.sh || true
+
+  benchmark-comparison:
+    needs: [unit-benchmarks, e2e-benchmarks]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    
+    steps:
+      - name: Download current benchmark results
+        uses: actions/download-artifact@v3
+        with:
+          name: unit-benchmark-results
+          path: current/
+
+      - name: Download E2E benchmark results
+        uses: actions/download-artifact@v3
+        with:
+          name: e2e-benchmark-results
+          path: current/
+
+      - name: Comment PR with results
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            
+            let comment = '## 📊 Benchmark Results\n\n';
+            
+            // Read unit benchmark results
+            if (fs.existsSync('current/benchmark_results.txt')) {
+              const unitResults = fs.readFileSync('current/benchmark_results.txt', 'utf8');
+              comment += '### Unit Benchmarks\n```\n' + unitResults + '\n```\n\n';
+            }
+            
+            // Read E2E benchmark results
+            if (fs.existsSync('current/e2e_benchmark_results.txt')) {
+              const e2eResults = fs.readFileSync('current/e2e_benchmark_results.txt', 'utf8');
+              comment += '### E2E Benchmarks\n```\n' + e2eResults + '\n```\n';
+            }
+            
+            // Find and update or create comment
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            
+            const botComment = comments.find(comment => 
+              comment.user.type === 'Bot' && comment.body.includes('📊 Benchmark Results')
+            );
+            
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: comment
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: comment
+              });
+            }

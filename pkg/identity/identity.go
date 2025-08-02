@@ -16,9 +16,9 @@ import (
 	"github.com/bnb-chain/tss-lib/v2/tss"
 	"golang.org/x/term"
 
-	"github.com/fystack/mpcium/pkg/common/pathutil"
-	"github.com/fystack/mpcium/pkg/logger"
-	"github.com/fystack/mpcium/pkg/types"
+	"github.com/luxfi/mpc/pkg/common/pathutil"
+	"github.com/luxfi/mpc/pkg/logger"
+	"github.com/luxfi/mpc/pkg/types"
 	"github.com/spf13/viper"
 )
 

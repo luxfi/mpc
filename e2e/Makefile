@@ -8,12 +8,12 @@ test: deps setup
 # Setup test environment
 setup:
 	@echo "🔧 Setting up test environment..."
-	@if ! command -v mpcium >/dev/null 2>&1; then \
-		echo "❌ mpcium binary not found in PATH. Please run 'make' in the root directory first."; \
+	@if ! command -v mpc >/dev/null 2>&1; then \
+		echo "❌ mpc binary not found in PATH. Please run 'make' in the root directory first."; \
 		exit 1; \
 	fi
-	@if ! command -v mpcium-cli >/dev/null 2>&1; then \
-		echo "❌ mpcium-cli binary not found in PATH. Please run 'make' in the root directory first."; \
+	@if ! command -v mpc-cli >/dev/null 2>&1; then \
+		echo "❌ mpc-cli binary not found in PATH. Please run 'make' in the root directory first."; \
 		exit 1; \
 	fi
 	@echo "✅ Binaries found"

@@ -1,10 +1,10 @@
-module github.com/fystack/mpcium/e2e
+module github.com/luxfi/mpc/e2e
 
 go 1.23.0
 
 require (
 	github.com/dgraph-io/badger/v4 v4.2.0
-	github.com/fystack/mpcium v0.0.0-00010101000000-000000000000
+	github.com/luxfi/mpc v0.0.0-00010101000000-000000000000
 	github.com/google/uuid v1.6.0
 	github.com/hashicorp/consul/api v1.26.1
 	github.com/nats-io/nats.go v1.31.0
@@ -86,6 +86,6 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/fystack/mpcium => ../
+replace github.com/luxfi/mpc => ../
 
-replace github.com/agl/ed25519 => github.com/binance-chain/edwards25519 v0.0.0-20200305024217-f36fc4b53d43
+replace github.com/agl/ed25519 => github.com/luxfi/edwards25519 v0.0.0-20200305024217-f36fc4b53d43

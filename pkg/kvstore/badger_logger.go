@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/dgraph-io/badger/v4"
-	"github.com/fystack/mpcium/pkg/logger"
+	"github.com/luxfi/mpc/pkg/logger"
 )
 
 // quietBadgerLogger is a custom logger that suppresses INFO and DEBUG messages

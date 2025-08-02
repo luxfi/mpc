@@ -1,4 +1,4 @@
-# Mpcium Installation Guide
+# Lux MPC Installation Guide
 
 ## Prerequisites
 
@@ -10,13 +10,13 @@ Before starting, ensure you have:
 
 ---
 
-## Clone and Install Mpcium
+## Clone and Install Lux MPC
 
 ### Clone the Repository
 
 ```bash
-git clone https://github.com/fystack/mpcium.git
-cd mpcium
+git clone https://github.com/luxfi/mpc.git
+cd mpc
 ```
 
 ### Build the Project
@@ -30,14 +30,14 @@ make
 Or with Go:
 
 ```bash
-go install ./cmd/mpcium
-go install ./cmd/mpcium-cli
+go install ./cmd/lux-mpc
+go install ./cmd/lux-mpc-cli
 ```
 
 ### Available Commands
 
-- `mpcium`: Start an MPCium node
-- `mpcium-cli`: CLI utility for peer, identity, and initiator configuration
+- `lux-mpc`: Start a Lux MPC node
+- `lux-mpc-cli`: CLI utility for peer, identity, and initiator configuration
 
 ---
 
@@ -85,7 +85,7 @@ docker compose up -d
 ## Generate Peer Configuration
 
 ```bash
-mpcium-cli generate-peers -n 3
+lux-mpc-cli generate-peers -n 3
 ```
 
 Example output:
@@ -137,7 +137,7 @@ badger_password: "F))ysJp?E]ol&I;^"
 ### 2. Register Peers to Consul
 
 ```bash
-mpcium-cli register-peers
+lux-mpc-cli register-peers
 ```
 
 ---
@@ -147,7 +147,7 @@ mpcium-cli register-peers
 ### Generate the Initiator
 
 ```bash
-mpcium-cli generate-initiator
+lux-mpc-cli generate-initiator
 ```
 
 > 💡 Use `--encrypt` in production.
@@ -188,13 +188,13 @@ Example for `node0`:
 
 ```bash
 cd node0
-mpcium-cli generate-identity --node node0
+lux-mpc-cli generate-identity --node node0
 ```
 
 > 💡 For production, use encryption:
 >
 > ```bash
-> mpcium-cli generate-identity --node node0 --encrypt
+> lux-mpc-cli generate-identity --node node0 --encrypt
 > ```
 
 ### Generate Strong Password for Encryption
@@ -243,29 +243,29 @@ Repeat this for `node1` and `node2`.
 
 ---
 
-## Start Mpcium Nodes
+## Start Lux MPC Nodes
 
 Start each node:
 
 ```bash
 cd node0
-mpcium start -n node0
+lux-mpc start -n node0
 ```
 
 ```bash
 cd node1
-mpcium start -n node1
+lux-mpc start -n node1
 ```
 
 ```bash
 cd node2
-mpcium start -n node2
+lux-mpc start -n node2
 ```
 
 > 💡 In production, avoid hardcoded passwords:
 >
 > ```bash
-> mpcium start -n node0 --prompt-credentials
+> lux-mpc start -n node0 --prompt-credentials
 > ```
 
 ---
@@ -280,8 +280,8 @@ mpcium start -n node2
 2. Enable **TLS certificates** on all endpoints.
 3. Encrypt all keys:
    ```bash
-   mpcium-cli generate-initiator --encrypt
-   mpcium-cli generate-identity --node node0 --encrypt
+   lux-mpc-cli generate-initiator --encrypt
+   lux-mpc-cli generate-identity --node node0 --encrypt
    ```
 4. Use `--prompt-credentials` to securely input Badger passwords (avoid hardcoding in `config.yaml`).
 

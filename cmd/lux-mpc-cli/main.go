@@ -16,8 +16,8 @@ const (
 
 func main() {
 	cmd := &cli.Command{
-		Name:  "mpcium",
-		Usage: "Fystack MPC node management tools",
+		Name:  "lux-mpc-cli",
+		Usage: "Lux MPC node management tools",
 		Commands: []*cli.Command{
 			{
 				Name:   "generate-peers",
@@ -154,7 +154,7 @@ func main() {
 				Name:  "version",
 				Usage: "Display detailed version information",
 				Action: func(ctx context.Context, c *cli.Command) error {
-					fmt.Printf("mpcium-cli version %s\n", VERSION)
+					fmt.Printf("lux-mpc-cli version %s\n", VERSION)
 					return nil
 				},
 			},
