@@ -26,8 +26,8 @@ github.com/beorn7/perks v1.0.1/go.mod h1:G2ZrVWU2WbWT9wwq4/hrbKbnv/1ERSJQ0ibhJ6r
 github.com/bgentry/speakeasy v0.1.0/go.mod h1:+zsyZBPWlz7T6j88CTgSN5bM796AkVf0kBD4zp0CCIs=
 github.com/luxfi/edwards25519 v0.0.0-20200305024217-f36fc4b53d43 h1:Vkf7rtHx8uHx8gDfkQaCdVfc+gfrF9v6sR6xJy7RXNg=
 github.com/luxfi/edwards25519 v0.0.0-20200305024217-f36fc4b53d43/go.mod h1:TnVqVdGEK8b6erOMkcyYGWzCQMw7HEMCOw3BgFYCFWs=
-github.com/bnb-chain/tss-lib/v2 v2.0.2 h1:dL2GJFCSYsYQ0bHkGll+hNM2JWsC1rxDmJJJQEmUy9g=
-github.com/bnb-chain/tss-lib/v2 v2.0.2/go.mod h1:s4LRfEqj89DhfNb+oraW0dURt5LtOHWXb9Gtkghn0L8=
+github.com/luxfi/threshold/v2 v2.0.2 h1:dL2GJFCSYsYQ0bHkGll+hNM2JWsC1rxDmJJJQEmUy9g=
+github.com/luxfi/threshold/v2 v2.0.2/go.mod h1:s4LRfEqj89DhfNb+oraW0dURt5LtOHWXb9Gtkghn0L8=
 github.com/btcsuite/btcd v0.20.1-beta/go.mod h1:wVuoA8VJLEcwgqHBwHmzLRazpKxTv13Px/pDuV7OomQ=
 github.com/btcsuite/btcd v0.22.0-beta.0.20220111032746-97732e52810c/go.mod h1:tjmYdS6MLJ5/s0Fj4DbLgSbDHbEqLJrtnHecBFkdz5M=
 github.com/btcsuite/btcd v0.23.4/go.mod h1:0QJIIN1wwIXF/3G/m87gIwGniDMDQqjVn4SZgnFpsYY=
