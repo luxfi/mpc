@@ -210,7 +210,7 @@ func TestBadgerBackupExecutor_BackupMetadata(t *testing.T) {
 		require.NoError(t, err)
 
 		// Should contain magic header
-		assert.Contains(t, string(data), "MPCIUM_BACKUP")
+		assert.Contains(t, string(data), "LUX_MPC_BACKUP")
 
 		// Should not contain plaintext data
 		assert.NotContains(t, string(data), "test-value")

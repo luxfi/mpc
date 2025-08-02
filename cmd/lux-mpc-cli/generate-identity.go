@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"filippo.io/age"
-	"github.com/fystack/mpcium/pkg/common/pathutil"
+	"github.com/luxfi/mpc/pkg/common/pathutil"
 	"github.com/urfave/cli/v3"
 	"golang.org/x/term"
 )

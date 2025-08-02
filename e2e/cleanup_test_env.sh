@@ -7,11 +7,11 @@ set -e
 echo "=== MPC Test Environment Cleanup ==="
 
 # Function to kill MPC processes
-kill_mpc_processes() {
+kill_lux_mpc_processes() {
     echo "Checking for existing MPC processes..."
     
-    # Find all mpcium processes
-    PIDS=$(pgrep -f "mpcium" || true)
+    # Find all lux-mpc processes
+    PIDS=$(pgrep -f "lux-mpc" || true)
     
     if [ -z "$PIDS" ]; then
         echo "No existing MPC processes found"
@@ -72,7 +72,7 @@ cleanup_test_artifacts() {
 main() {
     echo "Starting comprehensive test environment cleanup..."
     
-    kill_mpc_processes
+    kill_lux_mpc_processes
     stop_docker_containers
     cleanup_test_artifacts
     

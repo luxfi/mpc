@@ -4,7 +4,7 @@ echo "🚀 Setting up Event Initiator..."
 
 # Generate the event initiator
 echo "📝 Generating event initiator..."
-mpcium-cli generate-initiator
+lux-mpc-cli generate-initiator
 
 # Extract the public key from the generated file
 if [ -f "event_initiator.identity.json" ]; then

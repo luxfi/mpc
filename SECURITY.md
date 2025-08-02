@@ -1,8 +1,8 @@
-# Mpcium Security Model
+# Lux MPC Security Model
 
 ## Core Security Principles
 
-Mpcium implements a threshold signature scheme with industry-standard security practices to protect cryptographic operations:
+Lux MPC implements a threshold signature scheme with industry-standard security practices to protect cryptographic operations:
 
 1. **Distributed Trust**: No single entity possesses complete private keys
 2. **Threshold Cryptography**: Requires t-out-of-n nodes to participate in signing operations
@@ -16,14 +16,14 @@ Mpcium implements a threshold signature scheme with industry-standard security p
 - **Ed25519 Keypairs**: Each node possesses a unique Ed25519 keypair for identity
 - **Identity Generation**: Secure identity creation with the `generate-identity` command:
   ```
-  go run cmd/mpcium-cli/main.go generate-identity --node=node0 --peers=peers.json --encrypt
+  go run cmd/lux-mpc-cli/main.go generate-identity --node=node0 --peers=peers.json --encrypt
   ```
 - **Metadata Tracking**: Each identity includes creation information, machine details, and timestamps
 - **Identity Verification**: All operations require cryptographic proof of identity
 
 ### Message Authentication
 
-Every message in the Mpcium network undergoes rigorous verification:
+Every message in the Lux MPC network undergoes rigorous verification:
 
 ```go
 // Messages are signed before transmission

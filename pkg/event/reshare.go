@@ -1,6 +1,6 @@
 package event
 
-import "github.com/fystack/mpcium/pkg/types"
+import "github.com/luxfi/mpc/pkg/types"
 
 type ResharingResultEvent struct {
 	WalletID     string        `json:"wallet_id"`

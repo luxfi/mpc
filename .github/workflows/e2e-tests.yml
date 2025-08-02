@@ -35,8 +35,8 @@ jobs:
         uses: actions/cache@v3
         with:
           path: |
-            ./mpcium
-            ./mpcium-cli
+            ./lux-mpc
+            ./lux-mpc-cli
           key: ${{ steps.cache-key.outputs.key }}
 
       - name: Cache Go modules
@@ -59,9 +59,9 @@ jobs:
       - name: Build binaries
         if: steps.cache-binaries.outputs.cache-hit != 'true'
         run: |
-          go build -o mpcium ./cmd/mpcium
-          go build -o mpcium-cli ./cmd/mpcium-cli
-          chmod +x mpcium mpcium-cli
+          go build -o lux-mpc ./cmd/lux-mpc
+          go build -o lux-mpc-cli ./cmd/lux-mpc-cli
+          chmod +x lux-mpc lux-mpc-cli
 
   # Key Generation E2E Tests
   e2e-keygen:
@@ -103,21 +103,21 @@ jobs:
         uses: actions/cache@v3
         with:
           path: |
-            ./mpcium
-            ./mpcium-cli
+            ./lux-mpc
+            ./lux-mpc-cli
           key: ${{ needs.build.outputs.cache-key }}
 
       - name: Install binaries
         run: |
-          sudo mv mpcium /usr/local/bin/
-          sudo mv mpcium-cli /usr/local/bin/
+          sudo mv lux-mpc /usr/local/bin/
+          sudo mv lux-mpc-cli /usr/local/bin/
 
       - name: Verify binaries are available
         run: |
-          which mpcium
-          which mpcium-cli
-          mpcium --version || echo "mpcium binary ready"
-          mpcium-cli --version || echo "mpcium-cli binary ready"
+          which lux-mpc
+          which lux-mpc-cli
+          lux-mpc --version || echo "lux-mpc binary ready"
+          lux-mpc-cli --version || echo "lux-mpc-cli binary ready"
 
       - name: Install E2E dependencies
         run: |
@@ -185,21 +185,21 @@ jobs:
         uses: actions/cache@v3
         with:
           path: |
-            ./mpcium
-            ./mpcium-cli
+            ./lux-mpc
+            ./lux-mpc-cli
           key: ${{ needs.build.outputs.cache-key }}
 
       - name: Install binaries
         run: |
-          sudo mv mpcium /usr/local/bin/
-          sudo mv mpcium-cli /usr/local/bin/
+          sudo mv lux-mpc /usr/local/bin/
+          sudo mv lux-mpc-cli /usr/local/bin/
 
       - name: Verify binaries are available
         run: |
-          which mpcium
-          which mpcium-cli
-          mpcium --version || echo "mpcium binary ready"
-          mpcium-cli --version || echo "mpcium-cli binary ready"
+          which lux-mpc
+          which lux-mpc-cli
+          lux-mpc --version || echo "lux-mpc binary ready"
+          lux-mpc-cli --version || echo "lux-mpc-cli binary ready"
 
       - name: Install E2E dependencies
         run: |
@@ -267,21 +267,21 @@ jobs:
         uses: actions/cache@v3
         with:
           path: |
-            ./mpcium
-            ./mpcium-cli
+            ./lux-mpc
+            ./lux-mpc-cli
           key: ${{ needs.build.outputs.cache-key }}
 
       - name: Install binaries
         run: |
-          sudo mv mpcium /usr/local/bin/
-          sudo mv mpcium-cli /usr/local/bin/
+          sudo mv lux-mpc /usr/local/bin/
+          sudo mv lux-mpc-cli /usr/local/bin/
 
       - name: Verify binaries are available
         run: |
-          which mpcium
-          which mpcium-cli
-          mpcium --version || echo "mpcium binary ready"
-          mpcium-cli --version || echo "mpcium-cli binary ready"
+          which lux-mpc
+          which lux-mpc-cli
+          lux-mpc --version || echo "lux-mpc binary ready"
+          lux-mpc-cli --version || echo "lux-mpc-cli binary ready"
 
       - name: Install E2E dependencies
         run: |

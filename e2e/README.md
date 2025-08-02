@@ -18,7 +18,7 @@ Before running the tests, ensure you have:
 
 - **Docker** installed and running
 - **Go** 1.23+ installed
-- **mpcium** and **mpcium-cli** binaries built (run `make` in the root directory)
+- **lux-mpc** and **lux-mpc-cli** binaries built (run `make` in the root directory)
 
 ## Running Tests
 
@@ -73,7 +73,7 @@ make clean
 
 3. **Start MPC Nodes**
 
-   - Launches 3 mpcium processes in parallel
+   - Launches 3 mpc processes in parallel
    - Each node uses its own configuration and identity
 
 4. **Test Key Generation**
@@ -119,7 +119,7 @@ Test nodes use a separate database path: `./test_db/` instead of `./db/`
 1. **Binary not found**
 
    ```
-   ❌ mpcium binary not found. Please run 'make' in the root directory first.
+   ❌ mpc binary not found. Please run 'make' in the root directory first.
    ```
 
    **Solution**: Run `make` in the root directory to build the binaries.
@@ -258,7 +258,7 @@ make cleanup-test-env
 # Option 3: Manual cleanup commands
 cd e2e
 # Kill MPC processes
-pgrep -f "mpcium" | xargs kill -TERM
+pgrep -f "mpc" | xargs kill -TERM
 # Stop Docker containers
 docker compose -f docker-compose.test.yaml down -v --remove-orphans
 # Remove test artifacts
@@ -272,13 +272,13 @@ If you encounter signature verification errors or other mysterious test failures
 1. **Check for running processes**:
 
    ```bash
-   ps aux | grep mpcium
+   ps aux | grep mpc
    ```
 
 2. **Kill any found processes**:
 
    ```bash
-   pkill -f mpcium
+   pkill -f mpc
    ```
 
 3. **Clean up completely**:
@@ -313,5 +313,5 @@ If you encounter signature verification errors or other mysterious test failures
 | "Failed to verify initiator message" | Multiple MPC instances running  | Run cleanup script              |
 | "Port already in use"                | Docker containers still running | `docker compose down -v`        |
 | "Database locked"                    | Previous test didn't clean up   | Remove `test_node*` directories |
-| Test hangs during setup              | Leftover processes interfering  | Kill all `mpcium` processes     |
+| Test hangs during setup              | Leftover processes interfering  | Kill all `mpc` processes     |
 

@@ -68,8 +68,8 @@ for i in $(seq 0 $((NUM_NODES-1))); do
     echo "📝 Generating identity for test_node$i..."
     cd "$BASE_DIR/test_node$i"
     
-    # Generate identity using mpcium-cli
-    mpcium-cli generate-identity --node "test_node$i"
+    # Generate identity using lux-mpc-cli
+    lux-mpc-cli generate-identity --node "test_node$i"
     
     cd - > /dev/null
 done
@@ -88,7 +88,7 @@ done
 # Generate test event initiator
 echo "🔐 Generating test event initiator..."
 cd "$BASE_DIR"
-mpcium-cli generate-initiator --node-name test_event_initiator --output-dir . --overwrite
+lux-mpc-cli generate-initiator --node-name test_event_initiator --output-dir . --overwrite
 
 # Extract the public key from the generated identity
 if [ -f "test_event_initiator.identity.json" ]; then

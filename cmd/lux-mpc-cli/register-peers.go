@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/fystack/mpcium/pkg/common/pathutil"
-	"github.com/fystack/mpcium/pkg/config"
-	"github.com/fystack/mpcium/pkg/infra"
-	"github.com/fystack/mpcium/pkg/logger"
+	"github.com/luxfi/mpc/pkg/common/pathutil"
+	"github.com/luxfi/mpc/pkg/config"
+	"github.com/luxfi/mpc/pkg/infra"
+	"github.com/luxfi/mpc/pkg/logger"
 	"github.com/hashicorp/consul/api"
 	"github.com/urfave/cli/v3"
 )

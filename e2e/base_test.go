@@ -15,9 +15,9 @@ import (
 
 	"github.com/dgraph-io/badger/v4"
 	"github.com/dgraph-io/badger/v4/options"
-	"github.com/fystack/mpcium/pkg/client"
-	"github.com/fystack/mpcium/pkg/event"
-	"github.com/fystack/mpcium/pkg/kvstore"
+	"github.com/luxfi/mpc/pkg/client"
+	"github.com/luxfi/mpc/pkg/event"
+	"github.com/luxfi/mpc/pkg/kvstore"
 	"github.com/hashicorp/consul/api"
 	"github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/require"
@@ -41,7 +41,7 @@ type TestConfig struct {
 	Environment          string `yaml:"environment"`
 	BadgerPassword       string `yaml:"badger_password"`
 	EventInitiatorPubkey string `yaml:"event_initiator_pubkey"`
-	MPCiumVersion        string `yaml:"mpcium_version"`
+	MPCiumVersion        string `yaml:"mpc_version"`
 	MaxConcurrentKeygen  int    `yaml:"max_concurrent_keygen"`
 	DbPath               string `yaml:"db_path"`
 }
@@ -53,7 +53,7 @@ type E2ETestSuite struct {
 	mpcClient        client.MPCClient
 	testDir          string
 	walletIDs        []string
-	mpciumProcesses  []*exec.Cmd
+	mpcProcesses  []*exec.Cmd
 	keygenResults    map[string]*event.KeygenResultEvent
 	signingResults   map[string]*event.SigningResultEvent
 	resharingResults map[string]*event.ResharingResultEvent
@@ -215,12 +215,12 @@ func (s *E2ETestSuite) RegisterPeers(t *testing.T) {
 	require.NoError(t, err, "Consul is not healthy")
 	t.Log("Consul is healthy")
 
-	// Use mpcium register-peers command instead of manual registration
-	t.Log("Running mpcium-cli register-peers...")
+	// Use mpc register-peers command instead of manual registration
+	t.Log("Running lux-mpc-cli register-peers...")
 	nodeDir := filepath.Join(s.testDir, "test_node0")
-	cmd := exec.Command("mpcium-cli", "register-peers")
+	cmd := exec.Command("lux-mpc-cli", "register-peers")
 	cmd.Dir = nodeDir
-	cmd.Env = append(os.Environ(), "MPCIUM_CONFIG=config.yaml")
+	cmd.Env = append(os.Environ(), "LUX_MPC_CONFIG=config.yaml")
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -267,16 +267,16 @@ func (s *E2ETestSuite) StartNodes(t *testing.T) {
 		t.Log("Consul is still accessible")
 	}
 
-	s.mpciumProcesses = make([]*exec.Cmd, numNodes)
+	s.mpcProcesses = make([]*exec.Cmd, numNodes)
 
 	for i := 0; i < numNodes; i++ {
 		nodeName := fmt.Sprintf("test_node%d", i)
 		nodeDir := filepath.Join(s.testDir, nodeName)
 
 		// Start node process
-		cmd := exec.Command("mpcium", "start", "-n", nodeName)
+		cmd := exec.Command("lux-mpc", "start", "-n", nodeName)
 		cmd.Dir = nodeDir
-		cmd.Env = append(os.Environ(), "MPCIUM_CONFIG=config.yaml")
+		cmd.Env = append(os.Environ(), "LUX_MPC_CONFIG=config.yaml")
 
 		// Create log files for stdout and stderr
 		logDir := filepath.Join(s.testDir, "logs")
@@ -299,7 +299,7 @@ func (s *E2ETestSuite) StartNodes(t *testing.T) {
 		err = cmd.Start()
 		require.NoError(t, err, "Failed to start node %s", nodeName)
 
-		s.mpciumProcesses[i] = cmd
+		s.mpcProcesses[i] = cmd
 		t.Logf("Started node %s (PID: %d) - logs: %s.stdout.log, %s.stderr.log",
 			nodeName, cmd.Process.Pid, nodeName, nodeName)
 	}
@@ -407,12 +407,12 @@ func (s *E2ETestSuite) isNodeReady(nodeName string) bool {
 }
 
 func (s *E2ETestSuite) StopNode(t *testing.T, nodeIndex int) {
-	if nodeIndex >= len(s.mpciumProcesses) || s.mpciumProcesses[nodeIndex] == nil {
+	if nodeIndex >= len(s.mpcProcesses) || s.mpcProcesses[nodeIndex] == nil {
 		t.Logf("Node %d is not running or doesn't exist", nodeIndex)
 		return
 	}
 
-	cmd := s.mpciumProcesses[nodeIndex]
+	cmd := s.mpcProcesses[nodeIndex]
 	nodeName := fmt.Sprintf("test_node%d", nodeIndex)
 
 	t.Logf("Killing node %s (PID: %d)", nodeName, cmd.Process.Pid)
@@ -429,19 +429,19 @@ func (s *E2ETestSuite) StopNode(t *testing.T, nodeIndex int) {
 		}()
 	}
 
-	s.mpciumProcesses[nodeIndex] = nil
+	s.mpcProcesses[nodeIndex] = nil
 }
 
 func (s *E2ETestSuite) StopNodes(t *testing.T) {
 	t.Log("Stopping MPC nodes...")
 
-	if len(s.mpciumProcesses) == 0 {
+	if len(s.mpcProcesses) == 0 {
 		t.Log("No nodes to stop")
 		return
 	}
 
 	// Force kill all processes immediately
-	for i, cmd := range s.mpciumProcesses {
+	for i, cmd := range s.mpcProcesses {
 		if cmd != nil && cmd.Process != nil {
 			t.Logf("Force killing node %d (PID: %d)", i, cmd.Process.Pid)
 			err := cmd.Process.Kill()
@@ -454,7 +454,7 @@ func (s *E2ETestSuite) StopNodes(t *testing.T) {
 					t.Logf("Node %d killed", idx)
 				}(i, cmd)
 			}
-			s.mpciumProcesses[i] = nil
+			s.mpcProcesses[i] = nil
 		}
 	}
 
@@ -470,7 +470,7 @@ func (s *E2ETestSuite) CheckKeyInAllNodes(t *testing.T, walletID, keyType, keyNa
 	for i := 0; i < numNodes; i++ {
 		nodeName := fmt.Sprintf("test_node%d", i)
 		// Skip if node is stopped
-		if s.mpciumProcesses[i] == nil {
+		if s.mpcProcesses[i] == nil {
 			t.Logf("Skipping node %s (stopped)", nodeName)
 			continue
 		}
@@ -590,8 +590,8 @@ func (s *E2ETestSuite) Cleanup(t *testing.T) {
 func (s *E2ETestSuite) KillAllMPCProcesses(t *testing.T) {
 	t.Log("Checking for existing MPC processes...")
 
-	// Find all mpcium processes
-	cmd := exec.Command("pgrep", "-f", "mpcium")
+	// Find all mpc processes
+	cmd := exec.Command("pgrep", "-f", "lux-mpc")
 	output, err := cmd.Output()
 	if err != nil {
 		// pgrep returns exit code 1 if no processes found, which is fine

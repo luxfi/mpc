@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fystack/mpcium/pkg/event"
-	"github.com/fystack/mpcium/pkg/logger"
-	"github.com/fystack/mpcium/pkg/types"
+	"github.com/luxfi/mpc/pkg/event"
+	"github.com/luxfi/mpc/pkg/logger"
+	"github.com/luxfi/mpc/pkg/types"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -273,14 +273,14 @@ func testSigningOneNodeOffline(t *testing.T, suite *E2ETestSuite) {
 	nodeToStop := 2
 	t.Logf("Stopping node %d to test fault tolerance...", nodeToStop)
 
-	if nodeToStop < len(suite.mpciumProcesses) && suite.mpciumProcesses[nodeToStop] != nil {
-		err := suite.mpciumProcesses[nodeToStop].Process.Kill()
+	if nodeToStop < len(suite.mpcProcesses) && suite.mpcProcesses[nodeToStop] != nil {
+		err := suite.mpcProcesses[nodeToStop].Process.Kill()
 		if err != nil {
 			t.Logf("Failed to stop node %d: %v", nodeToStop, err)
 		} else {
 			t.Logf("Successfully stopped node %d", nodeToStop)
 			// Mark as stopped
-			suite.mpciumProcesses[nodeToStop] = nil
+			suite.mpcProcesses[nodeToStop] = nil
 		}
 	}
 
