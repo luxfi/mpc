@@ -117,14 +117,11 @@ func (ec *eventConsumer) Run() {
 }
 
 func (ec *eventConsumer) handleKeyGenEvent(natMsg *nats.Msg) {
-	baseCtx, baseCancel := context.WithTimeout(context.Background(), KeyGenTimeOut)
-	defer baseCancel()
-
 	raw := natMsg.Data
 	var msg types.GenerateKeyMessage
 	if err := json.Unmarshal(raw, &msg); err != nil {
 		logger.Error("Failed to unmarshal keygen message", err)
-		ec.handleKeygenSessionError(msg.WalletID, err, "Failed to unmarshal keygen message", natMsg)
+		ec.handleKeygenSessionError("", err, "Failed to unmarshal keygen message", natMsg)
 		return
 	}
 
@@ -134,106 +131,12 @@ func (ec *eventConsumer) handleKeyGenEvent(natMsg *nats.Msg) {
 		return
 	}
 
-	walletID := msg.WalletID
-	ecdsaSession, err := ec.node.CreateKeyGenSession(mpc.SessionTypeECDSA, walletID, ec.mpcThreshold, ec.genKeyResultQueue)
-	if err != nil {
-		ec.handleKeygenSessionError(walletID, err, "Failed to create ECDSA key generation session", natMsg)
-		return
+	// Convert to event message format and use CGGMP21 handler
+	eventMsg := &event.Message{
+		EventType: MPCGenerateEvent,
+		WalletID:  msg.WalletID,
 	}
-	eddsaSession, err := ec.node.CreateKeyGenSession(mpc.SessionTypeEDDSA, walletID, ec.mpcThreshold, ec.genKeyResultQueue)
-	if err != nil {
-		ec.handleKeygenSessionError(walletID, err, "Failed to create EdDSA key generation session", natMsg)
-		return
-	}
-	ecdsaSession.Init()
-	eddsaSession.Init()
-
-	ctxEcdsa, doneEcdsa := context.WithCancel(baseCtx)
-	ctxEddsa, doneEddsa := context.WithCancel(baseCtx)
-
-	successEvent := &event.KeygenResultEvent{WalletID: walletID, ResultType: event.ResultTypeSuccess}
-	var wg sync.WaitGroup
-	wg.Add(2)
-
-	// Channel to communicate errors from goroutines to main function
-	errorChan := make(chan error, 2)
-
-	go func() {
-		defer wg.Done()
-		select {
-		case <-ctxEcdsa.Done():
-			successEvent.ECDSAPubKey = ecdsaSession.GetPubKeyResult()
-		case err := <-ecdsaSession.ErrChan():
-			logger.Error("ECDSA keygen session error", err)
-			ec.handleKeygenSessionError(walletID, err, "ECDSA keygen session error", natMsg)
-			errorChan <- err
-			doneEcdsa()
-		}
-	}()
-	go func() {
-		defer wg.Done()
-		select {
-		case <-ctxEddsa.Done():
-			successEvent.EDDSAPubKey = eddsaSession.GetPubKeyResult()
-		case err := <-eddsaSession.ErrChan():
-			logger.Error("EdDSA keygen session error", err)
-			ec.handleKeygenSessionError(walletID, err, "EdDSA keygen session error", natMsg)
-			errorChan <- err
-			doneEddsa()
-		}
-	}()
-
-	ecdsaSession.ListenToIncomingMessageAsync()
-	eddsaSession.ListenToIncomingMessageAsync()
-
-	// Temporary delay for peer setup
-	time.Sleep(DefaultSessionStartupDelay * time.Millisecond)
-	go ecdsaSession.GenerateKey(doneEcdsa)
-	go eddsaSession.GenerateKey(doneEddsa)
-
-	// Wait for completion or timeout
-	doneAll := make(chan struct{})
-	go func() {
-		wg.Wait()
-		close(doneAll)
-	}()
-
-	select {
-	case <-doneAll:
-		// Check if any errors occurred during execution
-		select {
-		case <-errorChan:
-			// Error already handled by the goroutine, just return early
-			return
-		default:
-			// No errors, continue with success
-		}
-	case <-baseCtx.Done():
-		// timeout occurred
-		logger.Warn("Key generation timed out", "walletID", walletID, "timeout", KeyGenTimeOut)
-		ec.handleKeygenSessionError(walletID, fmt.Errorf("keygen session timed out after %v", KeyGenTimeOut), "Key generation timed out", natMsg)
-		return
-	}
-
-	payload, err := json.Marshal(successEvent)
-	if err != nil {
-		logger.Error("Failed to marshal keygen success event", err)
-		ec.handleKeygenSessionError(walletID, err, "Failed to marshal keygen success event", natMsg)
-		return
-	}
-
-	key := fmt.Sprintf(mpc.TypeGenerateWalletResultFmt, walletID)
-	if err := ec.genKeyResultQueue.Enqueue(
-		key,
-		payload,
-		&messaging.EnqueueOptions{IdempotententKey: composeKeygenIdempotentKey(walletID, natMsg)},
-	); err != nil {
-		logger.Error("Failed to publish key generation success message", err)
-		ec.handleKeygenSessionError(walletID, err, "Failed to publish key generation success message", natMsg)
-		return
-	}
-	ec.sendReplyToRemoveMsg(natMsg)
-	logger.Info("[COMPLETED KEY GEN] Key generation completed successfully", "walletID", walletID)
+	ec.handleKeyGenEventCGGMP21(eventMsg, natMsg)
 }
 
 // handleKeygenSessionError handles errors that occur during key generation

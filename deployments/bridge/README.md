@@ -4,7 +4,7 @@ This directory contains the bridge compatibility layer that allows the Lux Bridg
 
 ## Overview
 
-The Lux Bridge currently uses KZen's `multi-party-ecdsa` Rust library for threshold signatures. This integration provides a compatibility layer that allows the bridge to seamlessly migrate to Lux MPC, which uses Lux's `tss-lib` Go implementation.
+The Lux Bridge currently uses KZen's `multi-party-ecdsa` Rust library for threshold signatures. This integration provides a compatibility layer that allows the bridge to seamlessly migrate to Lux MPC, which uses Lux's `threshold` Go implementation.
 
 ## Quick Start
 
@@ -56,7 +56,7 @@ curl http://localhost:6002/
 
 ## Services
 
-- **lux-mpc-[0,1,2]**: Core MPC nodes using tss-lib
+- **lux-mpc-[0,1,2]**: Core MPC nodes using threshold
 - **bridge-compat-[0,1,2]**: Compatibility layers on port 6000
 - **nats**: Message broker for MPC communication
 - **consul**: Service discovery
@@ -114,7 +114,7 @@ docker exec -it lux-mpc-0 lux-mpc-cli keygen
 
 ## Security Considerations
 
-1. **Key Migration**: Existing Rust keys need to be converted to tss-lib format
+1. **Key Migration**: Existing Rust keys need to be converted to threshold format
 2. **Signature Compatibility**: Both implementations produce standard ECDSA signatures
 3. **Network Security**: Ensure proper TLS configuration in production
 

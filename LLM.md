@@ -55,7 +55,7 @@ lux-mpc start -n node0
 
 ### Core Components
 
-1. **MPC Engine**: Based on Lux's tss-lib
+1. **MPC Engine**: Based on Lux's threshold
    - ECDSA (secp256k1) for Bitcoin/Ethereum
    - EdDSA (Ed25519) for Solana/Polkadot
    - Threshold signatures (t-of-n)
@@ -156,7 +156,7 @@ event_initiator_pubkey: "hex-encoded-pubkey"
 ## 📚 Additional Resources
 
 - **Lux Network Docs**: https://docs.lux.network/mpc
-- **TSS Library**: https://github.com/bnb-chain/tss-lib
+- **TSS Library**: https://github.com/luxfi/threshold
 - **Client Libraries**:
   - TypeScript: https://github.com/luxfi/mpc-client-ts
   - Go: See `/pkg/client/`

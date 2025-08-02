@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"sort"
 
-	"github.com/bnb-chain/tss-lib/v2/tss"
+	"github.com/luxfi/threshold/v2/tss"
 )
 
 type TssMessage struct {

@@ -5,7 +5,7 @@ go 1.23.0
 require (
 	filippo.io/age v1.2.1
 	github.com/avast/retry-go v3.0.0+incompatible
-	github.com/bnb-chain/tss-lib/v2 v2.0.2
+	github.com/luxfi/cggmp21 v1.0.0
 	github.com/decred/dcrd/dcrec/edwards/v2 v2.0.3
 	github.com/dgraph-io/badger/v4 v4.5.0
 	github.com/google/uuid v1.6.0
@@ -86,3 +86,5 @@ require (
 )
 
 replace github.com/agl/ed25519 => github.com/luxfi/edwards25519 v0.0.0-20200305024217-f36fc4b53d43
+
+replace github.com/luxfi/cggmp21 => ../cggmp21

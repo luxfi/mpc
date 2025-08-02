@@ -173,13 +173,11 @@ func runNode(ctx context.Context, c *cli.Command) error {
 		nodeID,
 		peerNodeIDs,
 		pubsub,
-		directMessaging,
 		badgerKV,
 		keyinfoStore,
 		peerRegistry,
 		identityStore,
 	)
-	defer mpcNode.Close()
 
 	eventConsumer := eventconsumer.NewEventConsumer(
 		mpcNode,
