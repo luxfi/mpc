@@ -178,8 +178,8 @@ jobs:
 
       - name: Build for CodeQL
         run: |
-          go build -v ./cmd/mpcium
-          go build -v ./cmd/mpcium-cli
+          go build -v ./cmd/lux-mpc
+          go build -v ./cmd/lux-mpc-cli
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
@@ -219,8 +219,8 @@ jobs:
 
       - name: Build binaries
         run: |
-          go build -o mpcium ./cmd/mpcium
-          go build -o mpcium-cli ./cmd/mpcium-cli
+          go build -o lux-mpc ./cmd/lux-mpc
+          go build -o lux-mpc-cli ./cmd/lux-mpc-cli
 
       - name: Generate SBOM with anchore/sbom-action (SPDX-JSON)
         uses: anchore/sbom-action@v0
@@ -306,8 +306,8 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-go-
 
-      - name: Build mpcium
-        run: go build -v ./cmd/mpcium
+      - name: Build lux-mpc
+        run: go build -v ./cmd/lux-mpc
 
-      - name: Build mpcium-cli
-        run: go build -v ./cmd/mpcium-cli
+      - name: Build lux-mpc-cli
+        run: go build -v ./cmd/lux-mpc-cli

@@ -5,8 +5,8 @@ import (
 	"log"
 	"strings"
 
-	"github.com/fystack/mpcium/pkg/config"
-	"github.com/fystack/mpcium/pkg/logger"
+	"github.com/luxfi/mpc/pkg/config"
+	"github.com/luxfi/mpc/pkg/logger"
 	"github.com/hashicorp/consul/api"
 )
 

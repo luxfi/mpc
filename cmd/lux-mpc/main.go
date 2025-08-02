@@ -10,17 +10,17 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/fystack/mpcium/pkg/config"
-	"github.com/fystack/mpcium/pkg/constant"
-	"github.com/fystack/mpcium/pkg/event"
-	"github.com/fystack/mpcium/pkg/eventconsumer"
-	"github.com/fystack/mpcium/pkg/identity"
-	"github.com/fystack/mpcium/pkg/infra"
-	"github.com/fystack/mpcium/pkg/keyinfo"
-	"github.com/fystack/mpcium/pkg/kvstore"
-	"github.com/fystack/mpcium/pkg/logger"
-	"github.com/fystack/mpcium/pkg/messaging"
-	"github.com/fystack/mpcium/pkg/mpc"
+	"github.com/luxfi/mpc/pkg/config"
+	"github.com/luxfi/mpc/pkg/constant"
+	"github.com/luxfi/mpc/pkg/event"
+	"github.com/luxfi/mpc/pkg/eventconsumer"
+	"github.com/luxfi/mpc/pkg/identity"
+	"github.com/luxfi/mpc/pkg/infra"
+	"github.com/luxfi/mpc/pkg/keyinfo"
+	"github.com/luxfi/mpc/pkg/kvstore"
+	"github.com/luxfi/mpc/pkg/logger"
+	"github.com/luxfi/mpc/pkg/messaging"
+	"github.com/luxfi/mpc/pkg/mpc"
 	"github.com/hashicorp/consul/api"
 	"github.com/nats-io/nats.go"
 	"github.com/spf13/viper"
@@ -35,13 +35,13 @@ const (
 
 func main() {
 	app := &cli.Command{
-		Name:    "mpcium",
-		Usage:   "Multi-Party Computation node for threshold signatures",
+		Name:    "lux-mpc",
+		Usage:   "Lux Multi-Party Computation node for threshold signatures",
 		Version: Version,
 		Commands: []*cli.Command{
 			{
 				Name:  "start",
-				Usage: "Start an MPCIUM node",
+				Usage: "Start a Lux MPC node",
 				Flags: []cli.Flag{
 					&cli.StringFlag{
 						Name:     "name",
@@ -72,7 +72,7 @@ func main() {
 				Name:  "version",
 				Usage: "Display detailed version information",
 				Action: func(ctx context.Context, c *cli.Command) error {
-					fmt.Printf("mpcium version %s\n", Version)
+					fmt.Printf("lux-mpc version %s\n", Version)
 					return nil
 				},
 			},
@@ -95,6 +95,10 @@ func runNode(ctx context.Context, c *cli.Command) error {
 	config.InitViperConfig()
 	environment := viper.GetString("environment")
 	logger.Init(environment, debug)
+	
+	// Create environment-prefixed node ID
+	nodeID := fmt.Sprintf("lux-%s-%s", environment, nodeName)
+	logger.Info("Starting MPC node", "nodeID", nodeID, "environment", environment)
 
 	// Handle configuration based on prompt flag
 	if usePrompts {
@@ -107,7 +111,8 @@ func runNode(ctx context.Context, c *cli.Command) error {
 	consulClient := infra.GetConsulClient(environment)
 	keyinfoStore := keyinfo.NewStore(consulClient.KV())
 	peers := LoadPeersFromConsul(consulClient)
-	nodeID := GetIDFromName(nodeName, peers)
+	// Use the environment-prefixed nodeID we created above
+	// nodeID is already set with environment prefix
 
 	badgerKV := NewBadgerKV(nodeName, nodeID)
 	defer badgerKV.Close()

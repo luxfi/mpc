@@ -16,7 +16,7 @@ export GPG_TTY=$(tty)
 NATS_PASSWORD=$(decrypt_secret "$PASS" ~/.password-store/apex-nats-password.gpg)
 CONSUL_PASSWORD=$(decrypt_secret "$PASS" ~/.password-store/apex-consul-password.gpg)
 CONSUL_TOKEN=$(decrypt_secret "$PASS" ~/.password-store/apex-consul-token.gpg)
-BADGER_PASSWORD=$(decrypt_secret "$PASS" ~/.password-store/mpcium-badger-password.gpg)
+BADGER_PASSWORD=$(decrypt_secret "$PASS" ~/.password-store/lux-mpc-badger-password.gpg)
 
 # Prompt for command
 read -p "Enter the command to execute: " user_command

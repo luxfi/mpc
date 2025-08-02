@@ -10,6 +10,6 @@ consul:
   password: ""
 
 mpc_threshold: 2
-environment: production # Set to production for production environment
+environment: mainnet # Options: mainnet, testnet, local
 backup_enabled: true
 backup_period_seconds: 300 # Seconds

@@ -1,20 +1,24 @@
-.PHONY: all build clean mpcium mpc test test-verbose test-coverage e2e-test e2e-clean cleanup-test-env
+.PHONY: all build clean lux-mpc lux-mpc-cli test test-verbose test-coverage e2e-test e2e-clean cleanup-test-env
 
 BIN_DIR := bin
 
 # Default target
 all: build
 
-# Build both binaries
-build: mpcium mpc
+# Build all binaries
+build: lux-mpc lux-mpc-cli lux-mpc-bridge
 
-# Install mpcium (builds and places it in $GOBIN or $GOPATH/bin)
-mpcium:
-	go install ./cmd/mpcium
+# Install lux-mpc (builds and places it in $GOBIN or $GOPATH/bin)
+lux-mpc:
+	GOWORK=off go build -mod=vendor -o lux-mpc ./cmd/lux-mpc
 
-# Install mpcium-cli
-mpc:
-	go install ./cmd/mpcium-cli
+# Install lux-mpc-cli
+lux-mpc-cli:
+	GOWORK=off go build -mod=vendor -o lux-mpc-cli ./cmd/lux-mpc-cli
+
+# Install lux-mpc-bridge (bridge compatibility)
+lux-mpc-bridge:
+	GOWORK=off go build -mod=vendor -o lux-mpc-bridge ./cmd/lux-mpc-bridge 2>/dev/null || true
 
 # Run all tests
 test:
@@ -59,3 +63,35 @@ clean:
 
 # Full clean (including E2E artifacts)
 clean-all: clean e2e-clean
+
+# Run local development environment with Docker
+run-local: build
+	@echo "Starting local MPC environment..."
+	docker-compose up -d
+	@echo "Waiting for services to be ready..."
+	@sleep 5
+	@echo ""
+	@echo "Services running:"
+	@echo "  - NATS: http://localhost:8222"
+	@echo "  - Consul: http://localhost:8500"
+	@echo ""
+	@echo "To start MPC nodes, run:"
+	@echo "  ./lux-mpc --node-id node0 --config config.yaml"
+
+# Stop local environment
+stop-local:
+	@echo "Stopping local MPC environment..."
+	docker-compose down
+
+# View logs
+logs:
+	docker-compose logs -f
+
+# Run a single MPC node (example)
+run-node0: build
+	@echo "Starting MPC node0..."
+	./lux-mpc --node-id node0 --config config.yaml.template
+
+# Quick start - build and run everything
+start: build run-local
+	@echo "Environment ready! Run 'make run-node0' in another terminal to start a node."

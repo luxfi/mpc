@@ -1,39 +1,39 @@
 <div class="title-block" style="text-align: center;" align="center">
 
-# mpcium: Resilient MPC (Multi-Party Computation) Nodes for Distributed Crypto Wallet Generation
+# Lux MPC: Resilient MPC (Multi-Party Computation) Nodes for Distributed Crypto Wallet Generation
 
-> _"Setting up MPC wallets has always been painful, complex, and confusing. With MPCIUM, you can launch a secure MPC node cluster and generate wallets in minutes."_
+> _"Setting up MPC wallets has always been painful, complex, and confusing. With Lux MPC, you can launch a secure MPC node cluster and generate wallets in minutes."_
 
-<p><img title="fystack logo" src="https://avatars.githubusercontent.com/u/149689344?s=400&u=13bed818667eefccd78ca4b4207d088eeb4f6110&v=4" width="320" height="320"></p>
-<p><a href="https://t.me/+IsRhPyWuOFxmNmM9">Join our Telegram community to discuss MPCIUM and Web3 cyber security!</a></p>
+<p><img title="luxfi logo" src="https://avatars.githubusercontent.com/u/149689344?s=400&u=13bed818667eefccd78ca4b4207d088eeb4f6110&v=4" width="320" height="320"></p>
+<p><a href="https://t.me/luxnetwork">Join our Telegram community to discuss Lux MPC and Web3 cyber security!</a></p>
 
 [![Go Version](https://img.shields.io/badge/Go-v1.23+-00ADD8?logo=go&style=for-the-badge)](https://go.dev/)
-[![License](https://img.shields.io/github/license/fystack/mpcium?style=for-the-badge)](./LICENSE)
-[![Go Report Card](https://goreportcard.com/badge/github.com/fystack/mpcium?style=for-the-badge)](https://goreportcard.com/report/github.com/fystack/mpcium)
-[![Version](https://img.shields.io/github/v/release/fystack/mpcium?label=version&logo=semantic-release&style=for-the-badge)](https://github.com/fystack/mpcium/releases)
+[![License](https://img.shields.io/github/license/luxfi/mpc?style=for-the-badge)](./LICENSE)
+[![Go Report Card](https://goreportcard.com/badge/github.com/luxfi/mpc?style=for-the-badge)](https://goreportcard.com/report/github.com/luxfi/mpc)
+[![Version](https://img.shields.io/github/v/release/luxfi/mpc?label=version&logo=semantic-release&style=for-the-badge)](https://github.com/luxfi/mpc/releases)
 [![Telegram](https://img.shields.io/badge/Telegram-Community%20-26A5E4?logo=telegram&style=for-the-badge)](https://t.me/+IsRhPyWuOFxmNmM9)
-[![Made by Fystack](https://img.shields.io/badge/Made%20by-Fystack-7D3DF4?style=for-the-badge)](https://fystack.io)
+[![Made by Lux Network](https://img.shields.io/badge/Made%20by-Lux%20Network-7D3DF4?style=for-the-badge)](https://lux.network)
 
 </div>
 
-Mpcium is a high-performance, open-source Multi-Party Computation (MPC) engine for securely generating and managing cryptographic wallets across distributed nodes—without ever exposing the full private key.
+Lux MPC is a high-performance, open-source Multi-Party Computation (MPC) engine for securely generating and managing cryptographic wallets across distributed nodes—without ever exposing the full private key.
 
-At its cryptographic core, Mpcium integrates tss-lib, a production-grade threshold signature scheme library developed by Binance. It supports:
+At its cryptographic core, Lux MPC integrates Lux TSS, a production-grade threshold signature scheme library developed by Lux. It supports:
 
 - **ECDSA (secp256k1)**: Bitcoin, Ethereum, BNB, Polygon, and EVM-compatible L2 chains
 
 - **EdDSA (Ed25519)**: for Solana, Polkadot, Cardano, and other modern blockchains
 
-![Mpcium Architecture](images/mpcium.png)
+![Lux MPC Architecture](images/mpc.png)
 
 ---
 
 ## Resources
 
-- **MPC nodes architecture**: [MPC Fundamental and MPCIUM architecture](https://deepwiki.com/fystack/mpcium)
+- **MPC nodes architecture**: [MPC Fundamental and Lux MPC architecture](https://docs.lux.network/mpc)
 - **MPC clients**:
-  - [TypeScript Client](https://github.com/fystack/mpcium-client-ts)
-  - [Golang Client](https://github.com/fystack/mpcium/blob/master/pkg/client/client.go)
+  - [TypeScript Client](https://github.com/luxfi/mpc-client-ts)
+  - [Golang Client](https://github.com/luxfi/mpc/blob/master/pkg/client/client.go)
 
 ![All node ready](images/all-node-ready.png)
 
@@ -44,19 +44,19 @@ At its cryptographic core, Mpcium integrates tss-lib, a production-grade thresho
 | [NATS](https://nats.io)                             | Lightweight and resilient **messaging layer** for coordinating MPC nodes in real time. Enables pub/sub communication even under partial failure. |
 | [Badger KV](https://github.com/dgraph-io/badger)    | High-performance **embedded key-value store** used for local encrypted storage of MPC key shares and session data.                               |
 | [Consul](https://www.consul.io)                     | **Service discovery and health checking** to allow nodes to dynamically find each other and maintain cluster integrity.                          |
-| [tss-lib](https://github.com/binance-chain/tss-lib) | Cryptographic engine for **threshold key generation and signing**, supporting ECDSA and EdDSA (used in Bitcoin, Ethereum, Solana, etc).          |
+| [Lux Crypto](https://github.com/luxfi/crypto)       | Cryptographic engine for **threshold key generation and signing**, supporting ECDSA and EdDSA (used in Bitcoin, Ethereum, Solana, etc).          |
 | [age](https://github.com/FiloSottile/age)           | **Modern encryption tool** used for secure key material storage and protection with password-based encryption.                                   |
 
 ## Threshold & Nodes
 
-Mpcium uses a **t-of-n threshold scheme** to securely generate and sign with private keys.
+Lux MPC uses a **t-of-n threshold scheme** to securely generate and sign with private keys.
 
 - `n` = total number of MPC nodes (key shares)
 - `t` = minimum number of nodes required to sign
 
 Only `t` out of `n` nodes need to participate — the full private key is never reconstructed.
 
-To maintain security against compromised nodes, Mpcium enforces:
+To maintain security against compromised nodes, Lux MPC enforces:
 
 ```
 t ≥ ⌊n / 2⌋ + 1
@@ -78,7 +78,7 @@ This ensures:
 
 ### Overview
 
-Each Mpcium node:
+Each Lux MPC node:
 
 - Holds a **key share** in local AES-256 encrypted storage (via Badger KV)
 - Participates in **threshold signing** using `tss-lib`
@@ -142,23 +142,23 @@ For full installation and run instructions, see [INSTALLATION.md](./INSTALLATION
 ### Start nodes
 
 ```shell
-$ mpcium start -n node0
-$ mpcium start -n node1
-$ mpcium start -n node2
+$ lux-mpc start -n node0
+$ lux-mpc start -n node1
+$ lux-mpc start -n node2
 
 ```
 
 ### Client Implementations
 
 - **Go**: Available in the `pkg/client` directory. Check the `examples` folder for usage samples.
-- **TypeScript**: Available at [github.com/fystack/mpcium-client-ts](https://github.com/fystack/mpcium-client-ts)
+- **TypeScript**: Available at [github.com/luxfi/mpc-client-ts](https://github.com/luxfi/mpc-client-ts)
 
 ### Client
 
 ```go
 
 import (
-    "github.com/fystack/mpcium/client"
+    "github.com/luxfi/mpc/pkg/client"
     "github.com/nats-io/nats.go"
 )
 
@@ -202,3 +202,30 @@ go test ./... -v
 cd e2e
 make test
 ```
+
+## Bridge Integration
+
+Lux MPC provides a compatibility layer for seamless integration with the Lux Bridge, allowing migration from the Rust-based MPC implementation to this Go-based solution.
+
+### Bridge Compatibility Features
+
+- **Drop-in Replacement**: Compatible HTTP API on port 6000
+- **Protocol Translation**: Converts between KZen (Rust) and tss-lib (Go) formats
+- **Parallel Operation**: Run alongside existing Rust nodes during migration
+- **Key Migration**: Tools to convert existing key shares
+
+### Quick Migration
+
+```bash
+# Deploy bridge-compatible MPC cluster
+cd deployments/bridge
+./migrate.sh
+
+# Update bridge configuration
+# In mpc.ts, change endpoints to:
+# "http://bridge-compat-0:6000"
+# "http://bridge-compat-1:6000"
+# "http://bridge-compat-2:6000"
+```
+
+For detailed bridge integration instructions, see [deployments/bridge/README.md](deployments/bridge/README.md).

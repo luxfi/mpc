@@ -8,12 +8,12 @@ import (
 	"github.com/bnb-chain/tss-lib/v2/ecdsa/keygen"
 	"github.com/bnb-chain/tss-lib/v2/ecdsa/resharing"
 	"github.com/bnb-chain/tss-lib/v2/tss"
-	"github.com/fystack/mpcium/pkg/encoding"
-	"github.com/fystack/mpcium/pkg/identity"
-	"github.com/fystack/mpcium/pkg/keyinfo"
-	"github.com/fystack/mpcium/pkg/kvstore"
-	"github.com/fystack/mpcium/pkg/logger"
-	"github.com/fystack/mpcium/pkg/messaging"
+	"github.com/luxfi/mpc/pkg/encoding"
+	"github.com/luxfi/mpc/pkg/identity"
+	"github.com/luxfi/mpc/pkg/keyinfo"
+	"github.com/luxfi/mpc/pkg/kvstore"
+	"github.com/luxfi/mpc/pkg/logger"
+	"github.com/luxfi/mpc/pkg/messaging"
 )
 
 type ReshareSession interface {
