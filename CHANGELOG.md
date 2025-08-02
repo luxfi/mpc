@@ -174,7 +174,7 @@
 - Threshold validation, allow t+1 peers to create signing session [View](https://github.com/luxfi/mpc/commit/b5c15463fa01f58ce9557ebffaa0e96ce6dcda2d)
 - Implement keyinfo store [View](https://github.com/luxfi/mpc/commit/d39168ddd7fc622eb1a58ea90617680249297515)
 - Track ready nodes, reduce readiness period to 1 second [View](https://github.com/luxfi/mpc/commit/75cb2b286fffb89f1df39c680dee3d1cacfcffc9)
-- Upgrade tss-lib to v2 [View](https://github.com/luxfi/mpc/commit/cd324358d7c297d2025ea2d0c02464b5552f513d)
+- Upgrade threshold to v2 [View](https://github.com/luxfi/mpc/commit/cd324358d7c297d2025ea2d0c02464b5552f513d)
 
 ## v0.1.1 (2024-02-05)
 

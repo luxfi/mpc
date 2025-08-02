@@ -81,7 +81,7 @@ This ensures:
 Each Lux MPC node:
 
 - Holds a **key share** in local AES-256 encrypted storage (via Badger KV)
-- Participates in **threshold signing** using `tss-lib`
+- Participates in **threshold signing** using `threshold`
 - Communicates over a **resilient messaging layer** using NATS
 - Registers itself with **Consul** for service discovery and health checks
 - Verifies incoming messages using **Ed25519-based mutual authentication**
@@ -210,7 +210,7 @@ Lux MPC provides a compatibility layer for seamless integration with the Lux Bri
 ### Bridge Compatibility Features
 
 - **Drop-in Replacement**: Compatible HTTP API on port 6000
-- **Protocol Translation**: Converts between KZen (Rust) and tss-lib (Go) formats
+- **Protocol Translation**: Converts between KZen (Rust) and threshold (Go) formats
 - **Parallel Operation**: Run alongside existing Rust nodes during migration
 - **Key Migration**: Tools to convert existing key shares
 

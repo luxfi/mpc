@@ -3,7 +3,7 @@ package types
 import (
 	"testing"
 
-	"github.com/bnb-chain/tss-lib/v2/tss"
+	"github.com/luxfi/threshold/v2/tss"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

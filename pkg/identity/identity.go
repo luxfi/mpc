@@ -13,7 +13,7 @@ import (
 	"syscall"
 
 	"filippo.io/age"
-	"github.com/bnb-chain/tss-lib/v2/tss"
+	"github.com/luxfi/threshold/v2/tss"
 	"golang.org/x/term"
 
 	"github.com/luxfi/mpc/pkg/common/pathutil"

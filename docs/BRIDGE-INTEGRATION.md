@@ -30,7 +30,7 @@ The bridge currently uses **KZen's multi-party-ecdsa** (v0.8.1) Rust library:
 4. **Storage**: Files on disk (`keys.store`)
 
 ### Lux MPC Implementation (Go)
-The new implementation uses **Lux's tss-lib** (v2.0.2) Go library:
+The new implementation uses **Lux's threshold** (v2.0.2) Go library:
 
 #### Key Components:
 1. **MPC Nodes**: Full Go implementation with gRPC/REST APIs
@@ -58,7 +58,7 @@ The new implementation uses **Lux's tss-lib** (v2.0.2) Go library:
 | Storage | File system | BadgerDB (encrypted) |
 | Service Discovery | Hard-coded | Consul |
 | Session Management | Process-based | Built-in registry |
-| Key Format | KZen proprietary | tss-lib standard |
+| Key Format | KZen proprietary | threshold standard |
 
 ## Migration Strategy
 
@@ -93,17 +93,17 @@ func (s *BridgeCompatServer) CompleteSwap(w http.ResponseWriter, r *http.Request
 ```
 
 ### Phase 2: Key Migration
-Convert existing KZen key shares to tss-lib format:
+Convert existing KZen key shares to threshold format:
 
 ```go
 // migration/key_converter.go
 package migration
 
-// ConvertKZenKeyToTSSLib converts KZen multi-party-ecdsa keys to tss-lib format
+// ConvertKZenKeyToTSSLib converts KZen multi-party-ecdsa keys to threshold format
 func ConvertKZenKeyToTSSLib(kzenKeyPath string) (*ecdsa.LocalPartySaveData, error) {
     // 1. Parse KZen key format
     // 2. Extract private share, public key, and other parameters
-    // 3. Reconstruct in tss-lib format
+    // 3. Reconstruct in threshold format
     // 4. Validate the conversion
 }
 ```
@@ -149,7 +149,7 @@ cd cmd
 mkdir lux-mpc-migrate
 ```
 
-Tool to convert existing KZen keys to tss-lib format.
+Tool to convert existing KZen keys to threshold format.
 
 ### 3. Update Bridge Configuration
 Modify bridge's `mpc.ts` to support both implementations:
@@ -212,7 +212,7 @@ const mpc_nodes = process.env.USE_NEW_MPC === 'true'
 
 ## Conclusion
 
-The migration from Rust (KZen) to Go (tss-lib) MPC implementation is achievable with careful planning. The compatibility layer approach allows for gradual migration with minimal risk to the bridge operations.
+The migration from Rust (KZen) to Go (threshold) MPC implementation is achievable with careful planning. The compatibility layer approach allows for gradual migration with minimal risk to the bridge operations.
 
 Key success factors:
 1. Maintain API compatibility during transition
