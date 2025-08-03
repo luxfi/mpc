@@ -51,7 +51,7 @@ func (p *FROSTProtocol) KeyGen(selfID string, partyIDs []string, threshold int) 
 
 	// Create the FROST keygen protocol for Ed25519/Taproot
 	startFunc := frost.KeygenTaproot(party.ID(selfID), ids, threshold)
-	
+
 	// Create handler
 	handler, err := mpsProtocol.NewMultiHandler(startFunc, nil)
 	if err != nil {
@@ -125,7 +125,7 @@ func (p *frostPartyAdapter) Update(msg protocol.Message) error {
 	if !msg.IsBroadcast() && len(msg.GetTo()) > 0 {
 		to = party.ID(msg.GetTo()[0])
 	}
-	
+
 	mpsMsg := &mpsProtocol.Message{
 		From:      party.ID(msg.GetFrom()),
 		To:        to,
@@ -146,10 +146,10 @@ func (p *frostPartyAdapter) Update(msg protocol.Message) error {
 
 func (p *frostPartyAdapter) Messages() <-chan protocol.Message {
 	ch := make(chan protocol.Message)
-	
+
 	go func() {
 		defer close(ch)
-		
+
 		for {
 			select {
 			case msg, ok := <-p.handler.Listen():
@@ -161,13 +161,13 @@ func (p *frostPartyAdapter) Messages() <-chan protocol.Message {
 					p.mu.Unlock()
 					return
 				}
-				
+
 				// Convert and send message
 				var toList []string
 				if !msg.Broadcast && msg.To != "" {
 					toList = []string{string(msg.To)}
 				}
-				
+
 				ch <- &messageAdapter{
 					from:      string(msg.From),
 					to:        toList,
@@ -177,7 +177,7 @@ func (p *frostPartyAdapter) Messages() <-chan protocol.Message {
 			}
 		}
 	}()
-	
+
 	return ch
 }
 
@@ -198,15 +198,15 @@ func (p *frostPartyAdapter) Done() bool {
 func (p *frostPartyAdapter) Result() (interface{}, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	
+
 	if !p.done {
 		return nil, errors.New("protocol not finished")
 	}
-	
+
 	if p.err != nil {
 		return nil, p.err
 	}
-	
+
 	// Convert result to appropriate type
 	switch r := p.result.(type) {
 	case *frost.Signature:
@@ -226,10 +226,10 @@ type messageAdapter struct {
 	broadcast bool
 }
 
-func (m *messageAdapter) GetFrom() string      { return m.from }
-func (m *messageAdapter) GetTo() []string      { return m.to }
-func (m *messageAdapter) GetData() []byte      { return m.data }
-func (m *messageAdapter) IsBroadcast() bool    { return m.broadcast }
+func (m *messageAdapter) GetFrom() string   { return m.from }
+func (m *messageAdapter) GetTo() []string   { return m.to }
+func (m *messageAdapter) GetData() []byte   { return m.data }
+func (m *messageAdapter) IsBroadcast() bool { return m.broadcast }
 
 // frostConfigAdapter implements protocol.KeyGenConfig for FROST
 type frostConfigAdapter struct {
@@ -346,7 +346,7 @@ func toFROSTConfig(cfg protocol.KeyGenConfig) (interface{}, error) {
 	if adapter, ok := cfg.(*frostConfigAdapter); ok {
 		return adapter.config, nil
 	}
-	
+
 	// Otherwise, we need to reconstruct
 	// This is a simplified version - in production you'd need proper serialization
 	return nil, errors.New("config conversion not implemented for non-FROST configs")

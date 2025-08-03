@@ -26,9 +26,9 @@ func TestAppConfig_MarshalJSONMask(t *testing.T) {
 	masked := config.MarshalJSONMask()
 
 	// Verify that sensitive data is masked
-	assert.Contains(t, masked, "localhost:8500") // Address should not be masked
-	assert.Contains(t, masked, "admin")          // Username should not be masked
-	assert.Contains(t, masked, "nats_user")      // Username should not be masked
+	assert.Contains(t, masked, "localhost:8500")        // Address should not be masked
+	assert.Contains(t, masked, "admin")                 // Username should not be masked
+	assert.Contains(t, masked, "nats_user")             // Username should not be masked
 	assert.Contains(t, masked, "nats://localhost:4222") // URL should not be masked
 
 	// Verify that passwords are masked

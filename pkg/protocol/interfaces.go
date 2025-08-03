@@ -73,19 +73,19 @@ type PreSignature interface {
 type Protocol interface {
 	// KeyGen starts a distributed key generation
 	KeyGen(selfID string, partyIDs []string, threshold int) (Party, error)
-	
+
 	// Refresh refreshes shares from an existing config
 	Refresh(config KeyGenConfig) (Party, error)
-	
+
 	// Sign starts a signing protocol
 	Sign(config KeyGenConfig, signers []string, messageHash []byte) (Party, error)
-	
+
 	// PreSign starts a presigning protocol
 	PreSign(config KeyGenConfig, signers []string) (Party, error)
-	
+
 	// PreSignOnline completes a signature with a presignature
 	PreSignOnline(config KeyGenConfig, preSignature PreSignature, messageHash []byte) (Party, error)
-	
+
 	// Name returns the protocol name (e.g., "GG20", "CGGMP21")
 	Name() string
 }

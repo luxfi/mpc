@@ -8,14 +8,15 @@ import (
 	"math/big"
 	"sync"
 
+	"github.com/luxfi/threshold/pkg/party"
+	"github.com/rs/zerolog"
+
 	"github.com/luxfi/mpc/pkg/keyinfo"
 	"github.com/luxfi/mpc/pkg/kvstore"
 	"github.com/luxfi/mpc/pkg/messaging"
 	"github.com/luxfi/mpc/pkg/protocol"
 	"github.com/luxfi/mpc/pkg/protocol/frost"
 	"github.com/luxfi/mpc/pkg/utils"
-	"github.com/luxfi/threshold/pkg/party"
-	"github.com/rs/zerolog"
 )
 
 // eddsaReshareSession implements ReshareSession for EdDSA using FROST
@@ -48,17 +49,17 @@ func newEdDSAReshareSession(
 ) (*eddsaReshareSession, error) {
 	// Generate session ID for resharing
 	sessionID := fmt.Sprintf("reshare-%s", walletID)
-	
+
 	// For resharing, we need to determine the party IDs
 	var partyIDs []party.ID
-	
+
 	if !isNewPeer {
 		// For old peers, get the existing key info to find current parties
 		keyInfo, err := keyinfoStore.Get(walletID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get key info for resharing: %w", err)
 		}
-		
+
 		// Old peers use their existing party IDs
 		for _, id := range keyInfo.ParticipantPeerIDs {
 			partyIDs = append(partyIDs, party.ID(id))
@@ -69,10 +70,10 @@ func newEdDSAReshareSession(
 			partyIDs = append(partyIDs, party.ID(id))
 		}
 	}
-	
+
 	// Create FROST protocol
 	protocol := frost.NewFROSTProtocol()
-	
+
 	s := &eddsaReshareSession{
 		session: session{
 			walletID:           walletID,
@@ -101,7 +102,7 @@ func newEdDSAReshareSession(
 					return fmt.Sprintf("reshare:direct:frost:%s:%s", nodeID, walletID)
 				},
 			},
-			identityStore:      nil, // Not needed for resharing
+			identityStore: nil, // Not needed for resharing
 		},
 		isNewPeer:    isNewPeer,
 		kvstore:      kvstore,
@@ -111,7 +112,7 @@ func newEdDSAReshareSession(
 		newThreshold: newThreshold,
 		newNodeIDs:   newNodeIDs,
 	}
-	
+
 	// Load existing config for old peers
 	if !isNewPeer {
 		config, err := s.loadConfig(walletID)
@@ -120,7 +121,7 @@ func newEdDSAReshareSession(
 		}
 		s.config = config
 	}
-	
+
 	return s, nil
 }
 
@@ -137,13 +138,13 @@ func (s *eddsaReshareSession) Init() {
 // Reshare starts the resharing protocol
 func (s *eddsaReshareSession) Reshare(done func()) {
 	defer done()
-	
+
 	s.logger.Info().
 		Str("sessionID", s.sessionID).
 		Bool("isNewPeer", s.isNewPeer).
 		Int("threshold", s.threshold).
 		Msg("Starting EdDSA/FROST reshare session")
-	
+
 	// Create the protocol party
 	var err error
 	if s.isNewPeer {
@@ -157,19 +158,19 @@ func (s *eddsaReshareSession) Reshare(done func()) {
 		// Old peers run the refresh protocol
 		s.party, err = s.protocol.Refresh(s.config)
 	}
-	
+
 	if err != nil {
 		s.errCh <- fmt.Errorf("failed to create reshare party: %w", err)
 		return
 	}
-	
+
 	// Start listening for messages
 	s.ListenToIncomingMessageAsync()
 	go s.ProcessOutboundMessage()
-	
+
 	// Wait for protocol to complete
 	<-s.finishCh
-	
+
 	// Process the result
 	if s.party.Done() {
 		result, err := s.party.Result()
@@ -177,7 +178,7 @@ func (s *eddsaReshareSession) Reshare(done func()) {
 			s.errCh <- fmt.Errorf("reshare protocol failed: %w", err)
 			return
 		}
-		
+
 		// Handle the result
 		if newConfig, ok := result.(protocol.KeyGenConfig); ok {
 			// Save the new configuration
@@ -185,11 +186,11 @@ func (s *eddsaReshareSession) Reshare(done func()) {
 				s.errCh <- fmt.Errorf("failed to save reshare result: %w", err)
 				return
 			}
-			
+
 			// For EdDSA, we would extract the Ed25519 public key
 			// This is a placeholder - actual implementation would depend on the protocol
 			s.pubKeyResult = []byte{} // Placeholder
-			
+
 			s.logger.Info().
 				Str("sessionID", s.sessionID).
 				Bool("isNewPeer", s.isNewPeer).
@@ -244,13 +245,13 @@ func (s *eddsaReshareSession) loadConfig(walletID string) (protocol.KeyGenConfig
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Load the key share data
 	keyShareData, err := s.kvstore.Get(walletID)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Create a config adapter for EdDSA
 	return &eddsaKeyGenConfigAdapter{
 		keyInfo:      keyInfo,
@@ -266,23 +267,23 @@ func (s *eddsaReshareSession) saveConfig(config protocol.KeyGenConfig) error {
 	if err != nil {
 		return fmt.Errorf("failed to serialize config: %w", err)
 	}
-	
+
 	// Save to kvstore
 	if err := s.kvstore.Put(s.walletID, configData); err != nil {
 		return fmt.Errorf("failed to save share data: %w", err)
 	}
-	
+
 	// Update key info
 	keyInfo := &keyinfo.KeyInfo{
 		ParticipantPeerIDs: s.newNodeIDs,
 		Threshold:          s.newThreshold,
 		Version:            1,
 	}
-	
+
 	if err := s.keyinfoStore.Save(s.walletID, keyInfo); err != nil {
 		return fmt.Errorf("failed to save key info: %w", err)
 	}
-	
+
 	return nil
 }
 
@@ -321,7 +322,7 @@ func (a *eddsaKeyGenConfigAdapter) GetPublicKeyEd25519() ed25519.PublicKey {
 	if err := json.Unmarshal(a.keyShareData, &data); err != nil {
 		return nil
 	}
-	
+
 	// This is a simplified version - actual implementation would need proper parsing
 	return nil
 }

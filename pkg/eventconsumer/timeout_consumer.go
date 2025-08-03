@@ -3,10 +3,11 @@ package eventconsumer
 import (
 	"encoding/json"
 
+	"github.com/nats-io/nats.go"
+
 	"github.com/luxfi/mpc/pkg/event"
 	"github.com/luxfi/mpc/pkg/logger"
 	"github.com/luxfi/mpc/pkg/messaging"
-	"github.com/nats-io/nats.go"
 )
 
 // Other service not listen to this subject that make loss of message

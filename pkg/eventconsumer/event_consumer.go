@@ -9,6 +9,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/nats-io/nats.go"
+	"github.com/spf13/viper"
+
 	"github.com/luxfi/mpc/pkg/event"
 	"github.com/luxfi/mpc/pkg/identity"
 	"github.com/luxfi/mpc/pkg/keyinfo"
@@ -16,8 +19,6 @@ import (
 	"github.com/luxfi/mpc/pkg/messaging"
 	"github.com/luxfi/mpc/pkg/mpc"
 	"github.com/luxfi/mpc/pkg/types"
-	"github.com/nats-io/nats.go"
-	"github.com/spf13/viper"
 )
 
 const (
@@ -564,7 +565,7 @@ func (ec *eventConsumer) trackSession(walletID, txID string) {
 	if txID != "" {
 		sessionID = fmt.Sprintf("%s-%s", walletID, txID)
 	}
-	
+
 	ec.sessionsLock.Lock()
 	ec.activeSessions[sessionID] = time.Now()
 	ec.sessionsLock.Unlock()
@@ -576,7 +577,7 @@ func (ec *eventConsumer) untrackSession(walletID, txID string) {
 	if txID != "" {
 		sessionID = fmt.Sprintf("%s-%s", walletID, txID)
 	}
-	
+
 	ec.sessionsLock.Lock()
 	delete(ec.activeSessions, sessionID)
 	ec.sessionsLock.Unlock()

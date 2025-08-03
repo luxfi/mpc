@@ -8,14 +8,15 @@ import (
 	"math/big"
 	"sync"
 
-	"github.com/luxfi/mpc/pkg/protocol"
+	mpsEcdsa "github.com/luxfi/threshold/pkg/ecdsa"
 	"github.com/luxfi/threshold/pkg/math/curve"
 	"github.com/luxfi/threshold/pkg/party"
 	"github.com/luxfi/threshold/pkg/pool"
 	mpsProtocol "github.com/luxfi/threshold/pkg/protocol"
 	"github.com/luxfi/threshold/protocols/cmp"
 	"github.com/luxfi/threshold/protocols/cmp/config"
-	mpsEcdsa "github.com/luxfi/threshold/pkg/ecdsa"
+
+	"github.com/luxfi/mpc/pkg/protocol"
 )
 
 // CGGMP21Protocol implements the Protocol interface using CGGMP21
@@ -52,7 +53,7 @@ func (p *CGGMP21Protocol) KeyGen(selfID string, partyIDs []string, threshold int
 
 	// Create the keygen protocol
 	startFunc := cmp.Keygen(curve.Secp256k1{}, party.ID(selfID), ids, threshold, p.pool)
-	
+
 	// Create handler
 	handler, err := mpsProtocol.NewMultiHandler(startFunc, nil)
 	if err != nil {
@@ -75,7 +76,7 @@ func (p *CGGMP21Protocol) Refresh(cfg protocol.KeyGenConfig) (protocol.Party, er
 
 	// Create refresh protocol
 	startFunc := cmp.Refresh(cmpConfig, p.pool)
-	
+
 	// Create handler
 	handler, err := mpsProtocol.NewMultiHandler(startFunc, nil)
 	if err != nil {
@@ -104,7 +105,7 @@ func (p *CGGMP21Protocol) Sign(cfg protocol.KeyGenConfig, signers []string, mess
 
 	// Create sign protocol
 	startFunc := cmp.Sign(cmpConfig, signerIDs, messageHash, p.pool)
-	
+
 	// Create handler
 	handler, err := mpsProtocol.NewMultiHandler(startFunc, nil)
 	if err != nil {
@@ -133,7 +134,7 @@ func (p *CGGMP21Protocol) PreSign(cfg protocol.KeyGenConfig, signers []string) (
 
 	// Create presign protocol
 	startFunc := cmp.Presign(cmpConfig, signerIDs, p.pool)
-	
+
 	// Create handler
 	handler, err := mpsProtocol.NewMultiHandler(startFunc, nil)
 	if err != nil {
@@ -161,7 +162,7 @@ func (p *CGGMP21Protocol) PreSignOnline(cfg protocol.KeyGenConfig, preSig protoc
 
 	// Create presign online protocol
 	startFunc := cmp.PresignOnline(cmpConfig, cmpPreSig.preSig, messageHash, p.pool)
-	
+
 	// Create handler
 	handler, err := mpsProtocol.NewMultiHandler(startFunc, nil)
 	if err != nil {
@@ -191,7 +192,7 @@ func (p *partyAdapter) Update(msg protocol.Message) error {
 	if !msg.IsBroadcast() && len(msg.GetTo()) > 0 {
 		to = party.ID(msg.GetTo()[0])
 	}
-	
+
 	mpsMsg := &mpsProtocol.Message{
 		From:      party.ID(msg.GetFrom()),
 		To:        to,
@@ -212,10 +213,10 @@ func (p *partyAdapter) Update(msg protocol.Message) error {
 
 func (p *partyAdapter) Messages() <-chan protocol.Message {
 	ch := make(chan protocol.Message)
-	
+
 	go func() {
 		defer close(ch)
-		
+
 		for {
 			select {
 			case msg, ok := <-p.handler.Listen():
@@ -227,7 +228,7 @@ func (p *partyAdapter) Messages() <-chan protocol.Message {
 					p.mu.Unlock()
 					return
 				}
-				
+
 				// Convert and send message
 				var toList []string
 				if !msg.Broadcast && msg.To != "" {
@@ -242,7 +243,7 @@ func (p *partyAdapter) Messages() <-chan protocol.Message {
 			}
 		}
 	}()
-	
+
 	return ch
 }
 
@@ -263,15 +264,15 @@ func (p *partyAdapter) Done() bool {
 func (p *partyAdapter) Result() (interface{}, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	
+
 	if !p.done {
 		return nil, errors.New("protocol not finished")
 	}
-	
+
 	if p.err != nil {
 		return nil, p.err
 	}
-	
+
 	// Convert result to appropriate type
 	switch r := p.result.(type) {
 	case *config.Config:
@@ -293,10 +294,10 @@ type messageAdapter struct {
 	broadcast bool
 }
 
-func (m *messageAdapter) GetFrom() string      { return m.from }
-func (m *messageAdapter) GetTo() []string      { return m.to }
-func (m *messageAdapter) GetData() []byte      { return m.data }
-func (m *messageAdapter) IsBroadcast() bool    { return m.broadcast }
+func (m *messageAdapter) GetFrom() string   { return m.from }
+func (m *messageAdapter) GetTo() []string   { return m.to }
+func (m *messageAdapter) GetData() []byte   { return m.data }
+func (m *messageAdapter) IsBroadcast() bool { return m.broadcast }
 
 // configAdapter implements protocol.KeyGenConfig
 type configAdapter struct {
@@ -445,7 +446,7 @@ func toCMPConfig(cfg protocol.KeyGenConfig) (*config.Config, error) {
 	if adapter, ok := cfg.(*configAdapter); ok {
 		return adapter.config, nil
 	}
-	
+
 	// Otherwise, we need to reconstruct
 	// This is a simplified version - in production you'd need proper serialization
 	return nil, errors.New("config conversion not implemented for non-CGGMP21 configs")
