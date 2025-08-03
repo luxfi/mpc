@@ -10,6 +10,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/hashicorp/consul/api"
+	"github.com/nats-io/nats.go"
+	"github.com/spf13/viper"
+	"github.com/urfave/cli/v3"
+	"golang.org/x/term"
+
 	"github.com/luxfi/mpc/pkg/config"
 	"github.com/luxfi/mpc/pkg/constant"
 	"github.com/luxfi/mpc/pkg/event"
@@ -21,11 +27,6 @@ import (
 	"github.com/luxfi/mpc/pkg/logger"
 	"github.com/luxfi/mpc/pkg/messaging"
 	"github.com/luxfi/mpc/pkg/mpc"
-	"github.com/hashicorp/consul/api"
-	"github.com/nats-io/nats.go"
-	"github.com/spf13/viper"
-	"github.com/urfave/cli/v3"
-	"golang.org/x/term"
 )
 
 const (
@@ -95,7 +96,7 @@ func runNode(ctx context.Context, c *cli.Command) error {
 	config.InitViperConfig()
 	environment := viper.GetString("environment")
 	logger.Init(environment, debug)
-	
+
 	// Create environment-prefixed node ID
 	nodeID := fmt.Sprintf("lux-%s-%s", environment, nodeName)
 	logger.Info("Starting MPC node", "nodeID", nodeID, "environment", environment)

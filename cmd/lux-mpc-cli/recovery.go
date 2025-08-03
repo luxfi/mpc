@@ -6,9 +6,10 @@ import (
 	"os"
 	"syscall"
 
-	"github.com/luxfi/mpc/pkg/kvstore"
 	"github.com/urfave/cli/v3"
 	"golang.org/x/term"
+
+	"github.com/luxfi/mpc/pkg/kvstore"
 )
 
 // recoverDatabase handles the database recovery from encrypted backup files
