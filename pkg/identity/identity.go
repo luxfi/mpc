@@ -14,10 +14,11 @@ import (
 	"filippo.io/age"
 	"golang.org/x/term"
 
+	"github.com/spf13/viper"
+
 	"github.com/luxfi/mpc/pkg/common/pathutil"
 	"github.com/luxfi/mpc/pkg/logger"
 	"github.com/luxfi/mpc/pkg/types"
-	"github.com/spf13/viper"
 )
 
 // NodeIdentity represents a node's identity information
@@ -166,7 +167,7 @@ func loadPrivateKey(identityDir, nodeName string, decrypt bool) (string, error) 
 
 		// Prompt for passphrase using term.ReadPassword
 		fmt.Print("Enter passphrase to decrypt private key: ")
-		bytePassword, err := term.ReadPassword(int(syscall.Stdin))
+		bytePassword, err := term.ReadPassword(syscall.Stdin)
 		fmt.Println() // newline after prompt
 		if err != nil {
 			return "", fmt.Errorf("failed to read passphrase: %w", err)
@@ -282,4 +283,3 @@ func (s *fileStore) VerifyInitiatorMessage(msg types.InitiatorMessage) error {
 
 	return nil
 }
-

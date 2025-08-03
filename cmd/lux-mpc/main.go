@@ -276,7 +276,7 @@ func promptForSensitiveCredentials() {
 
 	for {
 		fmt.Print("Enter Badger DB password: ")
-		badgerPass, err = term.ReadPassword(int(syscall.Stdin))
+		badgerPass, err = term.ReadPassword(syscall.Stdin)
 		if err != nil {
 			logger.Fatal("Failed to read badger password", err)
 		}
@@ -288,7 +288,7 @@ func promptForSensitiveCredentials() {
 		}
 
 		fmt.Print("Confirm Badger DB password: ")
-		confirmPass, err = term.ReadPassword(int(syscall.Stdin))
+		confirmPass, err = term.ReadPassword(syscall.Stdin)
 		if err != nil {
 			logger.Fatal("Failed to read confirmation password", err)
 		}
