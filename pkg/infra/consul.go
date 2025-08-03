@@ -3,10 +3,11 @@ package infra
 import (
 	"time"
 
-	"github.com/luxfi/mpc/pkg/constant"
-	"github.com/luxfi/mpc/pkg/logger"
 	"github.com/hashicorp/consul/api"
 	"github.com/spf13/viper"
+
+	"github.com/luxfi/mpc/pkg/constant"
+	"github.com/luxfi/mpc/pkg/logger"
 )
 
 type ConsulKV interface {

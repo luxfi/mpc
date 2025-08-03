@@ -28,7 +28,7 @@ func recoverDatabase(ctx context.Context, c *cli.Command) error {
 	// Prompt for encryption key
 	var key []byte
 	fmt.Print("Enter backup encryption key: ")
-	keyBytes, err := term.ReadPassword(int(syscall.Stdin))
+	keyBytes, err := term.ReadPassword(syscall.Stdin)
 	if err != nil {
 		return fmt.Errorf("failed to read encryption key: %w", err)
 	}

@@ -4,8 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/luxfi/mpc/pkg/infra"
 	"github.com/hashicorp/consul/api"
+
+	"github.com/luxfi/mpc/pkg/infra"
 )
 
 type KeyInfo struct {
