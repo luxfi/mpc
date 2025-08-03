@@ -6,12 +6,13 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/hashicorp/consul/api"
+	"github.com/urfave/cli/v3"
+
 	"github.com/luxfi/mpc/pkg/common/pathutil"
 	"github.com/luxfi/mpc/pkg/config"
 	"github.com/luxfi/mpc/pkg/infra"
 	"github.com/luxfi/mpc/pkg/logger"
-	"github.com/hashicorp/consul/api"
-	"github.com/urfave/cli/v3"
 )
 
 func registerPeers(ctx context.Context, c *cli.Command) error {

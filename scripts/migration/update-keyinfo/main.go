@@ -5,9 +5,10 @@ import (
 	"log"
 	"strings"
 
+	"github.com/hashicorp/consul/api"
+
 	"github.com/luxfi/mpc/pkg/config"
 	"github.com/luxfi/mpc/pkg/logger"
-	"github.com/hashicorp/consul/api"
 )
 
 // script to add key type prefix ecdsa for existing keys
