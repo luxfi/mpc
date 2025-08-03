@@ -18,9 +18,9 @@
 
 Lux MPC is a high-performance, open-source Multi-Party Computation (MPC) engine for securely generating and managing cryptographic wallets across distributed nodes—without ever exposing the full private key.
 
-At its cryptographic core, Lux MPC integrates Lux TSS, a production-grade threshold signature scheme library developed by Lux. It supports:
+At its cryptographic core, Lux MPC integrates Lux Threshold, a production-grade threshold signature scheme library developed by Lux. It supports:
 
-- **ECDSA (secp256k1)**: Bitcoin, Ethereum, BNB, Polygon, and EVM-compatible L2 chains
+- **ECDSA (secp256k1)**: Bitcoin, Ethereum, BNB, Polygon, XRPL, and EVM-compatible L2 chains
 
 - **EdDSA (Ed25519)**: for Solana, Polkadot, Cardano, and other modern blockchains
 
@@ -44,7 +44,7 @@ At its cryptographic core, Lux MPC integrates Lux TSS, a production-grade thresh
 | [NATS](https://nats.io)                             | Lightweight and resilient **messaging layer** for coordinating MPC nodes in real time. Enables pub/sub communication even under partial failure. |
 | [Badger KV](https://github.com/dgraph-io/badger)    | High-performance **embedded key-value store** used for local encrypted storage of MPC key shares and session data.                               |
 | [Consul](https://www.consul.io)                     | **Service discovery and health checking** to allow nodes to dynamically find each other and maintain cluster integrity.                          |
-| [Lux Crypto](https://github.com/luxfi/crypto)       | Cryptographic engine for **threshold key generation and signing**, supporting ECDSA and EdDSA (used in Bitcoin, Ethereum, Solana, etc).          |
+| [Lux Threshold](https://github.com/luxfi/threshold) | Cryptographic engine for **threshold key generation and signing**, supporting ECDSA via CGGMP21 and EdDSA via FROST (used in Bitcoin, Ethereum, XRPL, Solana, etc).          |
 | [age](https://github.com/FiloSottile/age)           | **Modern encryption tool** used for secure key material storage and protection with password-based encryption.                                   |
 
 ## Threshold & Nodes
@@ -106,6 +106,22 @@ Each Lux MPC node:
 - **Byzantine-resilient**: Only `t` of `n` nodes are required to proceed
 - **Scalable and pluggable**: Easily expand the cluster or integrate additional tools
 - **Secure peer authentication**: All inter-node messages are signed and verified using Ed25519
+
+## Supported Networks
+
+Lux MPC supports the following blockchain networks:
+
+### ECDSA (secp256k1) Networks
+- **Bitcoin**: BTC, BTC-testnet
+- **Ethereum**: ETH, ETH-sepolia, ETH-goerli
+- **XRP Ledger**: XRPL, XRPL-testnet, XRPL-devnet
+- **Lux Network**: LUX, LUX-testnet
+
+### EdDSA (Ed25519) Networks
+- **Solana**: SOL, SOL-devnet, SOL-testnet
+- **TON**: TON, TON-testnet
+
+The network code is specified in signing requests to ensure the correct key type and signing parameters are used.
 
 ## Configuration
 

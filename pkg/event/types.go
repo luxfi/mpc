@@ -154,3 +154,10 @@ func contains(str string, patterns ...string) bool {
 	}
 	return false
 }
+
+// Message represents a generic event message
+type Message struct {
+	EventType string `json:"event_type"`
+	WalletID  string `json:"wallet_id"`
+	SessionID string `json:"session_id"`
+}

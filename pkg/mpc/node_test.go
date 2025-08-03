@@ -9,7 +9,7 @@ import (
 func TestPartyIDToNodeID(t *testing.T) {
 	partyID := createPartyID("4d8cb873-dc86-4776-b6f6-cf5c668f6468", "keygen", 1)
 	nodeID := PartyIDToRoutingDest(partyID)
-	assert.Equal(t, nodeID, "4d8cb873-dc86-4776-b6f6-cf5c668f6468:1", "NodeID should be equal")
+	assert.Equal(t, "4d8cb873-dc86-4776-b6f6-cf5c668f6468:keygen:1", nodeID, "NodeID should be equal")
 }
 
 func TestCreatePartyID_Structure(t *testing.T) {
@@ -20,12 +20,9 @@ func TestCreatePartyID_Structure(t *testing.T) {
 	partyID := createPartyID(sessionID, keyType, version)
 
 	assert.NotNil(t, partyID)
-	// The party ID has a random UUID as the ID
-	assert.NotEmpty(t, partyID.Id)
-	// The Moniker should contain the keyType
-	assert.Equal(t, keyType, partyID.Moniker)
-	// The Key should be derived from sessionID and version
-	assert.NotNil(t, partyID.Key)
+	// The party ID should be in the format sessionID:keyType:version
+	expectedID := "test-session-123:keygen:5"
+	assert.Equal(t, expectedID, string(partyID))
 }
 
 func TestCreatePartyID_DifferentVersions(t *testing.T) {
@@ -33,24 +30,27 @@ func TestCreatePartyID_DifferentVersions(t *testing.T) {
 	keyType := "keygen"
 
 	// Test version 0 (backward compatible)
-	partyID0 := createPartyID(sessionID, keyType, BackwardCompatibleVersion)
+	partyID0 := createPartyID(sessionID, keyType, 0)
 	assert.NotNil(t, partyID0)
-	assert.Equal(t, keyType, partyID0.Moniker)
+	// Version 0 should just be the sessionID
+	assert.Equal(t, sessionID, string(partyID0))
 
 	// Test version 1 (default)
 	partyID1 := createPartyID(sessionID, keyType, DefaultVersion)
 	assert.NotNil(t, partyID1)
-	assert.Equal(t, keyType, partyID1.Moniker)
+	// Version 1 should include version info
+	expectedID1 := "test-session-456:keygen:1"
+	assert.Equal(t, expectedID1, string(partyID1))
 
-	// Different versions should have different keys
-	assert.NotEqual(t, partyID0.Key, partyID1.Key)
+	// Different versions should produce different party IDs
+	assert.NotEqual(t, partyID0, partyID1)
 }
 
 func TestPartyIDToRoutingDest_BackwardCompatible(t *testing.T) {
 	sessionID := "test-session-789"
 	keyType := "signing"
 
-	partyID := createPartyID(sessionID, keyType, BackwardCompatibleVersion)
+	partyID := createPartyID(sessionID, keyType, 0)
 	nodeID := PartyIDToRoutingDest(partyID)
 
 	// For backward compatible version, should just be the sessionID
@@ -64,8 +64,8 @@ func TestPartyIDToRoutingDest_DefaultVersion(t *testing.T) {
 	partyID := createPartyID(sessionID, keyType, DefaultVersion)
 	nodeID := PartyIDToRoutingDest(partyID)
 
-	// For default version, should include the version number
-	expected := sessionID + ":1"
+	// For default version, should be the full party ID string
+	expected := "test-session-999:signing:1"
 	assert.Equal(t, expected, nodeID)
 }
 
@@ -73,12 +73,15 @@ func TestCreatePartyID_EmptyValues(t *testing.T) {
 	// Test with empty session ID
 	partyID := createPartyID("", "keygen", 0)
 	assert.NotNil(t, partyID)
-	assert.Equal(t, "keygen", partyID.Moniker)
+	// Version 0 should just return empty string
+	assert.Equal(t, "", string(partyID))
 
 	// Test with empty key type
 	partyID = createPartyID("session", "", 1)
 	assert.NotNil(t, partyID)
-	assert.Equal(t, "", partyID.Moniker)
+	// Should still create the party ID with format
+	expectedID := "session::1"
+	assert.Equal(t, expectedID, string(partyID))
 }
 
 func TestPartyIDToRoutingDest_Consistency(t *testing.T) {
@@ -97,7 +100,7 @@ func TestPartyIDToRoutingDest_Consistency(t *testing.T) {
 	assert.Equal(t, nodeID1, nodeID2, "Same parameters should produce same routing destinations")
 }
 
-func TestCreatePartyID_UniqueIDs(t *testing.T) {
+func TestCreatePartyID_SameParameters(t *testing.T) {
 	sessionID := "test-session"
 	keyType := "keygen"
 	version := 1
@@ -106,12 +109,11 @@ func TestCreatePartyID_UniqueIDs(t *testing.T) {
 	partyID1 := createPartyID(sessionID, keyType, version)
 	partyID2 := createPartyID(sessionID, keyType, version)
 
-	// IDs should be different (random UUIDs)
-	assert.NotEqual(t, partyID1.Id, partyID2.Id, "Party IDs should have unique random IDs")
-
-	// But monikers should be the same
-	assert.Equal(t, partyID1.Moniker, partyID2.Moniker)
-
-	// And keys should be the same (derived from sessionID and version)
-	assert.Equal(t, partyID1.Key, partyID2.Key)
+	// Party IDs with same parameters should be identical in the new implementation
+	assert.Equal(t, partyID1, partyID2, "Party IDs with same parameters should be equal")
+	
+	// Both should have the same format
+	expectedID := "test-session:keygen:1"
+	assert.Equal(t, expectedID, string(partyID1))
+	assert.Equal(t, expectedID, string(partyID2))
 }

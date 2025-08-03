@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/luxfi/cggmp21/pkg/ecdsa"
-	"github.com/luxfi/cggmp21/pkg/party"
-	"github.com/luxfi/cggmp21/pkg/pool"
-	"github.com/luxfi/cggmp21/pkg/protocol"
-	"github.com/luxfi/cggmp21/protocols/cmp"
-	"github.com/luxfi/cggmp21/protocols/cmp/config"
+	"github.com/luxfi/threshold/pkg/ecdsa"
+	"github.com/luxfi/threshold/pkg/party"
+	"github.com/luxfi/threshold/pkg/pool"
+	"github.com/luxfi/threshold/pkg/protocol"
+	"github.com/luxfi/threshold/protocols/cmp"
+	"github.com/luxfi/threshold/protocols/cmp/config"
 	"github.com/luxfi/mpc/pkg/encoding"
 	"github.com/luxfi/mpc/pkg/event"
 	"github.com/luxfi/mpc/pkg/identity"
@@ -76,7 +76,7 @@ func newCGGMP21SigningSession(
 			pubSub:             pubSub,
 			selfPartyID:        selfPartyID,
 			partyIDs:           signerIDs,
-			subscriberList:     []messaging.Subscriber{},
+			subscriberList:     []messaging.Subscription{},
 			rounds:             5, // CGGMP21 signing has 5 rounds
 			outCh:              make(chan msg, 100),
 			errCh:              make(chan error, 10),
@@ -143,7 +143,7 @@ func (s *cggmp21SigningSession) Init() {
 func (s *cggmp21SigningSession) handleProtocolMessages() {
 	for {
 		select {
-		case msg, ok := <-s.handler.Listen():
+		case protoMsg, ok := <-s.handler.Listen():
 			if !ok {
 				// Protocol finished
 				s.resultMutex.Lock()
@@ -161,11 +161,15 @@ func (s *cggmp21SigningSession) handleProtocolMessages() {
 			}
 			
 			// Convert protocol message to our message format
+			var toPartyIDs []party.ID
+			if !protoMsg.Broadcast && protoMsg.To != "" {
+				toPartyIDs = []party.ID{protoMsg.To}
+			}
 			outMsg := msg{
-				FromPartyID: msg.From,
-				ToPartyIDs:  msg.To,
-				IsBroadcast: msg.Broadcast,
-				Data:        msg.Data,
+				FromPartyID: protoMsg.From,
+				ToPartyIDs:  toPartyIDs,
+				IsBroadcast: protoMsg.Broadcast,
+				Data:        protoMsg.Data,
 			}
 			
 			s.outCh <- outMsg
@@ -177,9 +181,7 @@ func (s *cggmp21SigningSession) handleProtocolMessages() {
 				continue
 			}
 			
-			if err := s.handler.Update(protoMsg); err != nil {
-				s.logger.Error().Err(err).Msgf("Failed to update handler with message from %s", protoMsg.From)
-			}
+			s.handler.Accept(protoMsg)
 		}
 	}
 }
@@ -194,16 +196,16 @@ func (s *cggmp21SigningSession) ProcessInboundMessage(msgBytes []byte) {
 		return
 	}
 
-	msgHash := utils.GetMessageHash(msgBytes)
-	if s.processing[msgHash] {
+	msgHashStr := fmt.Sprintf("%x", utils.GetMessageHash(msgBytes))
+	if s.processing[msgHashStr] {
 		return
 	}
-	s.processing[msgHash] = true
+	s.processing[msgHashStr] = true
 
 	// Convert to protocol message
 	protoMsg := &protocol.Message{
 		From:      party.ID(inboundMessage.SenderID),
-		To:        convertToPartyIDs(inboundMessage.RecipientIDs),
+		To:        party.ID(""), // Single recipient for protocol messages
 		Data:      inboundMessage.Body,
 		Broadcast: inboundMessage.IsBroadcast,
 	}
@@ -256,7 +258,8 @@ func (s *cggmp21SigningSession) publishResult() {
 				"error": s.resultErr.Error(),
 			},
 		)
-		if err := s.resultQueue.Publish(failureEvent); err != nil {
+		evtData, _ := encoding.StructToJsonBytes(failureEvent)
+		if err := s.resultQueue.Enqueue(fmt.Sprintf("%s.%s", event.SigningResultTopic, s.walletID), evtData, nil); err != nil {
 			s.logger.Error().Err(err).Msg("failed to publish sign failure event")
 		}
 		return
@@ -277,15 +280,18 @@ func (s *cggmp21SigningSession) publishResult() {
 				"error": "signature verification failed",
 			},
 		)
-		if err := s.resultQueue.Publish(failureEvent); err != nil {
+		evtData, _ := encoding.StructToJsonBytes(failureEvent)
+		if err := s.resultQueue.Enqueue(fmt.Sprintf("%s.%s", event.SigningResultTopic, s.walletID), evtData, nil); err != nil {
 			s.logger.Error().Err(err).Msg("failed to publish sign failure event")
 		}
 		return
 	}
 	
 	// Convert signature to hex
-	sigR := hex.EncodeToString(s.signature.R.Bytes())
-	sigS := hex.EncodeToString(s.signature.S.Bytes())
+	sigRBytes, _ := s.signature.R.MarshalBinary()
+	sigSBytes, _ := s.signature.S.MarshalBinary()
+	sigR := hex.EncodeToString(sigRBytes)
+	sigS := hex.EncodeToString(sigSBytes)
 	
 	// Publish success event
 	successEvent := event.CreateSignSuccess(
@@ -300,7 +306,8 @@ func (s *cggmp21SigningSession) publishResult() {
 		},
 	)
 	
-	if err := s.resultQueue.Publish(successEvent); err != nil {
+	evtData, _ := encoding.StructToJsonBytes(successEvent)
+	if err := s.resultQueue.Enqueue(fmt.Sprintf("%s.%s", event.SigningResultTopic, s.walletID), evtData, nil); err != nil {
 		s.logger.Error().Err(err).Msg("failed to publish sign success event")
 	}
 	

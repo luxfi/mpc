@@ -4,9 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/google/uuid"
-	"github.com/luxfi/cggmp21/pkg/party"
-	"github.com/luxfi/mpc/pkg/common/errors"
+	"github.com/luxfi/threshold/pkg/party"
 	"github.com/luxfi/mpc/pkg/identity"
 	"github.com/luxfi/mpc/pkg/keyinfo"
 	"github.com/luxfi/mpc/pkg/kvstore"
@@ -69,6 +67,10 @@ func (p *Node) ID() string {
 	return p.nodeID
 }
 
+func (p *Node) KeyInfoStore() keyinfo.Store {
+	return p.keyinfoStore
+}
+
 func (p *Node) CreateKeyGenSession(
 	walletID string,
 	threshold int,
@@ -77,7 +79,7 @@ func (p *Node) CreateKeyGenSession(
 	if !p.peerRegistry.ArePeersReady() {
 		return nil, fmt.Errorf(
 			"peers are not ready yet. ready: %d, expected: %d",
-			len(p.peerRegistry.GetReadyPeers()),
+			p.peerRegistry.GetReadyPeersCount(),
 			len(p.peerIDs)+1,
 		)
 	}
@@ -177,6 +179,57 @@ func (p *Node) getVersion(sessionType SessionType, walletID string) int {
 	// In production, you might want to store and retrieve version info
 	// For now, always use the default version
 	return DefaultVersion
+}
+
+func (p *Node) CreateReshareSession(
+	sessionType SessionType,
+	walletID string,
+	threshold int,
+	newThreshold int,
+	newNodeIDs []string,
+	isNewPeer bool,
+	resultQueue messaging.MessageQueue,
+) (ReshareSession, error) {
+	logger.Info("Creating reshare session",
+		"sessionType", sessionType,
+		"walletID", walletID,
+		"threshold", threshold,
+		"newThreshold", newThreshold,
+		"newNodeIDs", newNodeIDs,
+		"isNewPeer", isNewPeer,
+		"nodeID", p.nodeID,
+	)
+
+	switch sessionType {
+	case SessionTypeECDSA:
+		return newCGGMP21ReshareSession(
+			walletID,
+			threshold,
+			newThreshold,
+			newNodeIDs,
+			isNewPeer,
+			p.pubSub,
+			p.kvstore,
+			p.keyinfoStore,
+			resultQueue,
+			p.nodeID,
+		)
+	case SessionTypeEDDSA:
+		return newEdDSAReshareSession(
+			walletID,
+			threshold,
+			newThreshold,
+			newNodeIDs,
+			isNewPeer,
+			p.pubSub,
+			p.kvstore,
+			p.keyinfoStore,
+			resultQueue,
+			p.nodeID,
+		)
+	default:
+		return nil, fmt.Errorf("unsupported session type for reshare: %v", sessionType)
+	}
 }
 
 func contains(slice []string, item string) bool {

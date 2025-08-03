@@ -24,6 +24,34 @@ type SigningResultEvent struct {
 	Signature []byte `json:"signature"`
 }
 
+func CreateSignSuccess(sessionID, walletID, r, s string, metadata map[string]any) SigningResultEvent {
+	return SigningResultEvent{
+		ResultType:          ResultTypeSuccess,
+		ErrorCode:           "",
+		WalletID:            walletID,
+		TxID:                sessionID,
+		R:                   []byte(r),
+		S:                   []byte(s),
+		NetworkInternalCode: "",
+	}
+}
+
+func CreateSignFailure(sessionID, walletID string, metadata map[string]any) SigningResultEvent {
+	errorReason := ""
+	if err, ok := metadata["error"]; ok {
+		errorReason = err.(string)
+	}
+	
+	return SigningResultEvent{
+		ResultType:          ResultTypeError,
+		ErrorCode:           ErrorCodeSigningFailure,
+		ErrorReason:         errorReason,
+		WalletID:            walletID,
+		TxID:                sessionID,
+		NetworkInternalCode: "",
+	}
+}
+
 type SigningResultSuccessEvent struct {
 	NetworkInternalCode string `json:"network_internal_code"`
 	WalletID            string `json:"wallet_id"`
