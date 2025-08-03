@@ -4,8 +4,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"os/signal"
-	"syscall"
 
 	// "github.com/luxfi/mpc/pkg/bridge" // TODO: Implement bridge package
 	"github.com/urfave/cli/v2"
