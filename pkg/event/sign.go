@@ -41,7 +41,7 @@ func CreateSignFailure(sessionID, walletID string, metadata map[string]any) Sign
 	if err, ok := metadata["error"]; ok {
 		errorReason = err.(string)
 	}
-	
+
 	return SigningResultEvent{
 		ResultType:          ResultTypeError,
 		ErrorCode:           ErrorCodeSigningFailure,

@@ -34,7 +34,7 @@ func requestPassword() (string, error) {
 
 	// First password entry
 	fmt.Print("Enter passphrase to encrypt private key: ")
-	bytePassword, err := term.ReadPassword(int(syscall.Stdin))
+	bytePassword, err := term.ReadPassword(syscall.Stdin)
 	fmt.Println() // newline after prompt
 	if err != nil {
 		return "", fmt.Errorf("failed to read passphrase: %w", err)
@@ -43,7 +43,7 @@ func requestPassword() (string, error) {
 
 	// Confirm password
 	fmt.Print("Confirm passphrase: ")
-	byteConfirmation, err := term.ReadPassword(int(syscall.Stdin))
+	byteConfirmation, err := term.ReadPassword(syscall.Stdin)
 	fmt.Println() // newline after prompt
 	if err != nil {
 		return "", fmt.Errorf("failed to read confirmation passphrase: %w", err)
