@@ -18,3 +18,8 @@ e2e/logs/
 # Generated config file (template is tracked)
 e2e/config.test.yaml
 logs/
+
+# Built binaries
+lux-mpc
+lux-mpc-bridge
+lux-mpc-cli
