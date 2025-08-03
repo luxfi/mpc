@@ -15,3 +15,26 @@ type KeygenResultEvent struct {
 	ErrorReason string     `json:"error_reason"`
 	ErrorCode   string     `json:"error_code"`
 }
+
+// CreateKeygenSuccess creates a successful keygen event
+func CreateKeygenSuccess(walletID string, pubKeyHex string, metadata map[string]any) *KeygenResultEvent {
+	return &KeygenResultEvent{
+		WalletID:    walletID,
+		ECDSAPubKey: []byte(pubKeyHex),
+		ResultType:  ResultTypeSuccess,
+	}
+}
+
+// CreateKeygenFailure creates a failed keygen event
+func CreateKeygenFailure(walletID string, metadata map[string]any) *KeygenResultEvent {
+	errorMsg := ""
+	if err, ok := metadata["error"].(string); ok {
+		errorMsg = err
+	}
+	return &KeygenResultEvent{
+		WalletID:    walletID,
+		ResultType:  ResultTypeError,
+		ErrorReason: errorMsg,
+		ErrorCode:   string(ErrorCodeKeygenFailure),
+	}
+}

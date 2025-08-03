@@ -8,12 +8,10 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strings"
 	"sync"
 	"syscall"
 
 	"filippo.io/age"
-	"github.com/luxfi/threshold/v2/tss"
 	"golang.org/x/term"
 
 	"github.com/luxfi/mpc/pkg/common/pathutil"
@@ -35,8 +33,9 @@ type Store interface {
 	// GetPublicKey retrieves a node's public key by its ID
 	GetPublicKey(nodeID string) ([]byte, error)
 	VerifyInitiatorMessage(msg types.InitiatorMessage) error
-	SignMessage(msg *types.TssMessage) ([]byte, error)
-	VerifyMessage(msg *types.TssMessage) error
+	// Legacy methods - commented out as TssMessage is no longer used
+	// SignMessage(msg *types.TssMessage) ([]byte, error)
+	// VerifyMessage(msg *types.TssMessage) error
 }
 
 // fileStore implements the Store interface using the filesystem
@@ -219,6 +218,8 @@ func (s *fileStore) GetPublicKey(nodeID string) ([]byte, error) {
 	return nil, fmt.Errorf("public key not found for node ID: %s", nodeID)
 }
 
+// Legacy methods - commented out as TssMessage is no longer used
+/*
 func (s *fileStore) SignMessage(msg *types.TssMessage) ([]byte, error) {
 	// Get deterministic bytes for signing
 	msgBytes, err := msg.MarshalForSigning()
@@ -258,6 +259,7 @@ func (s *fileStore) VerifyMessage(msg *types.TssMessage) error {
 
 	return nil
 }
+*/
 
 // VerifyInitiatorMessage verifies that a message was signed by the known initiator
 func (s *fileStore) VerifyInitiatorMessage(msg types.InitiatorMessage) error {
@@ -281,6 +283,3 @@ func (s *fileStore) VerifyInitiatorMessage(msg types.InitiatorMessage) error {
 	return nil
 }
 
-func partyIDToNodeID(partyID *tss.PartyID) string {
-	return strings.Split(string(partyID.KeyInt().Bytes()), ":")[0]
-}
