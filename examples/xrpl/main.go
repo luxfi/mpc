@@ -64,9 +64,9 @@ func signXRPLTransaction(mpcClient client.MPCClient) {
 	}
 
 	// Sign the message with initiator key
-	msg, err := signingMsg.GetMessage()
+	msgBytes, err := signingMsg.Raw()
 	if err != nil {
-		log.Fatal("Failed to get message:", err)
+		log.Fatal("Failed to get raw message:", err)
 	}
 
 	// In production, use your actual initiator private key

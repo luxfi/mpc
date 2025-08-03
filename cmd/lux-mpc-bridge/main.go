@@ -7,8 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/luxfi/mpc/pkg/bridge"
-	"github.com/luxfi/mpc/pkg/logger"
+	// "github.com/luxfi/mpc/pkg/bridge" // TODO: Implement bridge package
 	"github.com/urfave/cli/v2"
 	"go.uber.org/zap"
 )
@@ -20,7 +19,8 @@ var (
 )
 
 func main() {
-	logger := logger.NewLogger("lux-mpc-bridge")
+	logger, _ := zap.NewProduction()
+	defer logger.Sync()
 
 	app := &cli.App{
 		Name:    "lux-mpc-bridge",
@@ -67,29 +67,11 @@ func runServer(c *cli.Context, logger *zap.Logger) error {
 		zap.String("version", Version),
 	)
 
-	// Create compatibility server
-	server, err := bridge.NewCompatibilityServer(natsURL, port, keyPath)
-	if err != nil {
-		return fmt.Errorf("failed to create compatibility server: %w", err)
-	}
-	defer server.Close()
-
-	// Handle graceful shutdown
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-
-	errChan := make(chan error, 1)
-	go func() {
-		if err := server.Start(); err != nil {
-			errChan <- err
-		}
-	}()
-
-	select {
-	case <-sigChan:
-		logger.Info("Received shutdown signal")
-		return nil
-	case err := <-errChan:
-		return fmt.Errorf("server error: %w", err)
-	}
+	// TODO: Implement bridge compatibility server
+	_ = natsURL
+	_ = port
+	_ = keyPath
+	
+	logger.Info("Bridge compatibility server not yet implemented")
+	return fmt.Errorf("bridge compatibility server not yet implemented")
 }
