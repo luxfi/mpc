@@ -11,6 +11,8 @@ import (
 	"github.com/luxfi/threshold/pkg/protocol"
 	"github.com/luxfi/threshold/protocols/cmp"
 	"github.com/luxfi/threshold/protocols/cmp/config"
+	"github.com/rs/zerolog"
+
 	"github.com/luxfi/mpc/pkg/event"
 	"github.com/luxfi/mpc/pkg/identity"
 	"github.com/luxfi/mpc/pkg/keyinfo"
@@ -18,7 +20,6 @@ import (
 	"github.com/luxfi/mpc/pkg/messaging"
 	"github.com/luxfi/mpc/pkg/types"
 	"github.com/luxfi/mpc/pkg/utils"
-	"github.com/rs/zerolog"
 )
 
 type KeyGenSession interface {
@@ -93,19 +94,19 @@ func (s *cggmp21KeygenSession) Init() {
 
 	// Create CGGMP21 keygen protocol
 	startFunc := cmp.Keygen(curve.Secp256k1{}, s.selfPartyID, s.partyIDs, s.threshold, s.pool)
-	
+
 	// Create handler
 	handler, err := protocol.NewMultiHandler(startFunc, nil)
 	if err != nil {
 		s.logger.Fatal().Err(err).Msg("Failed to create keygen handler")
 		return
 	}
-	
+
 	s.handler = handler
-	
+
 	// Start message handling goroutine
 	go s.handleProtocolMessages()
-	
+
 	s.logger.Info().
 		Str("partyID", string(s.selfPartyID)).
 		Interface("peerIDs", s.partyIDs).
@@ -132,7 +133,7 @@ func (s *cggmp21KeygenSession) handleProtocolMessages() {
 				s.finishCh <- true
 				return
 			}
-			
+
 			// Convert protocol message to our message format
 			var toPartyIDs []party.ID
 			if !protoMsg.Broadcast && protoMsg.To != "" {
@@ -144,16 +145,16 @@ func (s *cggmp21KeygenSession) handleProtocolMessages() {
 				IsBroadcast: protoMsg.Broadcast,
 				Data:        protoMsg.Data,
 			}
-			
+
 			s.outCh <- outMsg
-			
+
 		case protoMsg := <-s.messagesCh:
 			// Handle incoming message
 			if !s.handler.CanAccept(protoMsg) {
 				s.logger.Warn().Msgf("Handler cannot accept message from %s", protoMsg.From)
 				continue
 			}
-			
+
 			s.handler.Accept(protoMsg)
 		}
 	}
@@ -182,7 +183,7 @@ func (s *cggmp21KeygenSession) ProcessInboundMessage(msgBytes []byte) {
 		Data:      inboundMessage.Body,
 		Broadcast: inboundMessage.IsBroadcast,
 	}
-	
+
 	// Send to handler
 	s.messagesCh <- protoMsg
 }
@@ -197,7 +198,7 @@ func (s *cggmp21KeygenSession) ProcessOutboundMessage() {
 			for i, pid := range m.ToPartyIDs {
 				recipientIDs[i] = string(pid)
 			}
-			
+
 			msgWireBytes := &types.Message{
 				SessionID:    s.walletID,
 				SenderID:     string(m.FromPartyID),
@@ -205,12 +206,12 @@ func (s *cggmp21KeygenSession) ProcessOutboundMessage() {
 				Body:         m.Data,
 				IsBroadcast:  m.IsBroadcast,
 			}
-			
+
 			s.sendMsg(msgWireBytes)
-			
+
 		case err := <-s.errCh:
 			s.logger.Error().Err(err).Msg("Received error during ProcessOutboundMessage")
-			
+
 		case <-s.finishCh:
 			s.logger.Info().Msg("Received finish message during ProcessOutboundMessage")
 			s.publishResult()
@@ -222,7 +223,7 @@ func (s *cggmp21KeygenSession) ProcessOutboundMessage() {
 func (s *cggmp21KeygenSession) publishResult() {
 	s.resultMutex.Lock()
 	defer s.resultMutex.Unlock()
-	
+
 	if s.resultErr != nil {
 		failureEvent := event.CreateKeygenFailure(
 			s.walletID,
@@ -236,24 +237,24 @@ func (s *cggmp21KeygenSession) publishResult() {
 		}
 		return
 	}
-	
+
 	if s.config == nil {
 		s.logger.Error().Msg("No config available after keygen completion")
 		return
 	}
-	
+
 	// Save key share
 	shareBytes, err := json.Marshal(s.config)
 	if err != nil {
 		s.logger.Error().Err(err).Msg("Failed to marshal key share")
 		return
 	}
-	
+
 	if err := s.kvstore.Put(s.walletID, shareBytes); err != nil {
 		s.logger.Error().Err(err).Msgf("Failed to save key share for wallet %s", s.walletID)
 		return
 	}
-	
+
 	// Convert public key to hex
 	// Use the X coordinate as a simple representation
 	var pubKeyHex string
@@ -263,19 +264,19 @@ func (s *cggmp21KeygenSession) publishResult() {
 			pubKeyHex = fmt.Sprintf("%x", xBytes)
 		}
 	}
-	
+
 	// Save key info
 	keyInfo := &keyinfo.KeyInfo{
 		ParticipantPeerIDs: convertFromPartyIDs(s.partyIDs),
 		Threshold:          s.threshold,
 		Version:            1,
 	}
-	
+
 	if err := s.keyinfoStore.Save(s.walletID, keyInfo); err != nil {
 		s.logger.Error().Err(err).Msgf("Failed to save key info for wallet %s", s.walletID)
 		return
 	}
-	
+
 	// Publish success event
 	successEvent := event.CreateKeygenSuccess(
 		s.walletID,
@@ -286,12 +287,12 @@ func (s *cggmp21KeygenSession) publishResult() {
 			"protocol":  "CGGMP21",
 		},
 	)
-	
+
 	evtData, _ := json.Marshal(successEvent)
 	if err := s.resultQueue.Enqueue(fmt.Sprintf("mpc.keygen_result.%s", s.walletID), evtData, nil); err != nil {
 		s.logger.Error().Err(err).Msg("failed to publish keygen success event")
 	}
-	
+
 	s.logger.Info().
 		Str("walletID", s.walletID).
 		Str("publicKey", pubKeyHex).

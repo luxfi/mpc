@@ -5,13 +5,14 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go/jetstream"
+
 	"github.com/luxfi/mpc/pkg/event"
 	"github.com/luxfi/mpc/pkg/logger"
 	"github.com/luxfi/mpc/pkg/messaging"
 	"github.com/luxfi/mpc/pkg/mpc"
-	"github.com/google/uuid"
-	"github.com/nats-io/nats.go"
-	"github.com/nats-io/nats.go/jetstream"
 )
 
 const (

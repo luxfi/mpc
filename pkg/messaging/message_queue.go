@@ -6,9 +6,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/luxfi/mpc/pkg/logger"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
+
+	"github.com/luxfi/mpc/pkg/logger"
 )
 
 var (

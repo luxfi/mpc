@@ -7,26 +7,26 @@ const (
 	// Bitcoin networks
 	NetworkBTC        NetworkCode = "BTC"
 	NetworkBTCTestnet NetworkCode = "BTC-testnet"
-	
+
 	// Ethereum networks
 	NetworkETH        NetworkCode = "ETH"
 	NetworkETHSepolia NetworkCode = "ETH-sepolia"
 	NetworkETHGoerli  NetworkCode = "ETH-goerli"
-	
+
 	// Solana networks
 	NetworkSOL        NetworkCode = "SOL"
 	NetworkSOLDevnet  NetworkCode = "SOL-devnet"
 	NetworkSOLTestnet NetworkCode = "SOL-testnet"
-	
+
 	// XRP Ledger networks
 	NetworkXRPL        NetworkCode = "XRPL"
 	NetworkXRPLTestnet NetworkCode = "XRPL-testnet"
 	NetworkXRPLDevnet  NetworkCode = "XRPL-devnet"
-	
+
 	// Lux networks
 	NetworkLUX        NetworkCode = "LUX"
 	NetworkLUXTestnet NetworkCode = "LUX-testnet"
-	
+
 	// Other networks
 	NetworkTON        NetworkCode = "TON"
 	NetworkTONTestnet NetworkCode = "TON-testnet"

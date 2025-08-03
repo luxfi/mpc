@@ -6,10 +6,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/luxfi/mpc/pkg/infra"
-	"github.com/luxfi/mpc/pkg/logger"
 	"github.com/hashicorp/consul/api"
 	"github.com/samber/lo"
+
+	"github.com/luxfi/mpc/pkg/infra"
+	"github.com/luxfi/mpc/pkg/logger"
 )
 
 const (

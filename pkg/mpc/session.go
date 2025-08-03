@@ -4,6 +4,9 @@ import (
 	"sync"
 
 	"github.com/luxfi/threshold/pkg/party"
+	"github.com/nats-io/nats.go"
+	"github.com/rs/zerolog"
+
 	"github.com/luxfi/mpc/pkg/common/errors"
 	"github.com/luxfi/mpc/pkg/encoding"
 	"github.com/luxfi/mpc/pkg/identity"
@@ -11,8 +14,6 @@ import (
 	"github.com/luxfi/mpc/pkg/kvstore"
 	"github.com/luxfi/mpc/pkg/messaging"
 	"github.com/luxfi/mpc/pkg/types"
-	"github.com/nats-io/nats.go"
-	"github.com/rs/zerolog"
 )
 
 type SessionType string
@@ -86,15 +87,15 @@ func (s *session) ListenToIncomingMessageAsync() {
 			Msg("Received broadcast message")
 		s.ProcessInboundMessage(m.Data)
 	})
-	
+
 	if err != nil {
 		s.logger.Error().Err(err).Msgf("Failed to subscribe to broadcast topic %s", broadcastTopic)
 		s.errCh <- err
 		return
 	}
-	
+
 	s.subscriberList = append(s.subscriberList, broadcastSub)
-	
+
 	// Subscribe to direct messages
 	directTopic := s.topicComposer.ComposeDirectTopic(string(s.selfPartyID))
 	directSub, err := s.pubSub.Subscribe(directTopic, func(m *nats.Msg) {
@@ -104,15 +105,15 @@ func (s *session) ListenToIncomingMessageAsync() {
 			Msg("Received direct message")
 		s.ProcessInboundMessage(m.Data)
 	})
-	
+
 	if err != nil {
 		s.logger.Error().Err(err).Msgf("Failed to subscribe to direct topic %s", directTopic)
 		s.errCh <- err
 		return
 	}
-	
+
 	s.subscriberList = append(s.subscriberList, directSub)
-	
+
 	s.logger.Info().
 		Str("broadcast", broadcastTopic).
 		Str("direct", directTopic).
@@ -135,7 +136,7 @@ func (s *session) sendMsg(message *types.Message) {
 		s.logger.Error().Err(err).Msg("Failed to marshal message")
 		return
 	}
-	
+
 	if message.IsBroadcast {
 		topic := s.topicComposer.ComposeBroadcastTopic()
 		if err := s.pubSub.Publish(topic, data); err != nil {

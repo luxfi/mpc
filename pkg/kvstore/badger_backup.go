@@ -16,8 +16,9 @@ import (
 	"time"
 
 	"github.com/dgraph-io/badger/v4"
-	"github.com/luxfi/mpc/pkg/encryption"
 	"github.com/rs/zerolog/log"
+
+	"github.com/luxfi/mpc/pkg/encryption"
 )
 
 const (

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/luxfi/threshold/pkg/party"
+
 	"github.com/luxfi/mpc/pkg/identity"
 	"github.com/luxfi/mpc/pkg/keyinfo"
 	"github.com/luxfi/mpc/pkg/kvstore"
@@ -86,7 +87,7 @@ func (p *Node) CreateKeyGenSession(
 
 	readyPeerIDs := p.peerRegistry.GetReadyPeersIncludeSelf()
 	selfPartyID, allPartyIDs := p.generatePartyIDs(PurposeKeygen, readyPeerIDs, DefaultVersion)
-	
+
 	session := newCGGMP21KeygenSession(
 		walletID,
 		p.pubSub,
@@ -98,7 +99,7 @@ func (p *Node) CreateKeyGenSession(
 		resultQueue,
 		p.identityStore,
 	)
-	
+
 	session.Init()
 	return session, nil
 }

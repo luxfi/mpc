@@ -111,7 +111,7 @@ func TestCreatePartyID_SameParameters(t *testing.T) {
 
 	// Party IDs with same parameters should be identical in the new implementation
 	assert.Equal(t, partyID1, partyID2, "Party IDs with same parameters should be equal")
-	
+
 	// Both should have the same format
 	expectedID := "test-session:keygen:1"
 	assert.Equal(t, expectedID, string(partyID1))

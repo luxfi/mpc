@@ -4,8 +4,9 @@ import (
 	"time"
 
 	"github.com/avast/retry-go"
-	"github.com/luxfi/mpc/pkg/logger"
 	"github.com/nats-io/nats.go"
+
+	"github.com/luxfi/mpc/pkg/logger"
 )
 
 type DirectMessaging interface {

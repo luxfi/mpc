@@ -3,13 +3,13 @@ package mpc
 // ReshareSession represents a threshold signature resharing session
 type ReshareSession interface {
 	Session
-	
+
 	// Reshare starts the resharing protocol
 	Reshare(done func())
-	
+
 	// GetPubKeyResult returns the public key after successful resharing
 	GetPubKeyResult() []byte
-	
+
 	// IsNewPeer returns true if this node is joining as a new peer
 	IsNewPeer() bool
 }
