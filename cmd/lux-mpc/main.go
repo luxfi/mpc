@@ -150,7 +150,7 @@ func runNode(ctx context.Context, c *cli.Command) error {
 		logger.Fatal("Failed to create signing jetstream broker", err)
 	}
 
-	directMessaging := messaging.NewNatsDirectMessaging(natsConn)
+	_ = messaging.NewNatsDirectMessaging(natsConn) // directMessaging available for future use
 	mqManager := messaging.NewNATsMessageQueueManager("mpc", []string{
 		"mpc.mpc_keygen_result.*",
 		event.SigningResultTopic,
