@@ -2,15 +2,11 @@ package eventconsumer
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"math/big"
 	"time"
 
-	"github.com/luxfi/mpc/pkg/event"
 	"github.com/luxfi/mpc/pkg/logger"
-	"github.com/luxfi/mpc/pkg/messaging"
 	"github.com/luxfi/mpc/pkg/mpc"
 	"github.com/luxfi/mpc/pkg/types"
 	"github.com/nats-io/nats.go"
@@ -32,13 +28,28 @@ func (ec *eventConsumer) handleSigningEventCGGMP21(msg *types.SignTxMessage, nat
 		return
 	}
 
+	// Get key info to determine signers
+	keyInfo, err := ec.keyinfoStore.Get(msg.WalletID)
+	if err != nil {
+		ec.handleSigningSessionError(
+			msg.WalletID,
+			msg.TxID,
+			msg.NetworkInternalCode,
+			err,
+			"Failed to get key info",
+			natMsg,
+		)
+		return
+	}
+	
 	// Create CGGMP21 signing session
-	session, err := ec.node.CreateSigningSession(
-		mpc.SessionTypeECDSA, // CGGMP21 only supports ECDSA
+	session, err := ec.node.CreateSignSession(
+		msg.TxID, // Use TxID as sessionID
 		msg.WalletID,
-		msg.TxID,
-		msg.NetworkInternalCode,
+		msg.Tx, // Use transaction bytes as message hash
+		keyInfo.ParticipantPeerIDs, // Use all participants as signers
 		ec.signingResultQueue,
+		false, // Don't use broadcast
 	)
 	if err != nil {
 		// Check if the error is due to node not being in participant list
@@ -58,26 +69,6 @@ func (ec *eventConsumer) handleSigningEventCGGMP21(msg *types.SignTxMessage, nat
 			msg.NetworkInternalCode,
 			err,
 			"Failed to create signing session",
-			natMsg,
-		)
-		return
-	}
-
-	// Initialize the session with transaction data
-	txBigInt := new(big.Int).SetBytes(msg.Tx)
-	err = session.Init(txBigInt)
-	if err != nil {
-		if errors.Is(err, mpc.ErrNotEnoughParticipants) {
-			logger.Info("RETRY LATER: Not enough participants to sign")
-			// Return for retry later
-			return
-		}
-		ec.handleSigningSessionError(
-			msg.WalletID,
-			msg.TxID,
-			msg.NetworkInternalCode,
-			err,
-			"Failed to init signing session",
 			natMsg,
 		)
 		return
@@ -116,12 +107,14 @@ func (ec *eventConsumer) handleSigningEventCGGMP21(msg *types.SignTxMessage, nat
 	// Small delay to ensure all nodes are ready
 	time.Sleep(DefaultSessionStartupDelay * time.Millisecond)
 
-	// Define success callback
-	onSuccess := func(data []byte) {
+	// Start processing outbound messages
+	go session.ProcessOutboundMessage()
+	
+	// Wait for completion
+	go func() {
+		result := session.WaitForFinish()
 		done()
 		ec.sendReplyToRemoveMsg(natMsg)
-	}
-
-	// Start the signing process
-	go session.Sign(onSuccess)
+		logger.Info("Signing session completed", "result", result)
+	}()
 }

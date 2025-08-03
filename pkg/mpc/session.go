@@ -1,11 +1,9 @@
 package mpc
 
 import (
-	"encoding/json"
-	"fmt"
 	"sync"
 
-	"github.com/luxfi/cggmp21/pkg/party"
+	"github.com/luxfi/threshold/pkg/party"
 	"github.com/luxfi/mpc/pkg/common/errors"
 	"github.com/luxfi/mpc/pkg/encoding"
 	"github.com/luxfi/mpc/pkg/identity"
@@ -24,6 +22,8 @@ const (
 	TypeReshareWalletResultFmt  = "mpc.mpc_reshare_result.%s"
 
 	SessionTypeCGGMP21 SessionType = "session_cggmp21"
+	SessionTypeECDSA   SessionType = "ecdsa"
+	SessionTypeEDDSA   SessionType = "eddsa"
 )
 
 var (
@@ -41,6 +41,9 @@ type KeyComposerFn func(id string) string
 type Session interface {
 	ListenToIncomingMessageAsync()
 	ErrChan() <-chan error
+	Init()
+	ProcessOutboundMessage()
+	WaitForFinish() string
 }
 
 type session struct {
@@ -49,7 +52,7 @@ type session struct {
 	pubSub             messaging.PubSub
 	selfPartyID        party.ID
 	partyIDs           []party.ID
-	subscriberList     []messaging.Subscriber
+	subscriberList     []messaging.Subscription
 	rounds             int
 	outCh              chan msg
 	errCh              chan error

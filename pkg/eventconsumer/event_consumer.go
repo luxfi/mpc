@@ -6,12 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"math/big"
 	"sync"
 	"time"
 
 	"github.com/luxfi/mpc/pkg/event"
 	"github.com/luxfi/mpc/pkg/identity"
+	"github.com/luxfi/mpc/pkg/keyinfo"
 	"github.com/luxfi/mpc/pkg/logger"
 	"github.com/luxfi/mpc/pkg/messaging"
 	"github.com/luxfi/mpc/pkg/mpc"
@@ -49,6 +49,7 @@ type eventConsumer struct {
 	signingSub       messaging.Subscription
 	reshareSub       messaging.Subscription
 	identityStore    identity.Store
+	keyinfoStore     keyinfo.Store
 
 	msgBuffer           chan *nats.Msg
 	maxConcurrentKeygen int
@@ -87,6 +88,7 @@ func NewEventConsumer(
 		mpcThreshold:        viper.GetInt("mpc_threshold"),
 		maxConcurrentKeygen: maxConcurrentKeygen,
 		identityStore:       identityStore,
+		keyinfoStore:        node.KeyInfoStore(),
 		msgBuffer:           make(chan *nats.Msg, 100),
 	}
 
@@ -224,122 +226,27 @@ func (ec *eventConsumer) consumeTxSigningEvent() error {
 			ec.node.ID(),
 		)
 
-		// Check for duplicate session and track if new
-		if ec.checkDuplicateSession(msg.WalletID, msg.TxID) {
-			duplicateErr := fmt.Errorf("duplicate signing request detected for walletID=%s txID=%s", msg.WalletID, msg.TxID)
+		// Use CGGMP21 handler for all signing events
+		// CGGMP21 only supports ECDSA (Secp256k1)
+		if msg.KeyType != types.KeyTypeSecp256k1 {
+			logger.Error("CGGMP21 only supports Secp256k1 key type", nil,
+				"walletID", msg.WalletID,
+				"txID", msg.TxID,
+				"keyType", msg.KeyType,
+			)
 			ec.handleSigningSessionError(
 				msg.WalletID,
 				msg.TxID,
 				msg.NetworkInternalCode,
-				duplicateErr,
-				"Duplicate session",
+				fmt.Errorf("unsupported key type for CGGMP21: %v", msg.KeyType),
+				"Unsupported key type",
 				natMsg,
 			)
 			return
 		}
 
-		var session mpc.SigningSession
-		switch msg.KeyType {
-		case types.KeyTypeSecp256k1:
-			session, err = ec.node.CreateSigningSession(
-				mpc.SessionTypeECDSA,
-				msg.WalletID,
-				msg.TxID,
-				msg.NetworkInternalCode,
-				ec.signingResultQueue,
-			)
-		case types.KeyTypeEd25519:
-			session, err = ec.node.CreateSigningSession(
-				mpc.SessionTypeEDDSA,
-				msg.WalletID,
-				msg.TxID,
-				msg.NetworkInternalCode,
-				ec.signingResultQueue,
-			)
-
-		}
-		if err != nil {
-			// Check if the error is due to node not being in participant list
-			if errors.Is(err, mpc.ErrNotInParticipantList) {
-				logger.Info("Node is not in participant list for this wallet, skipping signing",
-					"walletID", msg.WalletID,
-					"txID", msg.TxID,
-					"nodeID", ec.node.ID(),
-				)
-				return // Skip signing instead of treating as error
-			}
-
-			logger.Error("Failed to create signing session", err)
-			ec.handleSigningSessionError(
-				msg.WalletID,
-				msg.TxID,
-				msg.NetworkInternalCode,
-				err,
-				"Failed to create signing session",
-				natMsg,
-			)
-			return
-		}
-
-		txBigInt := new(big.Int).SetBytes(msg.Tx)
-		err = session.Init(txBigInt)
-		if err != nil {
-			if errors.Is(err, mpc.ErrNotEnoughParticipants) {
-				logger.Info("RETRY LATER: Not enough participants to sign")
-				//Return for retry later
-				return
-			}
-			ec.handleSigningSessionError(
-				msg.WalletID,
-				msg.TxID,
-				msg.NetworkInternalCode,
-				err,
-				"Failed to init signing session",
-				natMsg,
-			)
-			return
-		}
-
-		// Mark session as already processed
-		ec.addSession(msg.WalletID, msg.TxID)
-
-		ctx, done := context.WithCancel(context.Background())
-		go func() {
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case err := <-session.ErrChan():
-					if err != nil {
-						ec.handleSigningSessionError(
-							msg.WalletID,
-							msg.TxID,
-							msg.NetworkInternalCode,
-							err,
-							"Failed to sign tx",
-							natMsg,
-						)
-						return
-					}
-				}
-			}
-		}()
-
-		session.ListenToIncomingMessageAsync()
-		// TODO: use consul distributed lock here, only sign after all nodes has already completed listing to incoming message async
-		// The purpose of the sleep is to be ensuring that the node has properly set up its message listeners
-		// before it starts the signing process. If the signing process starts sending messages before other nodes
-		// have set up their listeners, those messages might be missed, potentially causing the signing process to fail.
-		// One solution:
-		// The messaging includes mechanisms for direct point-to-point communication (in point2point.go).
-		// The nodes could explicitly coordinate through request-response patterns before starting signing
-		time.Sleep(DefaultSessionStartupDelay * time.Millisecond)
-
-		onSuccess := func(data []byte) {
-			done()
-			ec.sendReplyToRemoveMsg(natMsg)
-		}
-		go session.Sign(onSuccess)
+		// Delegate to CGGMP21 signing handler
+		ec.handleSigningEventCGGMP21(&msg, natMsg)
 	})
 
 	ec.signingSub = sub
@@ -648,6 +555,30 @@ func (ec *eventConsumer) addSession(walletID, txID string) {
 	sessionID := fmt.Sprintf("%s-%s", walletID, txID)
 	ec.sessionsLock.Lock()
 	ec.activeSessions[sessionID] = time.Now()
+	ec.sessionsLock.Unlock()
+}
+
+// trackSession tracks a new session
+func (ec *eventConsumer) trackSession(walletID, txID string) {
+	sessionID := walletID
+	if txID != "" {
+		sessionID = fmt.Sprintf("%s-%s", walletID, txID)
+	}
+	
+	ec.sessionsLock.Lock()
+	ec.activeSessions[sessionID] = time.Now()
+	ec.sessionsLock.Unlock()
+}
+
+// untrackSession removes a session from tracking
+func (ec *eventConsumer) untrackSession(walletID, txID string) {
+	sessionID := walletID
+	if txID != "" {
+		sessionID = fmt.Sprintf("%s-%s", walletID, txID)
+	}
+	
+	ec.sessionsLock.Lock()
+	delete(ec.activeSessions, sessionID)
 	ec.sessionsLock.Unlock()
 }
 
