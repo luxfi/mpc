@@ -7,11 +7,12 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/nats-io/nats.go"
+
 	"github.com/luxfi/mpc/pkg/event"
 	"github.com/luxfi/mpc/pkg/logger"
 	"github.com/luxfi/mpc/pkg/messaging"
 	"github.com/luxfi/mpc/pkg/mpc"
-	"github.com/nats-io/nats.go"
 )
 
 // handleKeyGenEventCGGMP21 handles key generation events for CGGMP21 protocol

@@ -12,6 +12,8 @@ import (
 	"github.com/luxfi/threshold/pkg/protocol"
 	"github.com/luxfi/threshold/protocols/cmp"
 	"github.com/luxfi/threshold/protocols/cmp/config"
+	"github.com/rs/zerolog"
+
 	"github.com/luxfi/mpc/pkg/encoding"
 	"github.com/luxfi/mpc/pkg/event"
 	"github.com/luxfi/mpc/pkg/identity"
@@ -20,7 +22,6 @@ import (
 	"github.com/luxfi/mpc/pkg/messaging"
 	"github.com/luxfi/mpc/pkg/types"
 	"github.com/luxfi/mpc/pkg/utils"
-	"github.com/rs/zerolog"
 )
 
 type SignSession interface {
@@ -120,19 +121,19 @@ func (s *cggmp21SigningSession) Init() {
 
 	// Create CGGMP21 signing protocol
 	startFunc := cmp.Sign(s.config, s.signerIDs, s.messageHash, s.pool)
-	
+
 	// Create handler
 	handler, err := protocol.NewMultiHandler(startFunc, nil)
 	if err != nil {
 		s.logger.Fatal().Err(err).Msg("Failed to create signing handler")
 		return
 	}
-	
+
 	s.handler = handler
-	
+
 	// Start message handling goroutine
 	go s.handleProtocolMessages()
-	
+
 	s.logger.Info().
 		Str("sessionID", s.sessionID).
 		Str("partyID", string(s.selfPartyID)).
@@ -159,7 +160,7 @@ func (s *cggmp21SigningSession) handleProtocolMessages() {
 				s.finishCh <- true
 				return
 			}
-			
+
 			// Convert protocol message to our message format
 			var toPartyIDs []party.ID
 			if !protoMsg.Broadcast && protoMsg.To != "" {
@@ -171,16 +172,16 @@ func (s *cggmp21SigningSession) handleProtocolMessages() {
 				IsBroadcast: protoMsg.Broadcast,
 				Data:        protoMsg.Data,
 			}
-			
+
 			s.outCh <- outMsg
-			
+
 		case protoMsg := <-s.messagesCh:
 			// Handle incoming message
 			if !s.handler.CanAccept(protoMsg) {
 				s.logger.Warn().Msgf("Handler cannot accept message from %s", protoMsg.From)
 				continue
 			}
-			
+
 			s.handler.Accept(protoMsg)
 		}
 	}
@@ -209,7 +210,7 @@ func (s *cggmp21SigningSession) ProcessInboundMessage(msgBytes []byte) {
 		Data:      inboundMessage.Body,
 		Broadcast: inboundMessage.IsBroadcast,
 	}
-	
+
 	// Send to handler
 	s.messagesCh <- protoMsg
 }
@@ -224,7 +225,7 @@ func (s *cggmp21SigningSession) ProcessOutboundMessage() {
 			for i, pid := range m.ToPartyIDs {
 				recipientIDs[i] = string(pid)
 			}
-			
+
 			msgWireBytes := &types.Message{
 				SessionID:    s.sessionID,
 				SenderID:     string(m.FromPartyID),
@@ -232,12 +233,12 @@ func (s *cggmp21SigningSession) ProcessOutboundMessage() {
 				Body:         m.Data,
 				IsBroadcast:  m.IsBroadcast,
 			}
-			
+
 			s.sendMsg(msgWireBytes)
-			
+
 		case err := <-s.errCh:
 			s.logger.Error().Err(err).Msg("Received error during ProcessOutboundMessage")
-			
+
 		case <-s.finishCh:
 			s.logger.Info().Msg("Received finish message during ProcessOutboundMessage")
 			s.publishResult()
@@ -249,7 +250,7 @@ func (s *cggmp21SigningSession) ProcessOutboundMessage() {
 func (s *cggmp21SigningSession) publishResult() {
 	s.resultMutex.Lock()
 	defer s.resultMutex.Unlock()
-	
+
 	if s.resultErr != nil {
 		failureEvent := event.CreateSignFailure(
 			s.sessionID,
@@ -264,12 +265,12 @@ func (s *cggmp21SigningSession) publishResult() {
 		}
 		return
 	}
-	
+
 	if s.signature == nil {
 		s.logger.Error().Msg("No signature available after signing completion")
 		return
 	}
-	
+
 	// Verify signature
 	if !s.signature.Verify(s.config.PublicPoint(), s.messageHash) {
 		s.logger.Error().Msg("Failed to verify signature")
@@ -286,13 +287,13 @@ func (s *cggmp21SigningSession) publishResult() {
 		}
 		return
 	}
-	
+
 	// Convert signature to hex
 	sigRBytes, _ := s.signature.R.MarshalBinary()
 	sigSBytes, _ := s.signature.S.MarshalBinary()
 	sigR := hex.EncodeToString(sigRBytes)
 	sigS := hex.EncodeToString(sigSBytes)
-	
+
 	// Publish success event
 	successEvent := event.CreateSignSuccess(
 		s.sessionID,
@@ -305,12 +306,12 @@ func (s *cggmp21SigningSession) publishResult() {
 			"protocol":    "CGGMP21",
 		},
 	)
-	
+
 	evtData, _ := encoding.StructToJsonBytes(successEvent)
 	if err := s.resultQueue.Enqueue(fmt.Sprintf("%s.%s", event.SigningResultTopic, s.walletID), evtData, nil); err != nil {
 		s.logger.Error().Err(err).Msg("failed to publish sign success event")
 	}
-	
+
 	s.logger.Info().
 		Str("sessionID", s.sessionID).
 		Str("walletID", s.walletID).

@@ -1,8 +1,9 @@
 package messaging
 
 import (
-	"github.com/luxfi/mpc/pkg/logger"
 	"github.com/nats-io/nats.go"
+
+	"github.com/luxfi/mpc/pkg/logger"
 )
 
 type Subscription interface {

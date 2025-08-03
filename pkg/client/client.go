@@ -12,12 +12,13 @@ import (
 	"strings"
 
 	"filippo.io/age"
+	"github.com/nats-io/nats.go"
+
 	"github.com/luxfi/mpc/pkg/event"
 	"github.com/luxfi/mpc/pkg/eventconsumer"
 	"github.com/luxfi/mpc/pkg/logger"
 	"github.com/luxfi/mpc/pkg/messaging"
 	"github.com/luxfi/mpc/pkg/types"
-	"github.com/nats-io/nats.go"
 )
 
 const (

@@ -5,9 +5,10 @@ import (
 	"log"
 	"strings"
 
-	"github.com/luxfi/mpc/pkg/logger"
 	"github.com/mitchellh/mapstructure"
 	"github.com/spf13/viper"
+
+	"github.com/luxfi/mpc/pkg/logger"
 )
 
 type AppConfig struct {

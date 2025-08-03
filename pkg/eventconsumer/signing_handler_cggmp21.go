@@ -6,10 +6,11 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/nats-io/nats.go"
+
 	"github.com/luxfi/mpc/pkg/logger"
 	"github.com/luxfi/mpc/pkg/mpc"
 	"github.com/luxfi/mpc/pkg/types"
-	"github.com/nats-io/nats.go"
 )
 
 // handleSigningEventCGGMP21 handles signing events for CGGMP21 protocol
@@ -41,12 +42,12 @@ func (ec *eventConsumer) handleSigningEventCGGMP21(msg *types.SignTxMessage, nat
 		)
 		return
 	}
-	
+
 	// Create CGGMP21 signing session
 	session, err := ec.node.CreateSignSession(
 		msg.TxID, // Use TxID as sessionID
 		msg.WalletID,
-		msg.Tx, // Use transaction bytes as message hash
+		msg.Tx,                     // Use transaction bytes as message hash
 		keyInfo.ParticipantPeerIDs, // Use all participants as signers
 		ec.signingResultQueue,
 		false, // Don't use broadcast
@@ -78,7 +79,7 @@ func (ec *eventConsumer) handleSigningEventCGGMP21(msg *types.SignTxMessage, nat
 	ec.addSession(msg.WalletID, msg.TxID)
 
 	ctx, done := context.WithCancel(context.Background())
-	
+
 	// Monitor for errors
 	go func() {
 		for {
@@ -109,7 +110,7 @@ func (ec *eventConsumer) handleSigningEventCGGMP21(msg *types.SignTxMessage, nat
 
 	// Start processing outbound messages
 	go session.ProcessOutboundMessage()
-	
+
 	// Wait for completion
 	go func() {
 		result := session.WaitForFinish()
