@@ -13,9 +13,10 @@ import (
 	"time"
 
 	"filippo.io/age"
-	"github.com/luxfi/mpc/pkg/common/pathutil"
 	"github.com/urfave/cli/v3"
 	"golang.org/x/term"
+
+	"github.com/luxfi/mpc/pkg/common/pathutil"
 )
 
 // Identity structure (for identity.json)

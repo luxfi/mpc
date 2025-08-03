@@ -69,7 +69,7 @@ func runServer(c *cli.Context, logger *zap.Logger) error {
 	_ = natsURL
 	_ = port
 	_ = keyPath
-	
+
 	logger.Info("Bridge compatibility server not yet implemented")
 	return fmt.Errorf("bridge compatibility server not yet implemented")
 }
