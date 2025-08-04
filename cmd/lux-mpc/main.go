@@ -118,6 +118,16 @@ func runNode(ctx context.Context, c *cli.Command) error {
 	badgerKV := NewBadgerKV(nodeName, nodeID)
 	defer badgerKV.Close()
 
+	// Wrap BadgerKV with KMS-enabled store if configured
+	var kvStore kvstore.KVStore = badgerKV
+	kmsEnabledStore, err := mpc.NewKMSEnabledKVStore(badgerKV, nodeID)
+	if err != nil {
+		logger.Warn("Failed to create KMS-enabled store, using regular BadgerDB", "error", err)
+	} else {
+		kvStore = kmsEnabledStore
+		logger.Info("Using KMS-enabled storage for sensitive keys")
+	}
+
 	// Start background backup job
 	backupEnabled := viper.GetBool("backup_enabled")
 	if backupEnabled {
@@ -174,7 +184,7 @@ func runNode(ctx context.Context, c *cli.Command) error {
 		nodeID,
 		peerNodeIDs,
 		pubsub,
-		badgerKV,
+		kvStore,
 		keyinfoStore,
 		peerRegistry,
 		identityStore,
