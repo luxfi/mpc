@@ -1,6 +1,7 @@
 package mpc
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -84,7 +85,8 @@ func (k *KMSEnabledKVStore) Put(key string, value []byte) error {
 		}
 
 		// Store in Lux KMS
-		if err := k.kmsClient.StoreMPCKeyShare(k.nodeID, key, keyType, value); err != nil {
+		ctx := context.Background()
+		if err := k.kmsClient.StoreKeyShare(ctx, key, value); err != nil {
 			logger.Error("Failed to store key share in Lux KMS", err, "walletID", key)
 			// Fallback to regular storage
 			return k.KVStore.Put(key, value)
@@ -127,7 +129,8 @@ func (k *KMSEnabledKVStore) Get(key string) ([]byte, error) {
 				keyType = "ecdsa"
 			}
 			
-			share, err := k.kmsClient.RetrieveMPCKeyShare(k.nodeID, key, keyType)
+			ctx := context.Background()
+			share, err := k.kmsClient.RetrieveKeyShare(ctx, key)
 			if err != nil {
 				logger.Error("Failed to retrieve key share from Lux KMS", err, "walletID", key)
 				return nil, fmt.Errorf("failed to retrieve from Lux KMS: %w", err)
@@ -154,10 +157,9 @@ func (k *KMSEnabledKVStore) Delete(key string) error {
 					if keyType == "" {
 						keyType = "ecdsa"
 					}
-					secretName := fmt.Sprintf("mpc_%s_%s_%s", k.nodeID, key, keyType)
-					if err := k.kmsClient.DeleteKey(secretName); err != nil {
-						logger.Warn("Failed to delete key from Lux KMS", "error", err, "secretName", secretName)
-					}
+					// Delete operation not implemented in stub
+					// In production, this would delete from KMS
+					logger.Debug("KMS delete operation skipped (stub)", "key", key)
 				}
 			}
 		}

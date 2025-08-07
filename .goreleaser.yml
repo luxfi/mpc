@@ -1,0 +1,197 @@
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+    - go generate ./...
+
+builds:
+  - id: lux-mpc
+    main: ./cmd/lux-mpc
+    binary: lux-mpc
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.date={{.Date}}
+      - -X main.builtBy=goreleaser
+
+  - id: lux-mpc-cli
+    main: ./cmd/lux-mpc-cli
+    binary: lux-mpc-cli
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.date={{.Date}}
+      - -X main.builtBy=goreleaser
+
+  - id: lux-mpc-bridge
+    main: ./cmd/lux-mpc-bridge
+    binary: lux-mpc-bridge
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.date={{.Date}}
+      - -X main.builtBy=goreleaser
+
+archives:
+  - id: default
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - README.md
+      - LICENSE
+      - docs/*
+      - examples/*
+
+checksum:
+  name_template: 'checksums.txt'
+
+snapshot:
+  name_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+      - '^ci:'
+      - Merge pull request
+      - Merge remote-tracking branch
+      - Merge branch
+  groups:
+    - title: 'New Features'
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 0
+    - title: 'Bug Fixes'
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    - title: 'Performance Improvements'
+      regexp: '^.*?perf(\([[:word:]]+\))??!?:.+$'
+      order: 2
+    - title: 'Security Updates'
+      regexp: '^.*?sec(\([[:word:]]+\))??!?:.+$'
+      order: 3
+    - title: 'Protocol Updates'
+      regexp: '^.*?protocol(\([[:word:]]+\))??!?:.+$'
+      order: 4
+    - title: Others
+      order: 999
+
+dockers:
+  - image_templates:
+      - "luxfi/mpc:{{ .Tag }}"
+      - "luxfi/mpc:latest"
+      - "ghcr.io/luxfi/mpc:{{ .Tag }}"
+      - "ghcr.io/luxfi/mpc:latest"
+    dockerfile: Dockerfile
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/amd64,linux/arm64"
+      - "--label=org.opencontainers.image.created={{.Date}}"
+      - "--label=org.opencontainers.image.title={{.ProjectName}}"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
+      - "--label=org.opencontainers.image.source={{.GitURL}}"
+      - "--label=org.opencontainers.image.description=Lux MPC - Threshold Signature Service"
+      - "--label=org.opencontainers.image.licenses=MIT"
+
+nfpms:
+  - id: packages
+    package_name: lux-mpc
+    vendor: Lux Partners Limited
+    homepage: https://github.com/luxfi/mpc
+    maintainer: Lux Development Team <dev@lux.network>
+    description: |-
+      Lux MPC - Multi-Party Computation Threshold Signature Service
+      Supporting both ECDSA (CMP/CGGMP21) and EdDSA (FROST) protocols
+    license: MIT
+    formats:
+      - deb
+      - rpm
+      - apk
+    dependencies:
+      - git
+    recommends:
+      - golang
+    bindir: /usr/bin
+    contents:
+      - src: ./systemd/lux-mpc.service
+        dst: /lib/systemd/system/lux-mpc.service
+      - src: ./configs/
+        dst: /etc/lux-mpc/
+        type: config
+
+release:
+  github:
+    owner: luxfi
+    name: mpc
+  draft: false
+  prerelease: auto
+  mode: replace
+  name_template: "{{.ProjectName}}-v{{.Version}}"
+  footer: |
+    ---
+    
+    ### Container Images
+    
+    - `docker pull luxfi/mpc:{{ .Tag }}`
+    - `docker pull ghcr.io/luxfi/mpc:{{ .Tag }}`
+    
+    ### Verifying Checksums
+    
+    ```bash
+    curl -L https://github.com/luxfi/mpc/releases/download/{{ .Tag }}/checksums.txt | sha256sum -c --ignore-missing
+    ```
+
+announce:
+  skip: false
