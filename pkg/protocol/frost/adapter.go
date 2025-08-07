@@ -2,7 +2,6 @@ package frost
 
 import (
 	"crypto/ecdsa"
-	"crypto/ed25519"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,7 +9,7 @@ import (
 	"sync"
 
 	"github.com/luxfi/mpc/pkg/protocol"
-	// "github.com/luxfi/threshold/pkg/math/curve" // Not used directly anymore
+	"github.com/luxfi/threshold/pkg/math/curve"
 	"github.com/luxfi/threshold/pkg/party"
 	"github.com/luxfi/threshold/pkg/pool"
 	mpsProtocol "github.com/luxfi/threshold/pkg/protocol"
@@ -59,28 +58,47 @@ func (p *FROSTProtocol) KeyGen(selfID string, partyIDs []string, threshold int) 
 	}
 
 	return &frostPartyAdapter{
-		handler: handler,
-		selfID:  selfID,
+		handler:   handler,
+		selfID:    selfID,
+		isTaproot: true,
 	}, nil
 }
 
 // Refresh refreshes shares from an existing config
 func (p *FROSTProtocol) Refresh(cfg protocol.KeyGenConfig) (protocol.Party, error) {
 	// Convert to FROST config
-	_, err := toFROSTConfig(cfg)
+	frostConfig, err := toFROSTConfig(cfg)
 	if err != nil {
 		return nil, err
 	}
 
+	// Get party IDs from config
+	partyIDs := cfg.GetPartyIDs()
+	ids := make([]party.ID, len(partyIDs))
+	for i, id := range partyIDs {
+		ids[i] = party.ID(id)
+	}
+
 	// Create refresh protocol
-	// For now, return error as we need proper config type
-	return nil, errors.New("FROST refresh not yet implemented")
+	startFunc := frost.Refresh(frostConfig, ids)
+
+	// Create handler
+	handler, err := mpsProtocol.NewMultiHandler(startFunc, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create FROST refresh handler: %w", err)
+	}
+
+	return &frostPartyAdapter{
+		handler:    handler,
+		selfID:     cfg.GetPartyID(),
+		isTaproot:  false,
+	}, nil
 }
 
 // Sign starts a signing protocol
 func (p *FROSTProtocol) Sign(cfg protocol.KeyGenConfig, signers []string, messageHash []byte) (protocol.Party, error) {
 	// Convert to FROST config
-	_, err := toFROSTConfig(cfg)
+	frostConfig, err := toFROSTConfig(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -92,8 +110,19 @@ func (p *FROSTProtocol) Sign(cfg protocol.KeyGenConfig, signers []string, messag
 	}
 
 	// Create sign protocol
-	// For now, return error as we need proper config type
-	return nil, errors.New("FROST signing not yet implemented")
+	startFunc := frost.Sign(frostConfig, signerIDs, messageHash)
+
+	// Create handler
+	handler, err := mpsProtocol.NewMultiHandler(startFunc, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create FROST sign handler: %w", err)
+	}
+
+	return &frostPartyAdapter{
+		handler:    handler,
+		selfID:     cfg.GetPartyID(),
+		isTaproot:  false,
+	}, nil
 }
 
 // PreSign starts a presigning protocol
@@ -110,12 +139,13 @@ func (p *FROSTProtocol) PreSignOnline(cfg protocol.KeyGenConfig, preSig protocol
 
 // frostPartyAdapter adapts mpsProtocol.Handler to protocol.Party
 type frostPartyAdapter struct {
-	handler *mpsProtocol.MultiHandler
-	selfID  string
-	mu      sync.Mutex
-	done    bool
-	result  interface{}
-	err     error
+	handler   *mpsProtocol.MultiHandler
+	selfID    string
+	isTaproot bool
+	mu        sync.Mutex
+	done      bool
+	result    interface{}
+	err       error
 }
 
 func (p *frostPartyAdapter) Update(msg protocol.Message) error {
@@ -211,10 +241,18 @@ func (p *frostPartyAdapter) Result() (interface{}, error) {
 	switch r := p.result.(type) {
 	case *frost.Signature:
 		return &frostSignatureAdapter{sig: r}, nil
+	case *frost.Config:
+		return &frostConfigAdapter{
+			config:    r,
+			isTaproot: false,
+		}, nil
+	case *frost.TaprootConfig:
+		return &frostConfigAdapter{
+			taprootConfig: r,
+			isTaproot:     true,
+		}, nil
 	default:
-		// For config results, wrap them in the adapter
-		// TODO: Check the actual type when we have access to FROST config
-		return &frostConfigAdapter{config: r}, nil
+		return nil, fmt.Errorf("unexpected result type: %T", r)
 	}
 }
 
@@ -233,51 +271,94 @@ func (m *messageAdapter) IsBroadcast() bool { return m.broadcast }
 
 // frostConfigAdapter implements protocol.KeyGenConfig for FROST
 type frostConfigAdapter struct {
-	// TODO: Update this when we have access to the actual FROST config type
-	config interface{} // Will be *frost.Config or similar
+	config        *frost.Config
+	taprootConfig *frost.TaprootConfig
+	isTaproot     bool
 }
 
 func (c *frostConfigAdapter) GetPartyID() string {
-	// TODO: Implement when we have the actual FROST config type
+	if c.isTaproot && c.taprootConfig != nil {
+		return string(c.taprootConfig.ID)
+	}
+	if c.config != nil {
+		return string(c.config.ID)
+	}
 	return ""
 }
 
 func (c *frostConfigAdapter) GetThreshold() int {
-	// TODO: Implement when we have the actual FROST config type
+	if c.isTaproot && c.taprootConfig != nil {
+		return c.taprootConfig.Threshold
+	}
+	if c.config != nil {
+		return c.config.Threshold
+	}
 	return 0
 }
 
 // GetPublicKey returns nil for EdDSA as it uses different key type
 func (c *frostConfigAdapter) GetPublicKey() *ecdsa.PublicKey {
-	// FROST uses Ed25519, not ECDSA
+	// FROST uses Ed25519/Schnorr, not ECDSA
 	// This is a limitation of the current interface design
+	// For Taproot, we could potentially convert but it's not standard ECDSA
 	return nil
 }
 
-// GetPublicKeyEd25519 returns the Ed25519 public key
-func (c *frostConfigAdapter) GetPublicKeyEd25519() ed25519.PublicKey {
-	// TODO: Implement when we have the actual FROST config type
+// GetPublicKeyBytes returns the public key as bytes
+func (c *frostConfigAdapter) GetPublicKeyBytes() []byte {
+	if c.isTaproot && c.taprootConfig != nil {
+		return c.taprootConfig.PublicKey
+	}
+	if c.config != nil && c.config.PublicKey != nil {
+		bytes, _ := c.config.PublicKey.MarshalBinary()
+		return bytes
+	}
 	return nil
 }
 
 func (c *frostConfigAdapter) GetShare() *big.Int {
-	// TODO: Implement when we have the actual FROST config type
+	if c.isTaproot && c.taprootConfig != nil {
+		bytes, _ := c.taprootConfig.PrivateShare.MarshalBinary()
+		return new(big.Int).SetBytes(bytes)
+	}
+	if c.config != nil && c.config.PrivateShare != nil {
+		bytes, _ := c.config.PrivateShare.MarshalBinary()
+		return new(big.Int).SetBytes(bytes)
+	}
 	return nil
 }
 
 func (c *frostConfigAdapter) GetSharePublicKey() *ecdsa.PublicKey {
-	// FROST uses Ed25519, not ECDSA
+	// FROST uses Ed25519/Schnorr, not ECDSA
 	return nil
 }
 
 func (c *frostConfigAdapter) GetPartyIDs() []string {
-	// TODO: Implement when we have the actual FROST config type
+	if c.isTaproot && c.taprootConfig != nil {
+		ids := make([]string, 0, len(c.taprootConfig.VerificationShares))
+		for id := range c.taprootConfig.VerificationShares {
+			ids = append(ids, string(id))
+		}
+		return ids
+	}
+	if c.config != nil && c.config.VerificationShares != nil {
+		ids := make([]string, 0, len(c.config.VerificationShares.Points))
+		for id := range c.config.VerificationShares.Points {
+			ids = append(ids, string(id))
+		}
+		return ids
+	}
 	return nil
 }
 
 func (c *frostConfigAdapter) Serialize() ([]byte, error) {
-	// TODO: Implement when we have the actual FROST config type
-	return json.Marshal(c.config)
+	if c.isTaproot && c.taprootConfig != nil {
+		return json.Marshal(c.taprootConfig)
+	}
+	if c.config != nil {
+		return json.Marshal(c.config)
+	}
+	return nil, errors.New("no config to serialize")
 }
 
 // frostSignatureAdapter implements protocol.Signature for FROST
@@ -302,13 +383,7 @@ func (s *frostSignatureAdapter) GetS() *big.Int {
 
 func (s *frostSignatureAdapter) Verify(pubKey *ecdsa.PublicKey, message []byte) bool {
 	// This adapter doesn't support ECDSA verification
-	return false
-}
-
-// VerifyEd25519 verifies an Ed25519 signature
-func (s *frostSignatureAdapter) VerifyEd25519(pubKey ed25519.PublicKey, message []byte) bool {
-	// Use the FROST signature's own Verify method
-	// TODO: Need to convert ed25519.PublicKey to curve.Point
+	// FROST uses Schnorr signatures, not ECDSA
 	return false
 }
 
@@ -341,13 +416,30 @@ func convertFromPartyIDs(ids []party.ID) []string {
 	return result
 }
 
-func toFROSTConfig(cfg protocol.KeyGenConfig) (interface{}, error) {
+func toFROSTConfig(cfg protocol.KeyGenConfig) (*frost.Config, error) {
 	// Try to cast directly first
 	if adapter, ok := cfg.(*frostConfigAdapter); ok {
-		return adapter.config, nil
+		if adapter.config != nil {
+			return adapter.config, nil
+		}
+		// If it's a Taproot config, we need to convert it
+		if adapter.taprootConfig != nil {
+			// This would need proper conversion logic
+			return nil, errors.New("cannot convert Taproot config to regular FROST config")
+		}
 	}
 
-	// Otherwise, we need to reconstruct
-	// This is a simplified version - in production you'd need proper serialization
-	return nil, errors.New("config conversion not implemented for non-FROST configs")
+	// Otherwise, deserialize if possible
+	data, err := cfg.Serialize()
+	if err != nil {
+		return nil, fmt.Errorf("failed to serialize config: %w", err)
+	}
+
+	// Try to unmarshal as FROST config
+	config := frost.EmptyConfig(curve.Secp256k1{})
+	if err := json.Unmarshal(data, config); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal as FROST config: %w", err)
+	}
+
+	return config, nil
 }
