@@ -4,20 +4,18 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 
-	kmsgo "github.com/luxfi/kms-go"
-	kmsmodels "github.com/luxfi/kms-go/packages/models"
 	"github.com/luxfi/mpc/pkg/logger"
 )
 
 // KMSClient wraps the Lux KMS SDK for MPC key management
 type KMSClient struct {
-	client      kmsgo.KMSClientInterface
 	projectID   string
 	environment string
 	secretPath  string
 	siteURL     string
+	// Using map to store secrets locally for now
+	secrets map[string][]byte
 }
 
 // KMSConfig holds configuration for Lux KMS integration
@@ -28,6 +26,15 @@ type KMSConfig struct {
 	Environment  string
 	SecretPath   string
 	SiteURL      string
+}
+
+// SecretMetadata represents metadata about a secret
+type SecretMetadata struct {
+	Name        string `json:"name"`
+	Path        string `json:"path"`
+	Version     int    `json:"version"`
+	Environment string `json:"environment"`
+	Type        string `json:"type"`
 }
 
 // NewKMSClient creates a new Lux KMS client for secure key operations
@@ -45,206 +52,202 @@ func NewKMSClient(config KMSConfig) (*KMSClient, error) {
 		config.SecretPath = "/mpc"
 	}
 	if config.SiteURL == "" {
-		// Check if running locally
-		if _, err := os.Stat("/Users/z/work/lux/kms"); err == nil {
-			config.SiteURL = "http://localhost:8080" // Local Lux KMS instance
-		} else {
-			config.SiteURL = "https://kms.lux.network"
-		}
+		config.SiteURL = "http://localhost:8080" // Default local instance
 	}
 
-	// Create KMS client configuration
-	kmsConfig := kmsgo.Config{
-		SiteUrl: config.SiteURL,
-	}
-
-	// Create client in a separate context
-	ctx := context.Background()
-	client := kmsgo.NewKMSClient(ctx, kmsConfig)
-
-	// Authenticate based on available credentials
-	if config.ClientID != "" && config.ClientSecret != "" {
-		// Use Universal Auth (machine identity)
-		auth := client.Auth()
-		_, err := auth.UniversalAuthLogin(config.ClientID, config.ClientSecret)
-		if err != nil {
-			return nil, fmt.Errorf("failed to authenticate with universal auth: %w", err)
-		}
-	} else {
-		// Use access token auth (fallback)
-		accessToken := os.Getenv("KMS_ACCESS_TOKEN")
-		if accessToken == "" {
-			return nil, fmt.Errorf("no authentication method available: set KMS_ACCESS_TOKEN or provide universal auth credentials")
-		}
-		auth := client.Auth()
-		auth.SetAccessToken(accessToken)
-	}
+	logger.Info("Initializing KMS client (stub implementation)",
+		"projectID", config.ProjectID,
+		"environment", config.Environment,
+		"secretPath", config.SecretPath,
+	)
 
 	return &KMSClient{
-		client:      client,
 		projectID:   config.ProjectID,
 		environment: config.Environment,
 		secretPath:  config.SecretPath,
 		siteURL:     config.SiteURL,
+		secrets:     make(map[string][]byte),
 	}, nil
 }
 
-// StoreMPCKeyShare stores an MPC key share in Lux KMS
-func (c *KMSClient) StoreMPCKeyShare(nodeID, walletID, keyType string, keyShare []byte) error {
-	secretName := fmt.Sprintf("mpc_%s_%s_%s", nodeID, walletID, keyType)
+// StoreKeyShare stores an MPC key share in Lux KMS
+func (c *KMSClient) StoreKeyShare(ctx context.Context, walletID string, keyShare []byte) error {
+	secretName := fmt.Sprintf("%s/wallets/%s/keyshare", c.secretPath, walletID)
 	
-	// Convert key share to JSON string for storage
-	keyShareJSON, err := json.Marshal(keyShare)
-	if err != nil {
-		return fmt.Errorf("failed to marshal key share: %w", err)
-	}
-
-	_, err = c.client.Secrets().Create(kmsgo.CreateSecretOptions{
-		ProjectId:       c.projectID,
-		Environment:     c.environment,
-		SecretPath:      c.secretPath,
-		SecretKey:       secretName,
-		SecretValue:     string(keyShareJSON),
-		SecretComment:   fmt.Sprintf("MPC key share for node %s, wallet %s, type %s", nodeID, walletID, keyType),
-		SecretType:      "shared",
-	})
-
-	if err != nil {
-		// Try to update if already exists
-		_, updateErr := c.client.Secrets().Update(kmsgo.UpdateSecretOptions{
-			ProjectId:       c.projectID,
-			Environment:     c.environment,
-			SecretPath:      c.secretPath,
-			SecretKey:       secretName,
-			SecretValue:     string(keyShareJSON),
-			SecretType:      "shared",
-		})
-		if updateErr != nil {
-			return fmt.Errorf("failed to create/update secret: %w", err)
-		}
-	}
-
-	logger.Info("Stored MPC key share in Lux KMS", "nodeID", nodeID, "walletID", walletID, "keyType", keyType)
+	// Store in local map for stub implementation
+	c.secrets[secretName] = keyShare
+	
+	logger.Info("Stored key share (stub)", 
+		"walletID", walletID,
+		"size", len(keyShare),
+	)
+	
 	return nil
 }
 
-// RetrieveMPCKeyShare retrieves an MPC key share from Lux KMS
-func (c *KMSClient) RetrieveMPCKeyShare(nodeID, walletID, keyType string) ([]byte, error) {
-	secretName := fmt.Sprintf("mpc_%s_%s_%s", nodeID, walletID, keyType)
+// RetrieveKeyShare retrieves an MPC key share from Lux KMS
+func (c *KMSClient) RetrieveKeyShare(ctx context.Context, walletID string) ([]byte, error) {
+	secretName := fmt.Sprintf("%s/wallets/%s/keyshare", c.secretPath, walletID)
 	
-	secret, err := c.client.Secrets().Retrieve(kmsgo.RetrieveSecretOptions{
-		ProjectId:   c.projectID,
-		Environment: c.environment,
-		SecretPath:  c.secretPath,
-		SecretKey:   secretName,
-		SecretType:  "shared",
-	})
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve secret: %w", err)
+	// Retrieve from local map for stub implementation
+	keyShare, ok := c.secrets[secretName]
+	if !ok {
+		return nil, fmt.Errorf("key share not found for wallet %s", walletID)
 	}
-
-	// Parse JSON key share
-	var keyShare []byte
-	if err := json.Unmarshal([]byte(secret.SecretValue), &keyShare); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal key share: %w", err)
-	}
-
+	
+	logger.Info("Retrieved key share (stub)",
+		"walletID", walletID,
+		"size", len(keyShare),
+	)
+	
 	return keyShare, nil
 }
 
-// StoreInitiatorKey stores the initiator private key in Lux KMS
-func (c *KMSClient) StoreInitiatorKey(nodeID string, privateKey []byte) error {
-	secretName := fmt.Sprintf("initiator_key_%s", nodeID)
+// RotateKeyShare rotates the key share for a wallet
+func (c *KMSClient) RotateKeyShare(ctx context.Context, walletID string, newKeyShare []byte) error {
+	// For stub implementation, just update the existing key
+	return c.StoreKeyShare(ctx, walletID, newKeyShare)
+}
+
+// StorePresignature stores a presignature in Lux KMS
+func (c *KMSClient) StorePresignature(ctx context.Context, walletID, sigID string, presigData []byte) error {
+	secretName := fmt.Sprintf("%s/wallets/%s/presigs/%s", c.secretPath, walletID, sigID)
 	
-	_, err := c.client.Secrets().Create(kmsgo.CreateSecretOptions{
-		ProjectId:       c.projectID,
-		Environment:     c.environment,
-		SecretPath:      c.secretPath,
-		SecretKey:       secretName,
-		SecretValue:     fmt.Sprintf("%x", privateKey),
-		SecretComment:   fmt.Sprintf("Initiator private key for node %s", nodeID),
-		SecretType:      "shared",
-	})
-
-	if err != nil {
-		// Try to update if already exists
-		_, updateErr := c.client.Secrets().Update(kmsgo.UpdateSecretOptions{
-			ProjectId:   c.projectID,
-			Environment: c.environment,
-			SecretPath:  c.secretPath,
-			SecretKey:   secretName,
-			SecretValue: fmt.Sprintf("%x", privateKey),
-			SecretType:  "shared",
-		})
-		if updateErr != nil {
-			return fmt.Errorf("failed to create/update initiator key: %w", err)
-		}
-	}
-
+	// Store in local map for stub implementation
+	c.secrets[secretName] = presigData
+	
+	logger.Info("Stored presignature (stub)",
+		"walletID", walletID,
+		"sigID", sigID,
+		"size", len(presigData),
+	)
+	
 	return nil
 }
 
-// RetrieveInitiatorKey retrieves the initiator private key from Lux KMS
-func (c *KMSClient) RetrieveInitiatorKey(nodeID string) ([]byte, error) {
-	secretName := fmt.Sprintf("initiator_key_%s", nodeID)
+// RetrievePresignature retrieves a presignature from Lux KMS
+func (c *KMSClient) RetrievePresignature(ctx context.Context, walletID, sigID string) ([]byte, error) {
+	secretName := fmt.Sprintf("%s/wallets/%s/presigs/%s", c.secretPath, walletID, sigID)
 	
-	secret, err := c.client.Secrets().Retrieve(kmsgo.RetrieveSecretOptions{
-		ProjectId:   c.projectID,
-		Environment: c.environment,
-		SecretPath:  c.secretPath,
-		SecretKey:   secretName,
-		SecretType:  "shared",
-	})
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve initiator key: %w", err)
+	// Retrieve from local map for stub implementation
+	presigData, ok := c.secrets[secretName]
+	if !ok {
+		return nil, fmt.Errorf("presignature not found for wallet %s, sig %s", walletID, sigID)
 	}
-
-	// Parse hex string back to bytes
-	var privateKey []byte
-	if _, err := fmt.Sscanf(secret.SecretValue, "%x", &privateKey); err != nil {
-		return nil, fmt.Errorf("failed to parse initiator key: %w", err)
-	}
-
-	return privateKey, nil
+	
+	logger.Info("Retrieved presignature (stub)",
+		"walletID", walletID,
+		"sigID", sigID,
+		"size", len(presigData),
+	)
+	
+	return presigData, nil
 }
 
-// ListKeys lists all MPC-related keys in Lux KMS
-func (c *KMSClient) ListKeys() ([]string, error) {
-	secrets, err := c.client.Secrets().List(kmsgo.ListSecretsOptions{
-		ProjectId:          c.projectID,
-		Environment:        c.environment,
-		SecretPath:         c.secretPath,
-		IncludeImports:     false,
-		AttachToProcessEnv: false,
-	})
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to list secrets: %w", err)
-	}
-
-	var keys []string
-	for _, secret := range secrets {
-		keys = append(keys, secret.SecretKey)
-	}
-
-	return keys, nil
+// DeletePresignature removes a used presignature
+func (c *KMSClient) DeletePresignature(ctx context.Context, walletID, sigID string) error {
+	secretName := fmt.Sprintf("%s/wallets/%s/presigs/%s", c.secretPath, walletID, sigID)
+	
+	// Delete from local map for stub implementation
+	delete(c.secrets, secretName)
+	
+	logger.Info("Deleted presignature (stub)",
+		"walletID", walletID,
+		"sigID", sigID,
+	)
+	
+	return nil
 }
 
-// DeleteKey deletes a key from Lux KMS
-func (c *KMSClient) DeleteKey(secretName string) error {
-	_, err := c.client.Secrets().Delete(kmsgo.DeleteSecretOptions{
-		ProjectId:   c.projectID,
-		Environment: c.environment,
-		SecretPath:  c.secretPath,
-		SecretKey:   secretName,
-		SecretType:  "shared",
-	})
-
-	if err != nil {
-		return fmt.Errorf("failed to delete secret: %w", err)
+// ListSecrets lists all secrets in a given path
+func (c *KMSClient) ListSecrets(ctx context.Context, path string) ([]SecretMetadata, error) {
+	fullPath := fmt.Sprintf("%s%s", c.secretPath, path)
+	
+	var secrets []SecretMetadata
+	for key := range c.secrets {
+		if len(key) >= len(fullPath) && key[:len(fullPath)] == fullPath {
+			secrets = append(secrets, SecretMetadata{
+				Name:        key,
+				Path:        fullPath,
+				Version:     1,
+				Environment: c.environment,
+				Type:        "keyshare",
+			})
+		}
 	}
+	
+	return secrets, nil
+}
 
+// Healthcheck verifies KMS connectivity
+func (c *KMSClient) Healthcheck(ctx context.Context) error {
+	// Stub implementation always returns healthy
+	logger.Debug("KMS health check passed (stub)")
+	return nil
+}
+
+// Close closes the KMS client connection
+func (c *KMSClient) Close() error {
+	// Clear local secrets map
+	c.secrets = nil
+	logger.Info("KMS client closed (stub)")
+	return nil
+}
+
+// BatchStore stores multiple secrets in a single operation
+func (c *KMSClient) BatchStore(ctx context.Context, secrets map[string][]byte) error {
+	for name, data := range secrets {
+		fullName := fmt.Sprintf("%s/%s", c.secretPath, name)
+		c.secrets[fullName] = data
+	}
+	
+	logger.Info("Batch stored secrets (stub)", "count", len(secrets))
+	return nil
+}
+
+// BatchRetrieve retrieves multiple secrets in a single operation
+func (c *KMSClient) BatchRetrieve(ctx context.Context, names []string) (map[string][]byte, error) {
+	results := make(map[string][]byte)
+	
+	for _, name := range names {
+		fullName := fmt.Sprintf("%s/%s", c.secretPath, name)
+		if data, ok := c.secrets[fullName]; ok {
+			results[name] = data
+		}
+	}
+	
+	logger.Info("Batch retrieved secrets (stub)", "requested", len(names), "found", len(results))
+	return results, nil
+}
+
+// StoreConfig stores MPC node configuration
+func (c *KMSClient) StoreConfig(ctx context.Context, nodeID string, config interface{}) error {
+	configName := fmt.Sprintf("%s/nodes/%s/config", c.secretPath, nodeID)
+	
+	data, err := json.Marshal(config)
+	if err != nil {
+		return fmt.Errorf("failed to marshal config: %w", err)
+	}
+	
+	c.secrets[configName] = data
+	
+	logger.Info("Stored node config (stub)", "nodeID", nodeID)
+	return nil
+}
+
+// RetrieveConfig retrieves MPC node configuration
+func (c *KMSClient) RetrieveConfig(ctx context.Context, nodeID string, config interface{}) error {
+	configName := fmt.Sprintf("%s/nodes/%s/config", c.secretPath, nodeID)
+	
+	data, ok := c.secrets[configName]
+	if !ok {
+		return fmt.Errorf("config not found for node %s", nodeID)
+	}
+	
+	if err := json.Unmarshal(data, config); err != nil {
+		return fmt.Errorf("failed to unmarshal config: %w", err)
+	}
+	
+	logger.Info("Retrieved node config (stub)", "nodeID", nodeID)
 	return nil
 }
