@@ -194,6 +194,55 @@ func (c *KMSClient) Close() error {
 	return nil
 }
 
+// StoreMPCKeyShare stores an MPC key share with specific node and wallet IDs
+func (c *KMSClient) StoreMPCKeyShare(nodeID, walletID, keyType string, keyData []byte) error {
+	secretName := fmt.Sprintf("%s/nodes/%s/wallets/%s/%s", c.secretPath, nodeID, walletID, keyType)
+	c.secrets[secretName] = keyData
+	logger.Info("Stored MPC key share",
+		"nodeID", nodeID,
+		"walletID", walletID,
+		"keyType", keyType,
+		"size", len(keyData),
+	)
+	return nil
+}
+
+// RetrieveMPCKeyShare retrieves an MPC key share with specific node and wallet IDs
+func (c *KMSClient) RetrieveMPCKeyShare(nodeID, walletID, keyType string) ([]byte, error) {
+	secretName := fmt.Sprintf("%s/nodes/%s/wallets/%s/%s", c.secretPath, nodeID, walletID, keyType)
+	keyData, ok := c.secrets[secretName]
+	if !ok {
+		return nil, fmt.Errorf("key share not found for node %s, wallet %s, type %s", nodeID, walletID, keyType)
+	}
+	logger.Info("Retrieved MPC key share",
+		"nodeID", nodeID,
+		"walletID", walletID,
+		"keyType", keyType,
+		"size", len(keyData),
+	)
+	return keyData, nil
+}
+
+// ListKeys lists all keys (without the actual key data)
+func (c *KMSClient) ListKeys() ([]string, error) {
+	var keys []string
+	for key := range c.secrets {
+		keys = append(keys, key)
+	}
+	logger.Info("Listed keys", "count", len(keys))
+	return keys, nil
+}
+
+// DeleteKey removes a key from storage
+func (c *KMSClient) DeleteKey(key string) error {
+	if _, ok := c.secrets[key]; !ok {
+		return fmt.Errorf("key not found: %s", key)
+	}
+	delete(c.secrets, key)
+	logger.Info("Deleted key", "key", key)
+	return nil
+}
+
 // BatchStore stores multiple secrets in a single operation
 func (c *KMSClient) BatchStore(ctx context.Context, secrets map[string][]byte) error {
 	for name, data := range secrets {

@@ -14,7 +14,7 @@ echo "🚀 Setting up E2E Test Node Identities..."
 
 # Generate random password for badger encryption
 echo "🔐 Generating random password for badger encryption..."
-BADGER_PASSWORD=$(< /dev/urandom tr -dc 'A-Za-z0-9' | head -c 32)
+BADGER_PASSWORD=$(LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 32)
 echo "✅ Generated password: $BADGER_PASSWORD"
 
 # Generate config.test.yaml from template
@@ -98,14 +98,14 @@ if [ -f "test_event_initiator.identity.json" ]; then
     # Update all test node config files with the actual public key and password
     for i in $(seq 0 $((NUM_NODES-1))); do
         # Update public key using sed with | as delimiter (safer than /)
-        sed -i "s|event_initiator_pubkey:.*|event_initiator_pubkey: $PUBKEY|g" "$BASE_DIR/test_node$i/config.yaml"
+        sed -i '' "s|event_initiator_pubkey:.*|event_initiator_pubkey: $PUBKEY|g" "$BASE_DIR/test_node$i/config.yaml"
         # Update password using sed with | as delimiter and escaped password
-        sed -i "s|badger_password:.*|badger_password: $ESCAPED_PASSWORD|g" "$BASE_DIR/test_node$i/config.yaml"
+        sed -i '' "s|badger_password:.*|badger_password: $ESCAPED_PASSWORD|g" "$BASE_DIR/test_node$i/config.yaml"
     done
     
     # Also update the main config.test.yaml
-    sed -i "s|event_initiator_pubkey:.*|event_initiator_pubkey: $PUBKEY|g" "$BASE_DIR/config.test.yaml"
-    sed -i "s|badger_password:.*|badger_password: $ESCAPED_PASSWORD|g" "$BASE_DIR/config.test.yaml"
+    sed -i '' "s|event_initiator_pubkey:.*|event_initiator_pubkey: $PUBKEY|g" "$BASE_DIR/config.test.yaml"
+    sed -i '' "s|badger_password:.*|badger_password: $ESCAPED_PASSWORD|g" "$BASE_DIR/config.test.yaml"
     
     echo "✅ Event initiator public key updated: $PUBKEY"
     echo "✅ Badger password updated: $BADGER_PASSWORD"
