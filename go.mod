@@ -95,7 +95,4 @@ require (
 
 replace (
 	github.com/agl/ed25519 => github.com/luxfi/edwards25519 v0.0.0-20200305024217-f36fc4b53d43
-	github.com/luxfi/kms-go => /Users/z/work/lux/kms-go
 )
-
-replace github.com/luxfi/threshold => ../threshold
