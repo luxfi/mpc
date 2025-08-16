@@ -1,6 +1,8 @@
 module github.com/luxfi/mpc
 
-go 1.23.0
+go 1.24.5
+
+toolchain go1.24.6
 
 require (
 	filippo.io/age v1.2.1
