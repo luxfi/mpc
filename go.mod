@@ -2,8 +2,6 @@ module github.com/luxfi/mpc
 
 go 1.24.5
 
-toolchain go1.24.6
-
 require (
 	filippo.io/age v1.2.1
 	github.com/avast/retry-go v3.0.0+incompatible
