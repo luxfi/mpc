@@ -317,6 +317,4 @@ jobs:
       - name: Build lux-mpc-cli
         env:
           GOTOOLCHAIN: local
-        env:
-          GOTOOLCHAIN: local
         run: go build -v ./cmd/lux-mpc-cli
