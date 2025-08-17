@@ -73,33 +73,33 @@ func NewKMSClient(config KMSConfig) (*KMSClient, error) {
 // StoreKeyShare stores an MPC key share in Lux KMS
 func (c *KMSClient) StoreKeyShare(ctx context.Context, walletID string, keyShare []byte) error {
 	secretName := fmt.Sprintf("%s/wallets/%s/keyshare", c.secretPath, walletID)
-	
+
 	// Store in local map for stub implementation
 	c.secrets[secretName] = keyShare
-	
-	logger.Info("Stored key share (stub)", 
+
+	logger.Info("Stored key share (stub)",
 		"walletID", walletID,
 		"size", len(keyShare),
 	)
-	
+
 	return nil
 }
 
 // RetrieveKeyShare retrieves an MPC key share from Lux KMS
 func (c *KMSClient) RetrieveKeyShare(ctx context.Context, walletID string) ([]byte, error) {
 	secretName := fmt.Sprintf("%s/wallets/%s/keyshare", c.secretPath, walletID)
-	
+
 	// Retrieve from local map for stub implementation
 	keyShare, ok := c.secrets[secretName]
 	if !ok {
 		return nil, fmt.Errorf("key share not found for wallet %s", walletID)
 	}
-	
+
 	logger.Info("Retrieved key share (stub)",
 		"walletID", walletID,
 		"size", len(keyShare),
 	)
-	
+
 	return keyShare, nil
 }
 
@@ -112,57 +112,57 @@ func (c *KMSClient) RotateKeyShare(ctx context.Context, walletID string, newKeyS
 // StorePresignature stores a presignature in Lux KMS
 func (c *KMSClient) StorePresignature(ctx context.Context, walletID, sigID string, presigData []byte) error {
 	secretName := fmt.Sprintf("%s/wallets/%s/presigs/%s", c.secretPath, walletID, sigID)
-	
+
 	// Store in local map for stub implementation
 	c.secrets[secretName] = presigData
-	
+
 	logger.Info("Stored presignature (stub)",
 		"walletID", walletID,
 		"sigID", sigID,
 		"size", len(presigData),
 	)
-	
+
 	return nil
 }
 
 // RetrievePresignature retrieves a presignature from Lux KMS
 func (c *KMSClient) RetrievePresignature(ctx context.Context, walletID, sigID string) ([]byte, error) {
 	secretName := fmt.Sprintf("%s/wallets/%s/presigs/%s", c.secretPath, walletID, sigID)
-	
+
 	// Retrieve from local map for stub implementation
 	presigData, ok := c.secrets[secretName]
 	if !ok {
 		return nil, fmt.Errorf("presignature not found for wallet %s, sig %s", walletID, sigID)
 	}
-	
+
 	logger.Info("Retrieved presignature (stub)",
 		"walletID", walletID,
 		"sigID", sigID,
 		"size", len(presigData),
 	)
-	
+
 	return presigData, nil
 }
 
 // DeletePresignature removes a used presignature
 func (c *KMSClient) DeletePresignature(ctx context.Context, walletID, sigID string) error {
 	secretName := fmt.Sprintf("%s/wallets/%s/presigs/%s", c.secretPath, walletID, sigID)
-	
+
 	// Delete from local map for stub implementation
 	delete(c.secrets, secretName)
-	
+
 	logger.Info("Deleted presignature (stub)",
 		"walletID", walletID,
 		"sigID", sigID,
 	)
-	
+
 	return nil
 }
 
 // ListSecrets lists all secrets in a given path
 func (c *KMSClient) ListSecrets(ctx context.Context, path string) ([]SecretMetadata, error) {
 	fullPath := fmt.Sprintf("%s%s", c.secretPath, path)
-	
+
 	var secrets []SecretMetadata
 	for key := range c.secrets {
 		if len(key) >= len(fullPath) && key[:len(fullPath)] == fullPath {
@@ -175,7 +175,7 @@ func (c *KMSClient) ListSecrets(ctx context.Context, path string) ([]SecretMetad
 			})
 		}
 	}
-	
+
 	return secrets, nil
 }
 
@@ -249,7 +249,7 @@ func (c *KMSClient) BatchStore(ctx context.Context, secrets map[string][]byte) e
 		fullName := fmt.Sprintf("%s/%s", c.secretPath, name)
 		c.secrets[fullName] = data
 	}
-	
+
 	logger.Info("Batch stored secrets (stub)", "count", len(secrets))
 	return nil
 }
@@ -257,14 +257,14 @@ func (c *KMSClient) BatchStore(ctx context.Context, secrets map[string][]byte) e
 // BatchRetrieve retrieves multiple secrets in a single operation
 func (c *KMSClient) BatchRetrieve(ctx context.Context, names []string) (map[string][]byte, error) {
 	results := make(map[string][]byte)
-	
+
 	for _, name := range names {
 		fullName := fmt.Sprintf("%s/%s", c.secretPath, name)
 		if data, ok := c.secrets[fullName]; ok {
 			results[name] = data
 		}
 	}
-	
+
 	logger.Info("Batch retrieved secrets (stub)", "requested", len(names), "found", len(results))
 	return results, nil
 }
@@ -272,14 +272,14 @@ func (c *KMSClient) BatchRetrieve(ctx context.Context, names []string) (map[stri
 // StoreConfig stores MPC node configuration
 func (c *KMSClient) StoreConfig(ctx context.Context, nodeID string, config interface{}) error {
 	configName := fmt.Sprintf("%s/nodes/%s/config", c.secretPath, nodeID)
-	
+
 	data, err := json.Marshal(config)
 	if err != nil {
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
-	
+
 	c.secrets[configName] = data
-	
+
 	logger.Info("Stored node config (stub)", "nodeID", nodeID)
 	return nil
 }
@@ -287,16 +287,16 @@ func (c *KMSClient) StoreConfig(ctx context.Context, nodeID string, config inter
 // RetrieveConfig retrieves MPC node configuration
 func (c *KMSClient) RetrieveConfig(ctx context.Context, nodeID string, config interface{}) error {
 	configName := fmt.Sprintf("%s/nodes/%s/config", c.secretPath, nodeID)
-	
+
 	data, ok := c.secrets[configName]
 	if !ok {
 		return fmt.Errorf("config not found for node %s", nodeID)
 	}
-	
+
 	if err := json.Unmarshal(data, config); err != nil {
 		return fmt.Errorf("failed to unmarshal config: %w", err)
 	}
-	
+
 	logger.Info("Retrieved node config (stub)", "nodeID", nodeID)
 	return nil
 }
