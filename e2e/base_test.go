@@ -15,10 +15,10 @@ import (
 
 	"github.com/dgraph-io/badger/v4"
 	"github.com/dgraph-io/badger/v4/options"
+	"github.com/hashicorp/consul/api"
 	"github.com/luxfi/mpc/pkg/client"
 	"github.com/luxfi/mpc/pkg/event"
 	"github.com/luxfi/mpc/pkg/kvstore"
-	"github.com/hashicorp/consul/api"
 	"github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v2"
@@ -53,7 +53,7 @@ type E2ETestSuite struct {
 	mpcClient        client.MPCClient
 	testDir          string
 	walletIDs        []string
-	mpcProcesses  []*exec.Cmd
+	mpcProcesses     []*exec.Cmd
 	keygenResults    map[string]*event.KeygenResultEvent
 	signingResults   map[string]*event.SigningResultEvent
 	resharingResults map[string]*event.ResharingResultEvent

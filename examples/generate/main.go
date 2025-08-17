@@ -11,11 +11,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/luxfi/mpc/pkg/client"
 	"github.com/luxfi/mpc/pkg/config"
 	"github.com/luxfi/mpc/pkg/event"
 	"github.com/luxfi/mpc/pkg/logger"
-	"github.com/google/uuid"
 	"github.com/nats-io/nats.go"
 	"github.com/spf13/viper"
 )
