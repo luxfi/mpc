@@ -5,8 +5,9 @@ import (
 	"log"
 	"os"
 
-	"github.com/luxfi/mpc/pkg/kms"
 	"github.com/spf13/viper"
+
+	"github.com/luxfi/mpc/pkg/kms"
 )
 
 func main() {
