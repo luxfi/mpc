@@ -33,9 +33,8 @@ COPY --from=builder /build/lux-mpc /usr/local/bin/
 COPY --from=builder /build/lux-mpc-cli /usr/local/bin/
 COPY --from=builder /build/lux-mpc-bridge /usr/local/bin/
 
-# Copy config templates if they exist
-COPY config.yaml.template /app/ 2>/dev/null || true
-COPY peers.json /app/ 2>/dev/null || true
+# Copy config templates
+COPY config.yaml.template peers.json /app/
 
 # Create data and log directories
 RUN mkdir -p /data/mpc /app/logs /app/identity
