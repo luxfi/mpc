@@ -29,7 +29,7 @@ WORKDIR /app
 # Copy binaries from builder
 COPY --from=builder /build/lux-mpc /usr/local/bin/
 COPY --from=builder /build/lux-mpc-cli /usr/local/bin/
-COPY --from=builder /build/lux-mpc-bridge /usr/local/bin/ 2>/dev/null || true
+COPY --from=builder /build/lux-mpc-bridge /usr/local/bin/
 
 # Copy config templates
 COPY config.yaml.template /app/
