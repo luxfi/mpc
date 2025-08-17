@@ -75,7 +75,7 @@ func (k *KMSEnabledKVStore) Put(key string, value []byte) error {
 	if isKeyShare(key) {
 		// Detect key type from the share data
 		keyType := "ecdsa" // Default
-		
+
 		// Try to parse the share to determine type
 		var shareData map[string]interface{}
 		if err := json.Unmarshal(value, &shareData); err == nil {
@@ -124,11 +124,6 @@ func (k *KMSEnabledKVStore) Get(key string) ([]byte, error) {
 	if err := json.Unmarshal(data, &reference); err == nil {
 		if reference["storage"] == "kms" {
 			// Retrieve from Lux KMS
-			keyType := reference["type"]
-			if keyType == "" {
-				keyType = "ecdsa"
-			}
-			
 			ctx := context.Background()
 			share, err := k.kmsClient.RetrieveKeyShare(ctx, key)
 			if err != nil {
@@ -153,10 +148,6 @@ func (k *KMSEnabledKVStore) Delete(key string) error {
 			if err := json.Unmarshal(data, &reference); err == nil {
 				if reference["storage"] == "kms" {
 					// Delete from Lux KMS
-					keyType := reference["type"]
-					if keyType == "" {
-						keyType = "ecdsa"
-					}
 					// Delete operation not implemented in stub
 					// In production, this would delete from KMS
 					logger.Debug("KMS delete operation skipped (stub)", "key", key)
