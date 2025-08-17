@@ -36,7 +36,7 @@ func signXRPLTransaction(mpcClient client.MPCClient) {
 
 	// In a real scenario, you would have a wallet ID from a previously created wallet
 	walletID := "your-xrpl-wallet-id"
-	
+
 	// Example XRPL transaction data
 	// In production, this would be a properly formatted XRPL transaction JSON
 	// that has been serialized according to XRPL standards
@@ -49,7 +49,7 @@ func signXRPLTransaction(mpcClient client.MPCClient) {
 		"Sequence": 1,
 		"SigningPubKey": "YOUR_PUBLIC_KEY_HERE"
 	}`
-	
+
 	// Convert to bytes (in production, use proper XRPL serialization)
 	txData := []byte(xrplTxJSON)
 	txID := fmt.Sprintf("xrpl-tx-%s", uuid.New().String())
@@ -100,7 +100,7 @@ func signXRPLTransaction(mpcClient client.MPCClient) {
 			fmt.Printf("Transaction ID: %s\n", result.TxID)
 			fmt.Printf("Network: %s\n", result.NetworkInternalCode)
 			fmt.Printf("Signature (hex): %s\n", hex.EncodeToString(result.Signature))
-			
+
 			// The signature can now be added to the XRPL transaction
 			// and submitted to the XRPL network
 		} else {
