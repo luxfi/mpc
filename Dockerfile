@@ -8,21 +8,23 @@ WORKDIR /build
 # Copy source code
 COPY . .
 
-# Create a Docker-compatible go.mod without version restrictions
+# Create a Docker-compatible go.mod
 RUN cp go.mod go.mod.backup && \
-    echo "module github.com/luxfi/mpc" > go.mod.tmp && \
-    echo "" >> go.mod.tmp && \
-    echo "go 1.23" >> go.mod.tmp && \
-    echo "" >> go.mod.tmp && \
-    grep -v "^go " go.mod.backup | grep -v "^module " >> go.mod.tmp && \
-    mv go.mod.tmp go.mod
+    sed -i 's/go 1.24.5/go 1.23/g' go.mod && \
+    echo "" >> go.mod && \
+    echo "// Docker build replacements to bypass Go 1.24.5 requirements" >> go.mod && \
+    echo "replace (" >> go.mod && \
+    echo "    github.com/luxfi/log => github.com/luxfi/log v1.0.5" >> go.mod && \
+    echo "    github.com/luxfi/threshold => github.com/luxfi/threshold v1.0.9" >> go.mod && \
+    echo ")" >> go.mod
 
-# Download dependencies (ignoring version errors)
-RUN go mod tidy || true
+# Download dependencies with replacements
+RUN go mod download
 
-# Build the binaries
+# Build the binaries with local toolchain
+ENV GOTOOLCHAIN=local
 RUN go build -o lux-mpc ./cmd/lux-mpc
-RUN go build -o lux-mpc-cli ./cmd/lux-mpc-cli  
+RUN go build -o lux-mpc-cli ./cmd/lux-mpc-cli
 RUN go build -o lux-mpc-bridge ./cmd/lux-mpc-bridge || true
 
 # Runtime stage
