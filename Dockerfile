@@ -8,8 +8,10 @@ WORKDIR /build
 # Copy go mod files
 COPY go.mod go.sum ./
 
-# Download dependencies with GOTOOLCHAIN workaround for Go 1.24.5 requirement
-ENV GOTOOLCHAIN=local
+# Temporarily modify go.mod for Docker build compatibility
+RUN sed -i 's/go 1.24.5/go 1.23/g' go.mod
+
+# Download dependencies
 RUN go mod download
 
 # Copy source code
