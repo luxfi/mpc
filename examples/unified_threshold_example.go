@@ -24,7 +24,7 @@ func main() {
 	fmt.Println("1. ECDSA Threshold Signing (CMP/CGGMP21 Protocol)")
 	fmt.Println("   - Used for: Bitcoin, Ethereum, and other ECDSA-based chains")
 	fmt.Println("   - Features: Presigning support for faster online signing")
-	
+
 	ecdsaParty, err := api.KeyGen(threshold.SchemeECDSA, "alice", partyIDs, thresholdValue)
 	if err != nil {
 		log.Fatalf("Failed to start ECDSA keygen: %v", err)
@@ -38,7 +38,7 @@ func main() {
 	fmt.Println("2. EdDSA Threshold Signing (FROST Protocol)")
 	fmt.Println("   - Used for: Solana, Cardano, and Ed25519-based systems")
 	fmt.Println("   - Features: Efficient Schnorr signatures, no presigning needed")
-	
+
 	eddsaParty, err := api.KeyGen(threshold.SchemeEdDSA, "bob", partyIDs, thresholdValue)
 	if err != nil {
 		log.Fatalf("Failed to start EdDSA keygen: %v", err)
@@ -52,7 +52,7 @@ func main() {
 	fmt.Println("3. Taproot/Schnorr Threshold Signing (FROST Protocol)")
 	fmt.Println("   - Used for: Bitcoin Taproot, privacy-preserving signatures")
 	fmt.Println("   - Features: BIP-340 compatible, aggregatable signatures")
-	
+
 	taprootParty, err := api.KeyGen(threshold.SchemeTaproot, "charlie", partyIDs, thresholdValue)
 	if err != nil {
 		log.Fatalf("Failed to start Taproot keygen: %v", err)
