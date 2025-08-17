@@ -8,16 +8,17 @@ WORKDIR /build
 # Copy go mod files
 COPY go.mod go.sum ./
 
-# Download dependencies
+# Download dependencies with GOTOOLCHAIN workaround for Go 1.24.5 requirement
+ENV GOTOOLCHAIN=go1.23
 RUN go mod download
 
 # Copy source code
 COPY . .
 
-# Build the binaries
-RUN go build -o lux-mpc ./cmd/lux-mpc
-RUN go build -o lux-mpc-cli ./cmd/lux-mpc-cli
-RUN go build -o lux-mpc-bridge ./cmd/lux-mpc-bridge || true
+# Build the binaries with GOTOOLCHAIN workaround
+RUN GOTOOLCHAIN=go1.23 go build -o lux-mpc ./cmd/lux-mpc
+RUN GOTOOLCHAIN=go1.23 go build -o lux-mpc-cli ./cmd/lux-mpc-cli
+RUN GOTOOLCHAIN=go1.23 go build -o lux-mpc-bridge ./cmd/lux-mpc-bridge || true
 
 # Runtime stage
 FROM alpine:latest
