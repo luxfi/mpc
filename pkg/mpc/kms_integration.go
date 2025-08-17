@@ -6,10 +6,11 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/spf13/viper"
+
 	"github.com/luxfi/mpc/pkg/kms"
 	"github.com/luxfi/mpc/pkg/kvstore"
 	"github.com/luxfi/mpc/pkg/logger"
-	"github.com/spf13/viper"
 )
 
 // KMSEnabledKVStore wraps a regular KVStore with KMS encryption

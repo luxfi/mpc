@@ -8,12 +8,13 @@ import (
 	"math/big"
 	"sync"
 
-	"github.com/luxfi/mpc/pkg/protocol"
 	"github.com/luxfi/threshold/pkg/math/curve"
 	"github.com/luxfi/threshold/pkg/party"
 	"github.com/luxfi/threshold/pkg/pool"
 	mpsProtocol "github.com/luxfi/threshold/pkg/protocol"
 	"github.com/luxfi/threshold/protocols/frost"
+
+	"github.com/luxfi/mpc/pkg/protocol"
 )
 
 // FROSTProtocol implements the Protocol interface using FROST for EdDSA
