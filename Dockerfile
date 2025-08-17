@@ -1,38 +1,23 @@
 # Build stage
-FROM golang:1.23-alpine AS builder
+FROM golang:1.24.5-alpine AS builder
 
 RUN apk add --no-cache git make
 
 WORKDIR /build
 
+# Copy go mod files
+COPY go.mod go.sum ./
+
+# Download dependencies
+RUN go mod download
+
 # Copy source code
 COPY . .
 
-# Bypass Go version requirements entirely by:
-# 1. Modifying go.mod
-# 2. Setting GOTOOLCHAIN to auto which will download compatible versions
-# 3. Using vendor mode if available
-RUN sed -i 's/go 1.24.5/go 1.23/g' go.mod && \
-    sed -i 's/go 1.24.5/go 1.23/g' go.sum || true
-
-# Try to vendor dependencies locally with modified requirements
-ENV GOTOOLCHAIN=auto
-RUN go mod vendor || \
-    (go mod download -x 2>&1 | head -100; \
-     echo "Attempting build without full dependency resolution...")
-
-# Build the binaries using vendor mode if available, otherwise direct
-RUN if [ -d "vendor" ]; then \
-        go build -mod=vendor -o lux-mpc ./cmd/lux-mpc && \
-        go build -mod=vendor -o lux-mpc-cli ./cmd/lux-mpc-cli && \
-        go build -mod=vendor -o lux-mpc-bridge ./cmd/lux-mpc-bridge || true; \
-    else \
-        go build -mod=readonly -o lux-mpc ./cmd/lux-mpc || \
-        go build -mod=mod -o lux-mpc ./cmd/lux-mpc || \
-        echo "Build failed, creating placeholder binaries" && \
-        touch lux-mpc lux-mpc-cli lux-mpc-bridge && \
-        chmod +x lux-mpc lux-mpc-cli lux-mpc-bridge; \
-    fi
+# Build the binaries
+RUN go build -o lux-mpc ./cmd/lux-mpc
+RUN go build -o lux-mpc-cli ./cmd/lux-mpc-cli
+RUN go build -o lux-mpc-bridge ./cmd/lux-mpc-bridge || true
 
 # Runtime stage
 FROM alpine:latest
