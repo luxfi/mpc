@@ -15,7 +15,7 @@ func main() {
 	viper.SetConfigType("yaml")
 	viper.AddConfigPath("..")
 	viper.AutomaticEnv()
-	
+
 	if err := viper.ReadInConfig(); err != nil {
 		log.Printf("Warning: Could not read config file: %v", err)
 	}
@@ -68,7 +68,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to retrieve test key: %v", err)
 	}
-	
+
 	if string(retrievedData) == string(testKeyData) {
 		fmt.Println("✅ Successfully retrieved test key with correct data!")
 	} else {
@@ -81,7 +81,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to list keys: %v", err)
 	}
-	
+
 	fmt.Printf("Found %d keys:\n", len(keys))
 	for _, key := range keys {
 		fmt.Printf("  - %s\n", key)

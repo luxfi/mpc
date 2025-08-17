@@ -19,11 +19,11 @@ type MPCKMSIntegration struct {
 func NewMPCKMSIntegration(nodeID string, dataDir string) (*MPCKMSIntegration, error) {
 	// Create KMS directory
 	kmsDir := filepath.Join(dataDir, "kms")
-	
+
 	// Derive master key from environment or generate one
 	masterKeyStr := os.Getenv("MPC_KMS_MASTER_KEY")
 	var masterKey []byte
-	
+
 	if masterKeyStr == "" {
 		// For production, this should be properly managed
 		// For now, we'll use a deterministic key based on node ID
@@ -36,12 +36,12 @@ func NewMPCKMSIntegration(nodeID string, dataDir string) (*MPCKMSIntegration, er
 			return nil, fmt.Errorf("invalid MPC_KMS_MASTER_KEY: %w", err)
 		}
 	}
-	
+
 	kms, err := NewKMS(kmsDir, masterKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize KMS: %w", err)
 	}
-	
+
 	return &MPCKMSIntegration{
 		kms:    kms,
 		nodeID: nodeID,
@@ -53,7 +53,7 @@ func (m *MPCKMSIntegration) StoreMPCKeyShare(walletID string, keyType string, sh
 	keyID := fmt.Sprintf("mpc-%s-%s-%s", m.nodeID, walletID, keyType)
 	name := fmt.Sprintf("MPC Share for %s (%s)", walletID, keyType)
 	description := fmt.Sprintf("MPC key share for wallet %s, key type %s, node %s", walletID, keyType, m.nodeID)
-	
+
 	return m.kms.StoreKey(keyID, name, keyType, share, description)
 }
 
@@ -68,7 +68,7 @@ func (m *MPCKMSIntegration) StoreInitiatorKey(privateKey []byte) error {
 	keyID := fmt.Sprintf("initiator-%s", m.nodeID)
 	name := fmt.Sprintf("Initiator Key for %s", m.nodeID)
 	description := fmt.Sprintf("Ed25519 initiator private key for node %s", m.nodeID)
-	
+
 	return m.kms.StoreKey(keyID, name, "ed25519", privateKey, description)
 }
 
@@ -83,7 +83,7 @@ func (m *MPCKMSIntegration) StoreNodePrivateKey(privateKey []byte) error {
 	keyID := fmt.Sprintf("node-p2p-%s", m.nodeID)
 	name := fmt.Sprintf("P2P Key for %s", m.nodeID)
 	description := fmt.Sprintf("P2P communication private key for node %s", m.nodeID)
-	
+
 	return m.kms.StoreKey(keyID, name, "ecdsa", privateKey, description)
 }
 

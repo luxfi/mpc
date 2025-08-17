@@ -89,9 +89,9 @@ func (p *FROSTProtocol) Refresh(cfg protocol.KeyGenConfig) (protocol.Party, erro
 	}
 
 	return &frostPartyAdapter{
-		handler:    handler,
-		selfID:     cfg.GetPartyID(),
-		isTaproot:  false,
+		handler:   handler,
+		selfID:    cfg.GetPartyID(),
+		isTaproot: false,
 	}, nil
 }
 
@@ -119,9 +119,9 @@ func (p *FROSTProtocol) Sign(cfg protocol.KeyGenConfig, signers []string, messag
 	}
 
 	return &frostPartyAdapter{
-		handler:    handler,
-		selfID:     cfg.GetPartyID(),
-		isTaproot:  false,
+		handler:   handler,
+		selfID:    cfg.GetPartyID(),
+		isTaproot: false,
 	}, nil
 }
 
