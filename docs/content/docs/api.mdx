@@ -1,0 +1,651 @@
+---
+title: API Reference
+description: Complete API documentation for Lux MPC integration
+---
+
+# API Reference
+
+## Client Libraries
+
+### Go Client
+
+Installation:
+```bash
+go get github.com/luxfi/mpc/pkg/client
+```
+
+Usage:
+```go
+import "github.com/luxfi/mpc/pkg/client"
+
+// Initialize client
+client, err := client.NewClient(client.Config{
+    Endpoints: []string{
+        "http://node1:8080",
+        "http://node2:8080",
+        "http://node3:8080",
+    },
+    Timeout: 30 * time.Second,
+})
+```
+
+### TypeScript Client
+
+Installation:
+```bash
+npm install @luxfi/mpc-client
+```
+
+Usage:
+```typescript
+import { MPCClient } from '@luxfi/mpc-client';
+
+const client = new MPCClient({
+    nodes: [
+        'http://node1:8080',
+        'http://node2:8080',
+        'http://node3:8080'
+    ],
+    timeout: 30000
+});
+```
+
+## Core APIs
+
+### Wallet Management
+
+#### Generate Wallet
+
+Create a new distributed wallet with threshold signatures.
+
+**Endpoint**: `POST /api/v1/wallets/generate`
+
+**Request**:
+```json
+{
+    "algorithm": "ecdsa", // or "eddsa"
+    "threshold": 2,
+    "parties": 3,
+    "metadata": {
+        "name": "Treasury Wallet",
+        "tags": ["production", "treasury"]
+    }
+}
+```
+
+**Response**:
+```json
+{
+    "wallet_id": "wallet_abc123",
+    "algorithm": "ecdsa",
+    "public_key": "0x04abc...",
+    "addresses": {
+        "bitcoin": "bc1q...",
+        "ethereum": "0x123...",
+        "binance": "bnb1..."
+    },
+    "threshold": 2,
+    "parties": 3,
+    "created_at": "2024-01-15T10:30:00Z"
+}
+```
+
+**Go Example**:
+```go
+wallet, err := client.GenerateWallet(client.WalletRequest{
+    Algorithm: "ecdsa",
+    Threshold: 2,
+    Parties:   3,
+    Metadata: map[string]interface{}{
+        "name": "Treasury Wallet",
+    },
+})
+```
+
+**TypeScript Example**:
+```typescript
+const wallet = await client.generateWallet({
+    algorithm: 'ecdsa',
+    threshold: 2,
+    parties: 3,
+    metadata: {
+        name: 'Treasury Wallet'
+    }
+});
+```
+
+#### List Wallets
+
+Retrieve all wallets managed by the MPC cluster.
+
+**Endpoint**: `GET /api/v1/wallets`
+
+**Query Parameters**:
+- `algorithm`: Filter by algorithm (ecdsa/eddsa)
+- `tag`: Filter by metadata tag
+- `page`: Page number (default: 1)
+- `limit`: Items per page (default: 20)
+
+**Response**:
+```json
+{
+    "wallets": [
+        {
+            "wallet_id": "wallet_abc123",
+            "algorithm": "ecdsa",
+            "public_key": "0x04abc...",
+            "threshold": 2,
+            "parties": 3
+        }
+    ],
+    "total": 42,
+    "page": 1,
+    "limit": 20
+}
+```
+
+#### Get Wallet Details
+
+**Endpoint**: `GET /api/v1/wallets/{wallet_id}`
+
+**Response**:
+```json
+{
+    "wallet_id": "wallet_abc123",
+    "algorithm": "ecdsa",
+    "public_key": "0x04abc...",
+    "addresses": {
+        "bitcoin": "bc1q...",
+        "ethereum": "0x123..."
+    },
+    "threshold": 2,
+    "parties": 3,
+    "shares": [
+        {
+            "node_id": "node0",
+            "status": "active",
+            "last_seen": "2024-01-15T10:30:00Z"
+        }
+    ],
+    "metadata": {},
+    "created_at": "2024-01-15T10:00:00Z"
+}
+```
+
+### Signature Operations
+
+#### Sign Message
+
+Generate a threshold signature for a message.
+
+**Endpoint**: `POST /api/v1/sign`
+
+**Request**:
+```json
+{
+    "wallet_id": "wallet_abc123",
+    "message": "0xabcdef...", // hex encoded
+    "signers": ["node0", "node1"], // optional, auto-select if not provided
+    "chain": "ethereum", // optional, for chain-specific formatting
+    "metadata": {
+        "transaction_id": "tx_123",
+        "purpose": "transfer"
+    }
+}
+```
+
+**Response**:
+```json
+{
+    "signature": {
+        "r": "0x123...",
+        "s": "0x456...",
+        "v": 27, // for ECDSA
+        "combined": "0x123456..." // for EdDSA
+    },
+    "signers": ["node0", "node1"],
+    "wallet_id": "wallet_abc123",
+    "message_hash": "0xabc...",
+    "signed_at": "2024-01-15T10:35:00Z"
+}
+```
+
+**Go Example**:
+```go
+// Sign Ethereum transaction
+signature, err := client.Sign(client.SignRequest{
+    WalletID: "wallet_abc123",
+    Message:  txHash,
+    Chain:    "ethereum",
+})
+
+// Sign raw message
+signature, err := client.SignRaw(
+    "wallet_abc123",
+    []byte("Hello, World!"),
+)
+```
+
+**TypeScript Example**:
+```typescript
+// Sign with auto-selected signers
+const signature = await client.sign({
+    walletId: 'wallet_abc123',
+    message: '0xabcdef...'
+});
+
+// Sign with specific signers
+const signature = await client.sign({
+    walletId: 'wallet_abc123',
+    message: '0xabcdef...',
+    signers: ['node0', 'node2']
+});
+```
+
+#### Batch Sign
+
+Sign multiple messages in a single operation.
+
+**Endpoint**: `POST /api/v1/sign/batch`
+
+**Request**:
+```json
+{
+    "wallet_id": "wallet_abc123",
+    "messages": [
+        "0xabc...",
+        "0xdef...",
+        "0x123..."
+    ],
+    "signers": ["node0", "node1"]
+}
+```
+
+**Response**:
+```json
+{
+    "signatures": [
+        {
+            "message": "0xabc...",
+            "signature": "0x123..."
+        }
+    ],
+    "batch_id": "batch_xyz",
+    "completed": 3,
+    "failed": 0
+}
+```
+
+### Key Management
+
+#### Reshare Keys
+
+Redistribute key shares (change threshold or parties).
+
+**Endpoint**: `POST /api/v1/wallets/{wallet_id}/reshare`
+
+**Request**:
+```json
+{
+    "new_threshold": 3,
+    "new_parties": ["node0", "node1", "node2", "node3", "node4"],
+    "remove_parties": ["node2"],
+    "reason": "Adding new signing nodes"
+}
+```
+
+**Response**:
+```json
+{
+    "reshare_id": "reshare_123",
+    "wallet_id": "wallet_abc123",
+    "status": "in_progress",
+    "old_config": {
+        "threshold": 2,
+        "parties": 3
+    },
+    "new_config": {
+        "threshold": 3,
+        "parties": 5
+    }
+}
+```
+
+#### Backup Shares
+
+Create encrypted backup of key shares.
+
+**Endpoint**: `POST /api/v1/wallets/{wallet_id}/backup`
+
+**Request**:
+```json
+{
+    "encryption_key": "age1...", // Age public key
+    "include_metadata": true
+}
+```
+
+**Response**:
+```json
+{
+    "backup_id": "backup_456",
+    "wallet_id": "wallet_abc123",
+    "encrypted_shares": [
+        {
+            "node_id": "node0",
+            "encrypted_data": "base64..."
+        }
+    ],
+    "checksum": "sha256:abc...",
+    "created_at": "2024-01-15T11:00:00Z"
+}
+```
+
+#### Recover Wallet
+
+Restore wallet from backup.
+
+**Endpoint**: `POST /api/v1/wallets/recover`
+
+**Request**:
+```json
+{
+    "backup_id": "backup_456",
+    "decryption_key": "AGE-SECRET-KEY...",
+    "target_nodes": ["node0", "node1", "node2"]
+}
+```
+
+### Node Management
+
+#### Get Node Status
+
+**Endpoint**: `GET /api/v1/nodes/{node_id}/status`
+
+**Response**:
+```json
+{
+    "node_id": "node0",
+    "status": "healthy",
+    "version": "1.2.3",
+    "uptime": 3600,
+    "metrics": {
+        "signatures_created": 1234,
+        "wallets_managed": 42,
+        "last_signature": "2024-01-15T10:30:00Z"
+    },
+    "peers": [
+        {
+            "node_id": "node1",
+            "status": "connected",
+            "latency_ms": 5
+        }
+    ]
+}
+```
+
+#### Register Node
+
+Add a new node to the MPC cluster.
+
+**Endpoint**: `POST /api/v1/nodes/register`
+
+**Request**:
+```json
+{
+    "node_id": "node3",
+    "public_key": "ed25519:abc...",
+    "endpoint": "http://node3:8080",
+    "metadata": {
+        "location": "us-east-1",
+        "provider": "aws"
+    }
+}
+```
+
+### Session Management
+
+#### Get Active Sessions
+
+**Endpoint**: `GET /api/v1/sessions`
+
+**Response**:
+```json
+{
+    "sessions": [
+        {
+            "session_id": "session_123",
+            "type": "signing",
+            "wallet_id": "wallet_abc",
+            "status": "in_progress",
+            "participants": ["node0", "node1"],
+            "started_at": "2024-01-15T10:30:00Z"
+        }
+    ]
+}
+```
+
+#### Cancel Session
+
+**Endpoint**: `DELETE /api/v1/sessions/{session_id}`
+
+### Monitoring & Health
+
+#### Health Check
+
+**Endpoint**: `GET /health`
+
+**Response**:
+```json
+{
+    "status": "healthy",
+    "checks": {
+        "database": "ok",
+        "messaging": "ok",
+        "consul": "ok",
+        "peers": "ok"
+    },
+    "timestamp": "2024-01-15T10:30:00Z"
+}
+```
+
+#### Metrics
+
+**Endpoint**: `GET /metrics`
+
+**Response** (Prometheus format):
+```
+# HELP mpc_signatures_total Total number of signatures created
+# TYPE mpc_signatures_total counter
+mpc_signatures_total{algorithm="ecdsa"} 1234
+mpc_signatures_total{algorithm="eddsa"} 567
+
+# HELP mpc_signing_duration_seconds Time taken to create signatures
+# TYPE mpc_signing_duration_seconds histogram
+mpc_signing_duration_seconds_bucket{le="0.5"} 100
+mpc_signing_duration_seconds_bucket{le="1.0"} 150
+```
+
+## WebSocket API
+
+### Real-time Events
+
+Connect to receive real-time updates.
+
+**Endpoint**: `ws://node:8080/ws`
+
+**Connection**:
+```javascript
+const ws = new WebSocket('ws://node:8080/ws');
+
+ws.on('open', () => {
+    // Subscribe to events
+    ws.send(JSON.stringify({
+        type: 'subscribe',
+        topics: ['signatures', 'sessions']
+    }));
+});
+
+ws.on('message', (data) => {
+    const event = JSON.parse(data);
+    switch(event.type) {
+        case 'signature_completed':
+            console.log('Signature:', event.signature);
+            break;
+        case 'session_started':
+            console.log('Session:', event.session_id);
+            break;
+    }
+});
+```
+
+### Event Types
+
+| Event | Description | Payload |
+|-------|-------------|---------|
+| `signature_completed` | Signature generation complete | `{wallet_id, signature, signers}` |
+| `signature_failed` | Signature generation failed | `{wallet_id, error, session_id}` |
+| `session_started` | New session initiated | `{session_id, type, participants}` |
+| `session_completed` | Session finished | `{session_id, result}` |
+| `node_joined` | Node joined cluster | `{node_id, timestamp}` |
+| `node_left` | Node left cluster | `{node_id, reason}` |
+| `reshare_progress` | Reshare operation update | `{wallet_id, progress, status}` |
+
+## Error Codes
+
+| Code | Description | Resolution |
+|------|-------------|------------|
+| `MPC001` | Insufficient signers | Ensure threshold number of nodes are available |
+| `MPC002` | Invalid wallet ID | Check wallet exists |
+| `MPC003` | Signature timeout | Retry with different nodes |
+| `MPC004` | Node unavailable | Check node health |
+| `MPC005` | Invalid message format | Ensure proper encoding |
+| `MPC006` | Reshare in progress | Wait for completion |
+| `MPC007` | Backup corrupted | Use different backup |
+| `MPC008` | Authentication failed | Check credentials |
+| `MPC009` | Rate limit exceeded | Reduce request rate |
+| `MPC010` | Protocol violation | Check logs for details |
+
+## Rate Limits
+
+Default rate limits per API key:
+
+| Endpoint | Limit | Window |
+|----------|-------|---------|
+| `/api/v1/sign` | 100 | 1 minute |
+| `/api/v1/sign/batch` | 10 | 1 minute |
+| `/api/v1/wallets/generate` | 10 | 1 hour |
+| `/api/v1/wallets/*/reshare` | 1 | 1 hour |
+| All others | 1000 | 1 minute |
+
+## Authentication
+
+### API Key Authentication
+
+Include API key in header:
+```http
+Authorization: Bearer YOUR_API_KEY
+```
+
+### mTLS Authentication
+
+Configure client certificate:
+```go
+cert, _ := tls.LoadX509KeyPair("client.crt", "client.key")
+client := &http.Client{
+    Transport: &http.Transport{
+        TLSClientConfig: &tls.Config{
+            Certificates: []tls.Certificate{cert},
+        },
+    },
+}
+```
+
+## SDK Examples
+
+### Complete Go Example
+
+```go
+package main
+
+import (
+    "fmt"
+    "log"
+    "github.com/luxfi/mpc/pkg/client"
+)
+
+func main() {
+    // Initialize client
+    c, err := client.NewClient(client.Config{
+        Endpoints: []string{"http://localhost:8080"},
+        APIKey:    "your-api-key",
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    // Generate wallet
+    wallet, err := c.GenerateWallet(client.WalletRequest{
+        Algorithm: "ecdsa",
+        Threshold: 2,
+        Parties:   3,
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    fmt.Printf("Created wallet: %s\n", wallet.WalletID)
+    fmt.Printf("Ethereum address: %s\n", wallet.Addresses["ethereum"])
+
+    // Sign message
+    message := []byte("Hello, MPC!")
+    signature, err := c.SignRaw(wallet.WalletID, message)
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    fmt.Printf("Signature: %x\n", signature)
+}
+```
+
+### Complete TypeScript Example
+
+```typescript
+import { MPCClient } from '@luxfi/mpc-client';
+
+async function main() {
+    // Initialize client
+    const client = new MPCClient({
+        nodes: ['http://localhost:8080'],
+        apiKey: 'your-api-key'
+    });
+
+    // Generate wallet
+    const wallet = await client.generateWallet({
+        algorithm: 'ecdsa',
+        threshold: 2,
+        parties: 3
+    });
+
+    console.log('Created wallet:', wallet.walletId);
+    console.log('Ethereum address:', wallet.addresses.ethereum);
+
+    // Sign message
+    const message = Buffer.from('Hello, MPC!');
+    const signature = await client.signRaw(
+        wallet.walletId,
+        message
+    );
+
+    console.log('Signature:', signature.toString('hex'));
+
+    // Subscribe to events
+    client.on('signature_completed', (event) => {
+        console.log('Signature completed:', event);
+    });
+
+    await client.connect();
+}
+
+main().catch(console.error);
+```
