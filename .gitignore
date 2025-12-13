@@ -23,3 +23,11 @@ logs/
 lux-mpc
 lux-mpc-bridge
 lux-mpc-cli
+
+
+
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+GROK.md
+QWEN.md
