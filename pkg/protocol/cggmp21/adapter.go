@@ -1,6 +1,7 @@
 package cggmp21
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"encoding/json"
 	"errors"
@@ -8,6 +9,8 @@ import (
 	"math/big"
 	"sync"
 
+	"github.com/luxfi/log"
+	"github.com/luxfi/log/level"
 	mpsEcdsa "github.com/luxfi/threshold/pkg/ecdsa"
 	"github.com/luxfi/threshold/pkg/math/curve"
 	"github.com/luxfi/threshold/pkg/party"
@@ -21,13 +24,15 @@ import (
 
 // CGGMP21Protocol implements the Protocol interface using CGGMP21
 type CGGMP21Protocol struct {
-	pool *pool.Pool
+	pool   *pool.Pool
+	logger log.Logger
 }
 
 // NewCGGMP21Protocol creates a new CGGMP21 protocol adapter
 func NewCGGMP21Protocol() *CGGMP21Protocol {
 	return &CGGMP21Protocol{
-		pool: pool.NewPool(0), // Use max threads
+		pool:   pool.NewPool(0), // Use max threads
+		logger: log.NewTestLogger(level.Info),
 	}
 }
 
@@ -54,8 +59,17 @@ func (p *CGGMP21Protocol) KeyGen(selfID string, partyIDs []string, threshold int
 	// Create the keygen protocol
 	startFunc := cmp.Keygen(curve.Secp256k1{}, party.ID(selfID), ids, threshold, p.pool)
 
-	// Create handler
-	handler, err := mpsProtocol.NewMultiHandler(startFunc, nil)
+	// Create handler with proper context, logging, and session ID
+	ctx := context.Background()
+	sessionID := []byte(fmt.Sprintf("cggmp21-keygen-%s", selfID))
+	handler, err := mpsProtocol.NewHandler(
+		ctx,
+		p.logger,
+		nil, // No prometheus registry
+		startFunc,
+		sessionID,
+		mpsProtocol.DefaultConfig(),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create keygen handler: %w", err)
 	}
@@ -77,8 +91,17 @@ func (p *CGGMP21Protocol) Refresh(cfg protocol.KeyGenConfig) (protocol.Party, er
 	// Create refresh protocol
 	startFunc := cmp.Refresh(cmpConfig, p.pool)
 
-	// Create handler
-	handler, err := mpsProtocol.NewMultiHandler(startFunc, nil)
+	// Create handler with proper context, logging, and session ID
+	ctx := context.Background()
+	sessionID := []byte(fmt.Sprintf("cggmp21-refresh-%s", cfg.GetPartyID()))
+	handler, err := mpsProtocol.NewHandler(
+		ctx,
+		p.logger,
+		nil, // No prometheus registry
+		startFunc,
+		sessionID,
+		mpsProtocol.DefaultConfig(),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create refresh handler: %w", err)
 	}
@@ -106,8 +129,17 @@ func (p *CGGMP21Protocol) Sign(cfg protocol.KeyGenConfig, signers []string, mess
 	// Create sign protocol
 	startFunc := cmp.Sign(cmpConfig, signerIDs, messageHash, p.pool)
 
-	// Create handler
-	handler, err := mpsProtocol.NewMultiHandler(startFunc, nil)
+	// Create handler with proper context, logging, and session ID
+	ctx := context.Background()
+	sessionID := []byte(fmt.Sprintf("cggmp21-sign-%s-%x", cfg.GetPartyID(), messageHash[:8]))
+	handler, err := mpsProtocol.NewHandler(
+		ctx,
+		p.logger,
+		nil, // No prometheus registry
+		startFunc,
+		sessionID,
+		mpsProtocol.DefaultConfig(),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create sign handler: %w", err)
 	}
@@ -135,8 +167,17 @@ func (p *CGGMP21Protocol) PreSign(cfg protocol.KeyGenConfig, signers []string) (
 	// Create presign protocol
 	startFunc := cmp.Presign(cmpConfig, signerIDs, p.pool)
 
-	// Create handler
-	handler, err := mpsProtocol.NewMultiHandler(startFunc, nil)
+	// Create handler with proper context, logging, and session ID
+	ctx := context.Background()
+	sessionID := []byte(fmt.Sprintf("cggmp21-presign-%s", cfg.GetPartyID()))
+	handler, err := mpsProtocol.NewHandler(
+		ctx,
+		p.logger,
+		nil, // No prometheus registry
+		startFunc,
+		sessionID,
+		mpsProtocol.DefaultConfig(),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create presign handler: %w", err)
 	}
@@ -163,8 +204,17 @@ func (p *CGGMP21Protocol) PreSignOnline(cfg protocol.KeyGenConfig, preSig protoc
 	// Create presign online protocol
 	startFunc := cmp.PresignOnline(cmpConfig, cmpPreSig.preSig, messageHash, p.pool)
 
-	// Create handler
-	handler, err := mpsProtocol.NewMultiHandler(startFunc, nil)
+	// Create handler with proper context, logging, and session ID
+	ctx := context.Background()
+	sessionID := []byte(fmt.Sprintf("cggmp21-presign-online-%s-%x", cfg.GetPartyID(), messageHash[:8]))
+	handler, err := mpsProtocol.NewHandler(
+		ctx,
+		p.logger,
+		nil, // No prometheus registry
+		startFunc,
+		sessionID,
+		mpsProtocol.DefaultConfig(),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create presign online handler: %w", err)
 	}
@@ -177,7 +227,7 @@ func (p *CGGMP21Protocol) PreSignOnline(cfg protocol.KeyGenConfig, preSig protoc
 
 // partyAdapter adapts mpsProtocol.Handler to protocol.Party
 type partyAdapter struct {
-	handler *mpsProtocol.MultiHandler
+	handler *mpsProtocol.Handler
 	selfID  string
 	mu      sync.Mutex
 	done    bool
