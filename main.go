@@ -11,6 +11,5 @@ func main() {
 	fmt.Println("Please use one of the following commands:")
 	fmt.Println("  go run ./cmd/lux-mpc          - Run the MPC node")
 	fmt.Println("  go run ./cmd/lux-mpc-cli      - Run the MPC CLI")
-	fmt.Println("  go run ./cmd/lux-mpc-bridge   - Run the MPC bridge")
 	os.Exit(0)
 }

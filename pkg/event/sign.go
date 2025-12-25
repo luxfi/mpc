@@ -16,11 +16,14 @@ type SigningResultEvent struct {
 	NetworkInternalCode string     `json:"network_internal_code"`
 	WalletID            string     `json:"wallet_id"`
 	TxID                string     `json:"tx_id"`
-	R                   []byte     `json:"r"`
-	S                   []byte     `json:"s"`
-	SignatureRecovery   []byte     `json:"signature_recovery"`
+	// ECDSA signature components (secp256k1)
+	R                 []byte `json:"r"`
+	S                 []byte `json:"s"`
+	SignatureRecovery []byte `json:"signature_recovery"`
 
-	// TODO: define two separate events for eddsa and ecdsa
+	// EdDSA signature (ed25519/Schnorr) - 64-byte combined signature
+	// For ECDSA, use R/S/SignatureRecovery fields above
+	// For EdDSA, use this Signature field
 	Signature []byte `json:"signature"`
 }
 
@@ -56,11 +59,12 @@ type SigningResultSuccessEvent struct {
 	NetworkInternalCode string `json:"network_internal_code"`
 	WalletID            string `json:"wallet_id"`
 	TxID                string `json:"tx_id"`
-	R                   []byte `json:"r"`
-	S                   []byte `json:"s"`
-	SignatureRecovery   []byte `json:"signature_recovery"`
+	// ECDSA signature components (secp256k1)
+	R                 []byte `json:"r"`
+	S                 []byte `json:"s"`
+	SignatureRecovery []byte `json:"signature_recovery"`
 
-	// TODO: define two separate events for eddsa and ecdsa
+	// EdDSA signature (ed25519/Schnorr) - 64-byte combined signature
 	Signature []byte `json:"signature"`
 }
 
