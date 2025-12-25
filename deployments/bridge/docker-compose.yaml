@@ -57,20 +57,6 @@ services:
       consul:
         condition: service_healthy
 
-  # Bridge Compatibility Layer for Node 0
-  bridge-compat-0:
-    image: luxfi/lux-mpc:latest
-    command: ["/usr/local/bin/lux-mpc-bridge", "--mpc-endpoint", "http://lux-mpc-0:8080", "--port", "6000"]
-    environment:
-      - LUX_MPC_ENDPOINT=http://lux-mpc-0:8080
-      - BRIDGE_PORT=6000
-    ports:
-      - "6000:6000"
-    networks:
-      - mpc-network
-    depends_on:
-      - lux-mpc-0
-
   # Lux MPC Node 1
   lux-mpc-1:
     image: luxfi/lux-mpc:latest
@@ -98,20 +84,6 @@ services:
       consul:
         condition: service_healthy
 
-  # Bridge Compatibility Layer for Node 1
-  bridge-compat-1:
-    image: luxfi/lux-mpc:latest
-    command: ["/usr/local/bin/lux-mpc-bridge", "--mpc-endpoint", "http://lux-mpc-1:8080", "--port", "6000"]
-    environment:
-      - LUX_MPC_ENDPOINT=http://lux-mpc-1:8080
-      - BRIDGE_PORT=6000
-    ports:
-      - "6001:6000"
-    networks:
-      - mpc-network
-    depends_on:
-      - lux-mpc-1
-
   # Lux MPC Node 2
   lux-mpc-2:
     image: luxfi/lux-mpc:latest
@@ -138,20 +110,6 @@ services:
         condition: service_healthy
       consul:
         condition: service_healthy
-
-  # Bridge Compatibility Layer for Node 2
-  bridge-compat-2:
-    image: luxfi/lux-mpc:latest
-    command: ["/usr/local/bin/lux-mpc-bridge", "--mpc-endpoint", "http://lux-mpc-2:8080", "--port", "6000"]
-    environment:
-      - LUX_MPC_ENDPOINT=http://lux-mpc-2:8080
-      - BRIDGE_PORT=6000
-    ports:
-      - "6002:6000"
-    networks:
-      - mpc-network
-    depends_on:
-      - lux-mpc-2
 
 volumes:
   mpc-data-0:

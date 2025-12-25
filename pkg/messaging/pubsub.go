@@ -52,8 +52,8 @@ func (n *natsPubSub) PublishWithReply(topic, reply string, data []byte, headers 
 }
 
 func (n *natsPubSub) Subscribe(topic string, handler func(msg *nats.Msg)) (Subscription, error) {
-	// TODO: Handle subscription
-	// handle more fields in msg
+	// Subscribe and forward the full nats.Msg to the handler
+	// Handler receives complete message including Subject, Reply, Data, Header fields
 	sub, err := n.natsConn.Subscribe(topic, func(msg *nats.Msg) {
 		handler(msg)
 	})
