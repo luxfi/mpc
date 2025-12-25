@@ -1,5 +1,5 @@
 import { docs } from "@/.source"
-import { loader } from "@hanzo/ui"
+import { loader } from "fumadocs-core/source"
 
 let _source: ReturnType<typeof loader> | null = null
 
