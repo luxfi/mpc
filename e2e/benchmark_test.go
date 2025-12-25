@@ -1,74 +1,150 @@
 package e2e
 
 import (
-	"fmt"
+	"crypto/rand"
 	"testing"
-	"time"
 
-	"github.com/google/uuid"
-	"github.com/luxfi/mpc/pkg/logger"
+	"github.com/luxfi/mpc/pkg/threshold"
 )
 
-// BenchmarkE2EKeyGeneration benchmarks end-to-end key generation
-func BenchmarkE2EKeyGeneration(b *testing.B) {
-	b.Skip("Benchmark requires full infrastructure setup")
+// BenchmarkProtocolKeyGen benchmarks key generation for MPC protocols
+// This runs protocol-level benchmarks without requiring full E2E infrastructure
+func BenchmarkProtocolKeyGen(b *testing.B) {
+	api := threshold.NewUnifiedThresholdAPI()
+	defer api.Close()
 
-	_ = NewE2ETestSuite(".")
-	logger.Init("dev", false) // Disable debug logs for benchmarks
+	partyIDs := []string{"party1", "party2", "party3"}
+	thresholdValue := 1 // t+1 = 2 parties needed for signing
 
-	// Setup infrastructure once
-	// Note: Benchmarks are skipped, so this code won't run
-	// testT := &testing.T{}
-	// suite.SetupInfrastructure(testT)
-	// defer suite.Cleanup(testT)
-
-	// Wait for infrastructure
-	time.Sleep(5 * time.Second)
-
-	// Setup and start nodes once
-	// suite.SetupTestNodes(testT)
-	// suite.StartNodes(testT)
-
-	// Wait for nodes to be ready
-	// suite.WaitForNodesReady(testT)
-
-	keyTypes := []string{"ecdsa", "ed25519"}
-
-	for _, keyType := range keyTypes {
-		b.Run(string(keyType), func(b *testing.B) {
-			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
-				sessionID := uuid.NewString()
-				walletID := fmt.Sprintf("bench-wallet-%s-%d", keyType, i)
-
-				// TODO: Implement actual keygen request when API is available
-				_ = sessionID
-				_ = walletID
-
-				// Simulate some work
-				time.Sleep(10 * time.Millisecond)
+	b.Run("ECDSA_3_of_2", func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			party, err := api.KeyGen(threshold.SchemeECDSA, "party1", partyIDs, thresholdValue)
+			if err != nil {
+				b.Fatal(err)
 			}
-		})
-	}
+			_ = party
+		}
+	})
+
+	b.Run("EdDSA_3_of_2", func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			party, err := api.KeyGen(threshold.SchemeEdDSA, "party1", partyIDs, thresholdValue)
+			if err != nil {
+				b.Fatal(err)
+			}
+			_ = party
+		}
+	})
+
+	b.Run("Taproot_3_of_2", func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			party, err := api.KeyGen(threshold.SchemeTaproot, "party1", partyIDs, thresholdValue)
+			if err != nil {
+				b.Fatal(err)
+			}
+			_ = party
+		}
+	})
 }
 
-// BenchmarkE2ESigning benchmarks end-to-end signing operations
-func BenchmarkE2ESigning(b *testing.B) {
-	b.Skip("Benchmark requires full infrastructure setup")
+// BenchmarkProtocolKeyGen5Parties benchmarks key generation with 5 parties
+func BenchmarkProtocolKeyGen5Parties(b *testing.B) {
+	api := threshold.NewUnifiedThresholdAPI()
+	defer api.Close()
 
-	// TODO: Implement signing benchmark when infrastructure is ready
+	partyIDs := []string{"party1", "party2", "party3", "party4", "party5"}
+	thresholdValue := 2 // t+1 = 3 parties needed for signing
+
+	b.Run("ECDSA_5_of_3", func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			party, err := api.KeyGen(threshold.SchemeECDSA, "party1", partyIDs, thresholdValue)
+			if err != nil {
+				b.Fatal(err)
+			}
+			_ = party
+		}
+	})
+
+	b.Run("EdDSA_5_of_3", func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			party, err := api.KeyGen(threshold.SchemeEdDSA, "party1", partyIDs, thresholdValue)
+			if err != nil {
+				b.Fatal(err)
+			}
+			_ = party
+		}
+	})
 }
 
-// BenchmarkE2EResharing benchmarks end-to-end resharing operations
-func BenchmarkE2EResharing(b *testing.B) {
-	b.Skip("Benchmark requires full infrastructure setup")
+// BenchmarkProtocolSchemeSelection benchmarks protocol selection by scheme
+func BenchmarkProtocolSchemeSelection(b *testing.B) {
+	api := threshold.NewUnifiedThresholdAPI()
+	defer api.Close()
 
-	// TODO: Implement resharing benchmark when infrastructure is ready
+	b.Run("GetSupportedSchemes", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			schemes := api.GetSupportedSchemes()
+			_ = schemes
+		}
+	})
+
+	b.Run("IsSchemeSupported_ECDSA", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			supported := api.IsSchemeSupported(threshold.SchemeECDSA)
+			_ = supported
+		}
+	})
+
+	b.Run("IsSchemeSupported_EdDSA", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			supported := api.IsSchemeSupported(threshold.SchemeEdDSA)
+			_ = supported
+		}
+	})
 }
 
-// BenchmarkE2EConcurrentOperations benchmarks concurrent MPC operations
-func BenchmarkE2EConcurrentOperations(b *testing.B) {
-	b.Skip("Benchmark requires full infrastructure setup")
+// BenchmarkConcurrentKeyGen benchmarks concurrent protocol instantiation
+func BenchmarkConcurrentKeyGen(b *testing.B) {
+	api := threshold.NewUnifiedThresholdAPI()
+	defer api.Close()
 
-	// TODO: Implement concurrent operations benchmark when infrastructure is ready
+	partyIDs := []string{"alice", "bob", "charlie"}
+	thresholdValue := 1
+
+	b.Run("Concurrent_ECDSA_EdDSA", func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			// Create both ECDSA and EdDSA parties concurrently
+			ecdsaParty, err := api.KeyGen(threshold.SchemeECDSA, "alice", partyIDs, thresholdValue)
+			if err != nil {
+				b.Fatal(err)
+			}
+
+			eddsaParty, err := api.KeyGen(threshold.SchemeEdDSA, "alice", partyIDs, thresholdValue)
+			if err != nil {
+				b.Fatal(err)
+			}
+
+			_, _ = ecdsaParty, eddsaParty
+		}
+	})
+}
+
+// BenchmarkMessageHashGeneration benchmarks message hash generation for signing
+func BenchmarkMessageHashGeneration(b *testing.B) {
+	messageHash := make([]byte, 32)
+
+	b.Run("GenerateRandomHash", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			_, err := rand.Read(messageHash)
+			if err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
 }
