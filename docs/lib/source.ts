@@ -1,8 +1,6 @@
 import { docs } from "@/.source"
-import { loader } from "fumadocs-core/source"
+import { loader } from "@hanzo/ui"
 
-// Create a single source instance that is reused
-// This prevents circular references and stack overflow issues
 let _source: ReturnType<typeof loader> | null = null
 
 export function getSource() {

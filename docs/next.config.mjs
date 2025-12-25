@@ -1,4 +1,4 @@
-import { createMDX } from "fumadocs-mdx/next"
+import { createMDX } from "@hanzo/docs/mdx/next"
 
 /** @type {import('next').NextConfig} */
 const config = {
@@ -13,6 +13,8 @@ const config = {
   images: {
     unoptimized: true,
   },
+  basePath: '',
+  trailingSlash: true,
 }
 
 const withMDX = createMDX()

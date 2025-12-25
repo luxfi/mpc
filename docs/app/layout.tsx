@@ -1,5 +1,5 @@
 import "./global.css"
-import { RootProvider } from "fumadocs-ui/provider/next"
+import { RootProvider } from "@hanzo/ui"
 import { Inter } from "next/font/google"
 import type { ReactNode } from "react"
 
@@ -17,10 +17,10 @@ const interMono = Inter({
 
 export const metadata = {
   title: {
-    default: "Multi-Party Computation Documentation",
-    template: "%s | Multi-Party Computation",
+    default: "Lux MPC - Threshold Signature Documentation",
+    template: "%s | Lux MPC",
   },
-  description: "MPC protocols for secure computation",
+  description: "Multi-Party Computation for threshold signatures - ECDSA, EdDSA, and Taproot",
 }
 
 export default function Layout({ children }: { children: ReactNode }) {
