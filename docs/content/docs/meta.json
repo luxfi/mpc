@@ -1,12 +1,31 @@
 {
-  "title": "Documentation",
+  "title": "Lux MPC Documentation",
+  "root": true,
   "pages": [
     "index",
-    "quickstart",
-    "installation",
-    "protocol",
+    "getting-started",
+    "---Protocols---",
+    "protocols",
+    "ecdsa",
+    "eddsa",
+    "taproot",
+    "---Architecture---",
+    "architecture",
+    "messaging",
+    "storage",
+    "---Operations---",
+    "cli",
+    "deployment",
+    "configuration",
+    "---Networks---",
+    "networks",
+    "xrpl",
+    "bitcoin",
+    "ethereum",
+    "---API Reference---",
     "api",
-    "security",
-    "use-cases"
+    "---Development---",
+    "development",
+    "contributing"
   ]
 }
