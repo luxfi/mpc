@@ -1,6 +1,7 @@
 package frost
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"encoding/json"
 	"errors"
@@ -8,6 +9,8 @@ import (
 	"math/big"
 	"sync"
 
+	"github.com/luxfi/log"
+	"github.com/luxfi/log/level"
 	"github.com/luxfi/threshold/pkg/math/curve"
 	"github.com/luxfi/threshold/pkg/party"
 	"github.com/luxfi/threshold/pkg/pool"
@@ -19,13 +22,15 @@ import (
 
 // FROSTProtocol implements the Protocol interface using FROST for EdDSA
 type FROSTProtocol struct {
-	pool *pool.Pool
+	pool   *pool.Pool
+	logger log.Logger
 }
 
 // NewFROSTProtocol creates a new FROST protocol adapter
 func NewFROSTProtocol() *FROSTProtocol {
 	return &FROSTProtocol{
-		pool: pool.NewPool(0), // Use max threads
+		pool:   pool.NewPool(0), // Use max threads
+		logger: log.NewTestLogger(level.Info),
 	}
 }
 
@@ -52,8 +57,17 @@ func (p *FROSTProtocol) KeyGen(selfID string, partyIDs []string, threshold int) 
 	// Create the FROST keygen protocol for Ed25519/Taproot
 	startFunc := frost.KeygenTaproot(party.ID(selfID), ids, threshold)
 
-	// Create handler
-	handler, err := mpsProtocol.NewMultiHandler(startFunc, nil)
+	// Create handler with proper context, logging, and session ID
+	ctx := context.Background()
+	sessionID := []byte(fmt.Sprintf("frost-keygen-%s", selfID))
+	handler, err := mpsProtocol.NewHandler(
+		ctx,
+		p.logger,
+		nil, // No prometheus registry
+		startFunc,
+		sessionID,
+		mpsProtocol.DefaultConfig(),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create FROST keygen handler: %w", err)
 	}
@@ -83,8 +97,17 @@ func (p *FROSTProtocol) Refresh(cfg protocol.KeyGenConfig) (protocol.Party, erro
 	// Create refresh protocol
 	startFunc := frost.Refresh(frostConfig, ids)
 
-	// Create handler
-	handler, err := mpsProtocol.NewMultiHandler(startFunc, nil)
+	// Create handler with proper context, logging, and session ID
+	ctx := context.Background()
+	sessionID := []byte(fmt.Sprintf("frost-refresh-%s", cfg.GetPartyID()))
+	handler, err := mpsProtocol.NewHandler(
+		ctx,
+		p.logger,
+		nil, // No prometheus registry
+		startFunc,
+		sessionID,
+		mpsProtocol.DefaultConfig(),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create FROST refresh handler: %w", err)
 	}
@@ -113,8 +136,17 @@ func (p *FROSTProtocol) Sign(cfg protocol.KeyGenConfig, signers []string, messag
 	// Create sign protocol
 	startFunc := frost.Sign(frostConfig, signerIDs, messageHash)
 
-	// Create handler
-	handler, err := mpsProtocol.NewMultiHandler(startFunc, nil)
+	// Create handler with proper context, logging, and session ID
+	ctx := context.Background()
+	sessionID := []byte(fmt.Sprintf("frost-sign-%s-%x", cfg.GetPartyID(), messageHash[:8]))
+	handler, err := mpsProtocol.NewHandler(
+		ctx,
+		p.logger,
+		nil, // No prometheus registry
+		startFunc,
+		sessionID,
+		mpsProtocol.DefaultConfig(),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create FROST sign handler: %w", err)
 	}
@@ -140,7 +172,7 @@ func (p *FROSTProtocol) PreSignOnline(cfg protocol.KeyGenConfig, preSig protocol
 
 // frostPartyAdapter adapts mpsProtocol.Handler to protocol.Party
 type frostPartyAdapter struct {
-	handler   *mpsProtocol.MultiHandler
+	handler   *mpsProtocol.Handler
 	selfID    string
 	isTaproot bool
 	mu        sync.Mutex

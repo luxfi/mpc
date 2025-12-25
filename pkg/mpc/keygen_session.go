@@ -1,10 +1,13 @@
 package mpc
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"sync"
 
+	"github.com/luxfi/log"
+	"github.com/luxfi/log/level"
 	"github.com/luxfi/threshold/pkg/math/curve"
 	"github.com/luxfi/threshold/pkg/party"
 	"github.com/luxfi/threshold/pkg/pool"
@@ -28,13 +31,14 @@ type KeyGenSession interface {
 
 type cggmp21KeygenSession struct {
 	session
-	handler     *protocol.MultiHandler
-	pool        *pool.Pool
-	config      *config.Config
-	messagesCh  chan *protocol.Message
-	resultMutex sync.Mutex
-	done        bool
-	resultErr   error
+	handler        *protocol.Handler
+	pool           *pool.Pool
+	config         *config.Config
+	messagesCh     chan *protocol.Message
+	resultMutex    sync.Mutex
+	done           bool
+	resultErr      error
+	protocolLogger log.Logger
 }
 
 func newCGGMP21KeygenSession(
@@ -88,15 +92,27 @@ func newCGGMP21KeygenSession(
 
 func (s *cggmp21KeygenSession) Init() {
 	s.logger.Info().
+		Str("walletID", s.walletID).
 		Int("threshold", s.threshold).
 		Interface("partyIDs", s.partyIDs).
 		Msg("Initializing CGGMP21 keygen session")
 
+	// Create protocol logger
+	s.protocolLogger = log.NewTestLogger(level.Info)
+
 	// Create CGGMP21 keygen protocol
 	startFunc := cmp.Keygen(curve.Secp256k1{}, s.selfPartyID, s.partyIDs, s.threshold, s.pool)
 
-	// Create handler
-	handler, err := protocol.NewMultiHandler(startFunc, nil)
+	// Create handler with proper context, logging, and session ID
+	ctx := context.Background()
+	handler, err := protocol.NewHandler(
+		ctx,
+		s.protocolLogger,
+		nil, // No prometheus registry
+		startFunc,
+		[]byte(s.walletID),
+		protocol.DefaultConfig(),
+	)
 	if err != nil {
 		s.logger.Fatal().Err(err).Msg("Failed to create keygen handler")
 		return

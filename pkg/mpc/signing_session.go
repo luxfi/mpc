@@ -1,11 +1,14 @@
 package mpc
 
 import (
+	"context"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"sync"
 
+	"github.com/luxfi/log"
+	"github.com/luxfi/log/level"
 	"github.com/luxfi/threshold/pkg/ecdsa"
 	"github.com/luxfi/threshold/pkg/party"
 	"github.com/luxfi/threshold/pkg/pool"
@@ -30,17 +33,18 @@ type SignSession interface {
 
 type cggmp21SigningSession struct {
 	session
-	handler      *protocol.MultiHandler
-	pool         *pool.Pool
-	config       *config.Config
-	signature    *ecdsa.Signature
-	messagesCh   chan *protocol.Message
-	resultMutex  sync.Mutex
-	done         bool
-	resultErr    error
-	messageHash  []byte
-	signerIDs    []party.ID
-	useBroadcast bool
+	handler        *protocol.Handler
+	pool           *pool.Pool
+	config         *config.Config
+	signature      *ecdsa.Signature
+	messagesCh     chan *protocol.Message
+	resultMutex    sync.Mutex
+	done           bool
+	resultErr      error
+	messageHash    []byte
+	signerIDs      []party.ID
+	useBroadcast   bool
+	protocolLogger log.Logger
 }
 
 func newCGGMP21SigningSession(
@@ -119,11 +123,22 @@ func (s *cggmp21SigningSession) Init() {
 		Bool("useBroadcast", s.useBroadcast).
 		Msg("Initializing CGGMP21 signing session")
 
+	// Create protocol logger
+	s.protocolLogger = log.NewTestLogger(level.Info)
+
 	// Create CGGMP21 signing protocol
 	startFunc := cmp.Sign(s.config, s.signerIDs, s.messageHash, s.pool)
 
-	// Create handler
-	handler, err := protocol.NewMultiHandler(startFunc, nil)
+	// Create handler with proper context, logging, and session ID
+	ctx := context.Background()
+	handler, err := protocol.NewHandler(
+		ctx,
+		s.protocolLogger,
+		nil, // No prometheus registry
+		startFunc,
+		[]byte(s.sessionID),
+		protocol.DefaultConfig(),
+	)
 	if err != nil {
 		s.logger.Fatal().Err(err).Msg("Failed to create signing handler")
 		return
