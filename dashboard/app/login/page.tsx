@@ -11,7 +11,7 @@ function buildLoginUrl(branding: Branding): string {
   sessionStorage.setItem('oidc_state', state)
 
   const params = new URLSearchParams({
-    response_type: 'code',
+    response_type: 'token',
     client_id: branding.iamClientId,
     redirect_uri: redirectUri,
     scope: 'openid profile email',
