@@ -113,17 +113,17 @@ jobs:
           kubectl apply -f k8s/certificate.yaml
           kubectl apply -f k8s/postgres.yaml
           kubectl apply -f k8s/api-service.yaml
-          kubectl apply -f k8s/api-deployment.yaml
+          kubectl apply -f k8s/mpc-statefulset.yaml
           kubectl apply -f k8s/dashboard-service.yaml
           kubectl apply -f k8s/dashboard-deployment.yaml
           kubectl apply -f k8s/ingressroute.yaml
 
       - name: Restart deployments
         run: |
-          kubectl rollout restart deployment/mpc-api -n lux-mpc
+          kubectl rollout restart statefulset/mpc-node -n lux-mpc
           kubectl rollout restart deployment/mpc-dashboard -n lux-mpc
 
       - name: Wait for rollout
         run: |
-          kubectl rollout status deployment/mpc-api -n lux-mpc --timeout=120s
+          kubectl rollout status statefulset/mpc-node -n lux-mpc --timeout=180s
           kubectl rollout status deployment/mpc-dashboard -n lux-mpc --timeout=120s
