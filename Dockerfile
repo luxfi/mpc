@@ -26,8 +26,11 @@ RUN apk add --no-cache ca-certificates curl bash
 WORKDIR /app
 
 # Copy binaries from builder
-COPY --from=builder /build/mpcd /usr/local/bin/
-COPY --from=builder /build/lux-mpc-cli /usr/local/bin/
+COPY --from=builder /build/mpcd /usr/local/bin/mpcd
+COPY --from=builder /build/lux-mpc-cli /usr/local/bin/lux-mpc-cli
+
+# Symlink for backward compatibility (StatefulSet runs /usr/local/bin/lux-mpc)
+RUN ln -s /usr/local/bin/mpcd /usr/local/bin/lux-mpc
 
 # Copy config templates
 COPY config.yaml.template /app/
