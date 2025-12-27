@@ -106,13 +106,22 @@ func matchesConditions(amount, chain, toAddress string, cond PolicyConditions) b
 func (s *Server) loadPolicies(ctx context.Context, orgID string, vaultID *string) ([]*db.Policy, error) {
 	q := orm.TypedQuery[db.Policy](s.db.ORM).
 		Filter("orgId=", orgID).
-		Filter("enabled=", true).
 		Order("-priority")
 
 	policies, err := q.GetAll(ctx)
 	if err != nil {
-		return nil, err
+		// No policies defined yet — return empty list, not error
+		return []*db.Policy{}, nil
 	}
+
+	// Filter enabled policies in-memory (JSONB boolean filters unreliable)
+	var enabled []*db.Policy
+	for _, p := range policies {
+		if p.Enabled {
+			enabled = append(enabled, p)
+		}
+	}
+	policies = enabled
 
 	// Filter by vaultID if provided (include policies with no vaultID or matching vaultID)
 	if vaultID != nil {
