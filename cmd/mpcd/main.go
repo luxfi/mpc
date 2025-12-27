@@ -3,10 +3,12 @@ package main
 import (
 	"context"
 	"crypto/ed25519"
+	crypto_elliptic "crypto/elliptic"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"net/http"
 	"os"
 	"os/signal"
@@ -1337,31 +1339,82 @@ func (q *ConsensusMessageQueue) Close() {
 }
 
 // pubKeyToEthAddress derives an Ethereum address from an ECDSA public key.
-// Accepts both compressed (33 bytes) and uncompressed (65 bytes) formats.
+// Accepts compressed (33 bytes), uncompressed (65 bytes), or raw x-coordinate (32 bytes).
 func pubKeyToEthAddress(pubKey []byte) string {
-	var uncompressed []byte
+	var xyBytes []byte // 64 bytes: X(32) || Y(32)
 	switch len(pubKey) {
 	case 65:
 		// Uncompressed: 0x04 || X(32) || Y(32)
-		uncompressed = pubKey[1:] // strip 0x04 prefix
+		xyBytes = pubKey[1:]
 	case 33:
-		// Compressed: we hash what we have (the handler may return hex string)
-		// For proper derivation, we'd need to decompress, but the keygen
-		// handler returns the raw bytes from the protocol which may vary.
-		// Fall back to hashing the compressed key directly.
-		uncompressed = pubKey
+		// Compressed: 0x02/0x03 || X(32) — decompress via secp256k1
+		x, y := ellipticUnmarshalCompressed(pubKey)
+		if x == nil {
+			return ""
+		}
+		xyBytes = append(x.Bytes(), y.Bytes()...)
+	case 32:
+		// Raw x-coordinate only — try decompressing with 0x02 prefix (even y)
+		compressed := append([]byte{0x02}, pubKey...)
+		x, y := ellipticUnmarshalCompressed(compressed)
+		if x == nil {
+			// Try odd y
+			compressed[0] = 0x03
+			x, y = ellipticUnmarshalCompressed(compressed)
+		}
+		if x == nil {
+			return ""
+		}
+		xBytes := make([]byte, 32)
+		yBytes := make([]byte, 32)
+		xB := x.Bytes()
+		yB := y.Bytes()
+		copy(xBytes[32-len(xB):], xB)
+		copy(yBytes[32-len(yB):], yB)
+		xyBytes = append(xBytes, yBytes...)
 	default:
 		// Try as hex string
 		decoded, err := hex.DecodeString(string(pubKey))
-		if err == nil {
+		if err == nil && len(decoded) > 0 {
 			return pubKeyToEthAddress(decoded)
 		}
 		return ""
 	}
+	if len(xyBytes) != 64 {
+		return ""
+	}
 	hash := sha3.NewLegacyKeccak256()
-	hash.Write(uncompressed)
+	hash.Write(xyBytes)
 	addrBytes := hash.Sum(nil)[12:]
 	return "0x" + hex.EncodeToString(addrBytes)
+}
+
+// ellipticUnmarshalCompressed decompresses a secp256k1 compressed public key.
+func ellipticUnmarshalCompressed(compressed []byte) (*big.Int, *big.Int) {
+	if len(compressed) != 33 || (compressed[0] != 0x02 && compressed[0] != 0x03) {
+		return nil, nil
+	}
+	curve := crypto_elliptic.P256() // Use P256 as base; secp256k1 params below
+	// secp256k1 curve parameters
+	p, _ := new(big.Int).SetString("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F", 16)
+	x := new(big.Int).SetBytes(compressed[1:33])
+	// y² = x³ + 7 (mod p) for secp256k1
+	x3 := new(big.Int).Mul(x, x)
+	x3.Mul(x3, x)
+	x3.Mod(x3, p)
+	y2 := new(big.Int).Add(x3, big.NewInt(7))
+	y2.Mod(y2, p)
+	// ModSqrt
+	y := new(big.Int).ModSqrt(y2, p)
+	if y == nil {
+		return nil, nil
+	}
+	// Check parity
+	if y.Bit(0) != uint(compressed[0]&1) {
+		y.Sub(p, y)
+	}
+	_ = curve // suppress unused
+	return x, y
 }
 
 // runAPIOnly starts only the Dashboard API server without any MPC transport.
