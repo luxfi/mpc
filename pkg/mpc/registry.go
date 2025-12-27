@@ -68,6 +68,9 @@ func (r *registry) readyKey(nodeID string) string {
 }
 
 func (r *registry) registerReadyPairs(peerIDs []string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	for _, peerID := range peerIDs {
 		ready, exist := r.readyMap[peerID]
 		if !exist {
@@ -82,12 +85,9 @@ func (r *registry) registerReadyPairs(peerIDs []string) {
 	}
 
 	if len(peerIDs) == len(r.peerNodeIDs) && !r.ready {
-		r.mu.Lock()
 		r.ready = true
-		r.mu.Unlock()
 		logger.Info("ALL PEERS ARE READY! Starting to accept MPC requests")
 	}
-
 }
 
 // Ready is called by the node when it complete generate preparams and starting to accept
@@ -116,13 +116,13 @@ func (r *registry) WatchPeersReady() {
 		pairs, _, err := r.consulKV.List("ready/", nil)
 		if err != nil {
 			logger.Error("List ready keys failed", err)
+			continue
 		}
 
 		newReadyPeerIDs := r.getReadyPeersFromKVStore(pairs)
 		if len(newReadyPeerIDs) != len(r.peerNodeIDs) {
 			r.mu.Lock()
 			r.ready = false
-			r.mu.Unlock()
 
 			var readyPeerIDs []string
 			for peerID, isReady := range r.readyMap {
@@ -138,13 +138,11 @@ func (r *registry) WatchPeersReady() {
 					r.readyMap[peerID] = false
 					atomic.AddInt64(&r.readyCount, -1)
 				}
-
 			}
-
+			r.mu.Unlock()
 		}
 		r.registerReadyPairs(newReadyPeerIDs)
 	}
-
 }
 
 func (r *registry) logReadyStatus() {
@@ -161,6 +159,9 @@ func (r *registry) GetReadyPeersCount() int64 {
 }
 
 func (r *registry) GetReadyPeersIncludeSelf() []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
 	var peerIDs []string
 	for peerID, isReady := range r.readyMap {
 		if isReady {

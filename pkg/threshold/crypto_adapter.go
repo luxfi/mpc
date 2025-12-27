@@ -383,8 +383,8 @@ type cggmp21Signer struct {
 	share  cryptothreshold.KeyShare
 }
 
-func (s *cggmp21Signer) Index() int           { return s.share.Index() }
-func (s *cggmp21Signer) PublicShare() []byte  { return s.share.PublicShare() }
+func (s *cggmp21Signer) Index() int                         { return s.share.Index() }
+func (s *cggmp21Signer) PublicShare() []byte                { return s.share.PublicShare() }
 func (s *cggmp21Signer) KeyShare() cryptothreshold.KeyShare { return s.share }
 
 func (s *cggmp21Signer) NonceGen(ctx context.Context) (cryptothreshold.NonceCommitment, cryptothreshold.NonceState, error) {
@@ -775,9 +775,9 @@ type frostSigner struct {
 	share  cryptothreshold.KeyShare
 }
 
-func (s *frostSigner) Index() int                           { return s.share.Index() }
-func (s *frostSigner) PublicShare() []byte                  { return s.share.PublicShare() }
-func (s *frostSigner) KeyShare() cryptothreshold.KeyShare   { return s.share }
+func (s *frostSigner) Index() int                         { return s.share.Index() }
+func (s *frostSigner) PublicShare() []byte                { return s.share.PublicShare() }
+func (s *frostSigner) KeyShare() cryptothreshold.KeyShare { return s.share }
 
 func (s *frostSigner) NonceGen(ctx context.Context) (cryptothreshold.NonceCommitment, cryptothreshold.NonceState, error) {
 	// FROST requires nonce pre-generation
@@ -808,16 +808,16 @@ type frostNonceCommitment struct {
 	data []byte
 }
 
-func (c *frostNonceCommitment) Bytes() []byte   { return c.data }
-func (c *frostNonceCommitment) FromParty() int  { return c.from }
+func (c *frostNonceCommitment) Bytes() []byte  { return c.data }
+func (c *frostNonceCommitment) FromParty() int { return c.from }
 
 type frostNonceState struct {
 	from int
 	data []byte
 }
 
-func (s *frostNonceState) Bytes() []byte   { return s.data }
-func (s *frostNonceState) FromParty() int  { return s.from }
+func (s *frostNonceState) Bytes() []byte  { return s.data }
+func (s *frostNonceState) FromParty() int { return s.from }
 
 type frostSignatureShare struct {
 	scheme *FROSTScheme
@@ -909,10 +909,10 @@ type protocolMessage struct {
 	data []byte
 }
 
-func (m *protocolMessage) GetFrom() string    { return "" }
-func (m *protocolMessage) GetTo() []string    { return nil }
-func (m *protocolMessage) GetData() []byte    { return m.data }
-func (m *protocolMessage) IsBroadcast() bool  { return true }
+func (m *protocolMessage) GetFrom() string   { return "" }
+func (m *protocolMessage) GetTo() []string   { return nil }
+func (m *protocolMessage) GetData() []byte   { return m.data }
+func (m *protocolMessage) IsBroadcast() bool { return true }
 
 // Helper functions
 

@@ -21,7 +21,17 @@ import (
 //
 // Returns the recovery byte (0 or 1) and an error if recovery fails.
 func CalculateRecoveryByte(rBytes, sBytes, messageHash, expectedPubKey []byte) (byte, error) {
-	// Ensure R and S are 32 bytes each
+	// Validate messageHash length - must be exactly 32 bytes for ECDSA
+	if len(messageHash) != 32 {
+		return 0, fmt.Errorf("invalid message hash length: expected 32 bytes, got %d", len(messageHash))
+	}
+
+	// Validate R and S are not empty
+	if len(rBytes) == 0 || len(sBytes) == 0 {
+		return 0, fmt.Errorf("R and S components cannot be empty")
+	}
+
+	// Ensure R and S are at most 32 bytes each (truncate leading bytes if longer)
 	if len(rBytes) > 32 {
 		rBytes = rBytes[len(rBytes)-32:]
 	}

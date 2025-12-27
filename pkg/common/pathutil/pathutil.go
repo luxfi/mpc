@@ -6,31 +6,51 @@ import (
 	"strings"
 )
 
-// SafePath validates and constructs a safe file path within a base directory
+// SafePath validates and constructs a safe file path within a base directory.
+// Returns an error if the resulting path would escape the base directory.
 func SafePath(baseDir, filename string) (string, error) {
-	// Clean the filename to prevent path traversal
+	// Reject absolute paths in filename
+	if filepath.IsAbs(filename) {
+		return "", fmt.Errorf("invalid filename: absolute paths not allowed")
+	}
+
+	// Reject any path containing ".." before cleaning (catches obvious attacks)
+	if strings.Contains(filename, "..") {
+		return "", fmt.Errorf("invalid filename: path traversal not allowed")
+	}
+
+	// Clean the filename
 	cleanFilename := filepath.Clean(filename)
 
-	// Check for path traversal attempts
+	// After cleaning, reject if ".." appears (handles edge cases)
 	if strings.Contains(cleanFilename, "..") {
 		return "", fmt.Errorf("invalid filename: path traversal not allowed")
 	}
 
-	// Construct the full path
-	fullPath := filepath.Join(baseDir, cleanFilename)
-
-	// Ensure the path is within the base directory
+	// Get absolute base directory path
 	absBase, err := filepath.Abs(baseDir)
 	if err != nil {
 		return "", fmt.Errorf("failed to get absolute path for base directory: %w", err)
 	}
+
+	// Construct and resolve the full path
+	fullPath := filepath.Join(absBase, cleanFilename)
 
 	absPath, err := filepath.Abs(fullPath)
 	if err != nil {
 		return "", fmt.Errorf("failed to get absolute path: %w", err)
 	}
 
-	if !strings.HasPrefix(absPath, absBase) {
+	// Ensure the resolved path is within the base directory
+	// Add trailing separator to absBase to prevent prefix matching issues
+	// (e.g., /foo/bar matching /foo/barbaz)
+	basePrefixCheck := absBase
+	if !strings.HasSuffix(basePrefixCheck, string(filepath.Separator)) {
+		basePrefixCheck += string(filepath.Separator)
+	}
+
+	// The path is safe if it equals absBase or starts with absBase + separator
+	if absPath != absBase && !strings.HasPrefix(absPath, basePrefixCheck) {
 		return "", fmt.Errorf("path outside base directory not allowed")
 	}
 
