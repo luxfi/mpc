@@ -6,10 +6,16 @@ const PUBLIC_PATHS = [
   '/auth/callback',
   '/api',
   '/healthz',
+  '/docs',
 ]
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
+
+  // Landing page is always public
+  if (pathname === '/') {
+    return NextResponse.next()
+  }
 
   // Allow public paths without auth check
   if (PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + '/'))) {
