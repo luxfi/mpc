@@ -5,9 +5,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
-	"strconv"
 	"time"
 
+	"github.com/hanzoai/orm"
 	"github.com/luxfi/mpc/pkg/db"
 )
 
@@ -34,10 +34,8 @@ func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Verify wallet
-	var walletOrgID string
-	err := s.db.Pool.QueryRow(r.Context(),
-		`SELECT org_id FROM wallets WHERE id = $1`, req.WalletID).Scan(&walletOrgID)
-	if err != nil || walletOrgID != orgID {
+	wallet, err := orm.Get[db.Wallet](s.db.ORM, req.WalletID)
+	if err != nil || wallet.OrgID != orgID {
 		writeError(w, http.StatusNotFound, "wallet not found")
 		return
 	}
@@ -64,24 +62,26 @@ func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request)
 		rawTx, _ = hex.DecodeString(req.RawTx)
 	}
 
-	var tx db.Transaction
-	err = s.db.Pool.QueryRow(r.Context(),
-		`INSERT INTO transactions (org_id, wallet_id, tx_type, chain, to_address, amount, token, raw_tx, status, initiated_by)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-		 RETURNING id, org_id, wallet_id, tx_type, chain, to_address, amount, token,
-		 tx_hash, status, initiated_by, created_at`,
-		orgID, req.WalletID, req.TxType, req.Chain, req.ToAddress, req.Amount,
-		nilIfEmpty(req.Token), rawTx, status, userID).
-		Scan(&tx.ID, &tx.OrgID, &tx.WalletID, &tx.TxType, &tx.Chain,
-			&tx.ToAddress, &tx.Amount, &tx.Token, &tx.TxHash, &tx.Status,
-			&tx.InitiatedBy, &tx.CreatedAt)
-	if err != nil {
+	walletID := req.WalletID
+	tx := orm.New[db.Transaction](s.db.ORM)
+	tx.OrgID = orgID
+	tx.WalletID = &walletID
+	tx.TxType = req.TxType
+	tx.Chain = req.Chain
+	tx.ToAddress = nilIfEmpty(req.ToAddress)
+	tx.Amount = nilIfEmpty(req.Amount)
+	tx.Token = nilIfEmpty(req.Token)
+	tx.RawTx = rawTx
+	tx.Status = status
+	tx.InitiatedBy = nilIfEmpty(userID)
+	if err := tx.Create(); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create transaction: "+err.Error())
 		return
 	}
 
+	txID := tx.Id()
 	if status == "approved" {
-		go s.signAndBroadcast(tx.ID, orgID)
+		go s.signAndBroadcast(txID, orgID)
 	}
 
 	s.fireWebhook(r.Context(), orgID, "tx.pending", tx)
@@ -93,43 +93,25 @@ func (s *Server) handleListTransactions(w http.ResponseWriter, r *http.Request) 
 	statusFilter := r.URL.Query().Get("status")
 	chain := r.URL.Query().Get("chain")
 
-	query := `SELECT id, org_id, wallet_id, tx_type, chain, to_address, amount, token,
-	          tx_hash, status, initiated_by, created_at, signed_at, broadcast_at
-	          FROM transactions WHERE org_id = $1`
-	args := []interface{}{orgID}
-	idx := 2
+	q := orm.TypedQuery[db.Transaction](s.db.ORM).
+		Filter("orgId =", orgID).
+		Order("-createdAt").
+		Limit(100)
 
 	if statusFilter != "" {
-		query += " AND status = $" + strconv.Itoa(idx)
-		args = append(args, statusFilter)
-		idx++
+		q = q.Filter("status =", statusFilter)
 	}
 	if chain != "" {
-		query += " AND chain = $" + strconv.Itoa(idx)
-		args = append(args, chain)
-		idx++
+		q = q.Filter("chain =", chain)
 	}
-	query += " ORDER BY created_at DESC LIMIT 100"
 
-	rows, err := s.db.Pool.Query(r.Context(), query, args...)
+	txs, err := q.GetAll(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "database error")
 		return
 	}
-	defer rows.Close()
-
-	var txs []db.Transaction
-	for rows.Next() {
-		var tx db.Transaction
-		if err := rows.Scan(&tx.ID, &tx.OrgID, &tx.WalletID, &tx.TxType, &tx.Chain,
-			&tx.ToAddress, &tx.Amount, &tx.Token, &tx.TxHash, &tx.Status,
-			&tx.InitiatedBy, &tx.CreatedAt, &tx.SignedAt, &tx.BroadcastAt); err != nil {
-			continue
-		}
-		txs = append(txs, tx)
-	}
 	if txs == nil {
-		txs = []db.Transaction{}
+		txs = []*db.Transaction{}
 	}
 	writeJSON(w, http.StatusOK, txs)
 }
@@ -138,19 +120,8 @@ func (s *Server) handleGetTransaction(w http.ResponseWriter, r *http.Request) {
 	orgID := getOrgID(r.Context())
 	txID := urlParam(r, "id")
 
-	var tx db.Transaction
-	err := s.db.Pool.QueryRow(r.Context(),
-		`SELECT id, org_id, wallet_id, tx_type, chain, to_address, amount, token,
-		        tx_hash, signature_r, signature_s, signature_eddsa,
-		        status, initiated_by, approved_by, rejected_by, rejection_reason,
-		        created_at, signed_at, broadcast_at
-		 FROM transactions WHERE id = $1 AND org_id = $2`, txID, orgID).
-		Scan(&tx.ID, &tx.OrgID, &tx.WalletID, &tx.TxType, &tx.Chain,
-			&tx.ToAddress, &tx.Amount, &tx.Token, &tx.TxHash,
-			&tx.SignatureR, &tx.SignatureS, &tx.SignatureEdDSA,
-			&tx.Status, &tx.InitiatedBy, &tx.ApprovedBy, &tx.RejectedBy, &tx.RejectionReason,
-			&tx.CreatedAt, &tx.SignedAt, &tx.BroadcastAt)
-	if err != nil {
+	tx, err := orm.Get[db.Transaction](s.db.ORM, txID)
+	if err != nil || tx.OrgID != orgID {
 		writeError(w, http.StatusNotFound, "transaction not found")
 		return
 	}
@@ -163,16 +134,16 @@ func (s *Server) handleApproveTransaction(w http.ResponseWriter, r *http.Request
 	userID := getUserID(r.Context())
 	txID := urlParam(r, "id")
 
-	var status string
-	var approvedBy []string
-	err := s.db.Pool.QueryRow(r.Context(),
-		`UPDATE transactions
-		 SET approved_by = array_append(approved_by, $1::uuid)
-		 WHERE id = $2 AND org_id = $3 AND status = 'pending_approval'
-		 RETURNING status, approved_by`, userID, txID, orgID).
-		Scan(&status, &approvedBy)
-	if err != nil {
+	tx, err := orm.Get[db.Transaction](s.db.ORM, txID)
+	if err != nil || tx.OrgID != orgID || tx.Status != "pending_approval" {
 		writeError(w, http.StatusNotFound, "transaction not found or not pending approval")
+		return
+	}
+
+	// Append approver
+	tx.ApprovedBy = append(tx.ApprovedBy, userID)
+	if err := tx.Update(); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to approve transaction")
 		return
 	}
 
@@ -184,10 +155,11 @@ func (s *Server) handleApproveTransaction(w http.ResponseWriter, r *http.Request
 		}
 	}
 
-	if len(approvedBy) >= requiredApprovers {
-		s.db.Pool.Exec(r.Context(),
-			`UPDATE transactions SET status = 'approved' WHERE id = $1`, txID)
-		go s.signAndBroadcast(txID, orgID)
+	if len(tx.ApprovedBy) >= requiredApprovers {
+		tx.Status = "approved"
+		if err := tx.Update(); err == nil {
+			go s.signAndBroadcast(txID, orgID)
+		}
 	}
 
 	s.fireWebhook(r.Context(), orgID, "tx.approved", map[string]string{
@@ -207,12 +179,17 @@ func (s *Server) handleRejectTransaction(w http.ResponseWriter, r *http.Request)
 	}
 	json.NewDecoder(r.Body).Decode(&req)
 
-	tag, err := s.db.Pool.Exec(r.Context(),
-		`UPDATE transactions SET status = 'rejected', rejected_by = $1, rejection_reason = $2
-		 WHERE id = $3 AND org_id = $4 AND status = 'pending_approval'`,
-		userID, req.Reason, txID, orgID)
-	if err != nil || tag.RowsAffected() == 0 {
+	tx, err := orm.Get[db.Transaction](s.db.ORM, txID)
+	if err != nil || tx.OrgID != orgID || tx.Status != "pending_approval" {
 		writeError(w, http.StatusNotFound, "transaction not found or not pending")
+		return
+	}
+
+	tx.Status = "rejected"
+	tx.RejectedBy = nilIfEmpty(userID)
+	tx.RejectionReason = nilIfEmpty(req.Reason)
+	if err := tx.Update(); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to reject transaction")
 		return
 	}
 
@@ -226,37 +203,38 @@ func (s *Server) handleRejectTransaction(w http.ResponseWriter, r *http.Request)
 func (s *Server) signAndBroadcast(txID, orgID string) {
 	ctx := context.Background()
 
-	var walletDBID string
-	var rawTx []byte
-	err := s.db.Pool.QueryRow(ctx,
-		`SELECT wallet_id, raw_tx FROM transactions WHERE id = $1`, txID).
-		Scan(&walletDBID, &rawTx)
+	tx, err := orm.Get[db.Transaction](s.db.ORM, txID)
 	if err != nil {
 		return
 	}
 
-	var mpcWalletID string
-	err = s.db.Pool.QueryRow(ctx,
-		`SELECT wallet_id FROM wallets WHERE id = $1`, walletDBID).
-		Scan(&mpcWalletID)
+	if tx.WalletID == nil {
+		return
+	}
+
+	wallet, err := orm.Get[db.Wallet](s.db.ORM, *tx.WalletID)
 	if err != nil {
 		return
 	}
 
-	s.db.Pool.Exec(ctx, `UPDATE transactions SET status = 'signing' WHERE id = $1`, txID)
+	tx.Status = "signing"
+	tx.Update()
 
-	result, err := s.mpc.TriggerSign(mpcWalletID, rawTx)
+	result, err := s.mpc.TriggerSign(wallet.WalletID, tx.RawTx)
 	if err != nil {
-		s.db.Pool.Exec(ctx, `UPDATE transactions SET status = 'failed' WHERE id = $1`, txID)
+		tx.Status = "failed"
+		tx.Update()
 		s.fireWebhook(ctx, orgID, "tx.failed", map[string]string{"tx_id": txID, "error": err.Error()})
 		return
 	}
 
 	now := time.Now()
-	s.db.Pool.Exec(ctx,
-		`UPDATE transactions SET status = 'signed', signature_r = $1, signature_s = $2,
-		 signature_eddsa = $3, signed_at = $4 WHERE id = $5`,
-		result.R, result.S, result.Signature, now, txID)
+	tx.Status = "signed"
+	tx.SignatureR = nilIfEmpty(result.R)
+	tx.SignatureS = nilIfEmpty(result.S)
+	tx.SignatureEdDSA = nilIfEmpty(result.Signature)
+	tx.SignedAt = &now
+	tx.Update()
 
 	s.fireWebhook(ctx, orgID, "tx.signed", map[string]string{"tx_id": txID})
 }

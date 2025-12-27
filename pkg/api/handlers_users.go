@@ -5,30 +5,22 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/hanzoai/orm"
 	"github.com/luxfi/mpc/pkg/db"
 )
 
 func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
 	orgID := getOrgID(r.Context())
-	rows, err := s.db.Pool.Query(r.Context(),
-		`SELECT id, org_id, email, role, created_at FROM users WHERE org_id = $1
-		 ORDER BY created_at`, orgID)
+	users, err := orm.TypedQuery[db.User](s.db.ORM).
+		Filter("orgId =", orgID).
+		Order("createdAt").
+		GetAll(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "database error")
 		return
 	}
-	defer rows.Close()
-
-	var users []db.User
-	for rows.Next() {
-		var u db.User
-		if err := rows.Scan(&u.ID, &u.OrgID, &u.Email, &u.Role, &u.CreatedAt); err != nil {
-			continue
-		}
-		users = append(users, u)
-	}
 	if users == nil {
-		users = []db.User{}
+		users = []*db.User{}
 	}
 	writeJSON(w, http.StatusOK, users)
 }
@@ -64,14 +56,12 @@ func (s *Server) handleInviteUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var user db.User
-	err = s.db.Pool.QueryRow(r.Context(),
-		`INSERT INTO users (org_id, email, password_hash, role)
-		 VALUES ($1, $2, $3, $4)
-		 RETURNING id, org_id, email, role, created_at`,
-		orgID, req.Email, hash, req.Role).
-		Scan(&user.ID, &user.OrgID, &user.Email, &user.Role, &user.CreatedAt)
-	if err != nil {
+	user := orm.New[db.User](s.db.ORM)
+	user.OrgID = orgID
+	user.Email = req.Email
+	user.PasswordHash = hash
+	user.Role = req.Role
+	if err := user.Create(); err != nil {
 		writeError(w, http.StatusConflict, "email already registered")
 		return
 	}
@@ -91,14 +81,17 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var user db.User
-	err := s.db.Pool.QueryRow(r.Context(),
-		`UPDATE users SET role = COALESCE($1, role) WHERE id = $2 AND org_id = $3
-		 RETURNING id, org_id, email, role, created_at`,
-		req.Role, userID, orgID).
-		Scan(&user.ID, &user.OrgID, &user.Email, &user.Role, &user.CreatedAt)
-	if err != nil {
+	user, err := orm.Get[db.User](s.db.ORM, userID)
+	if err != nil || user.OrgID != orgID {
 		writeError(w, http.StatusNotFound, "user not found")
+		return
+	}
+
+	if req.Role != nil {
+		user.Role = *req.Role
+	}
+	if err := user.Update(); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to update user")
 		return
 	}
 
@@ -109,39 +102,37 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 	orgID := getOrgID(r.Context())
 	userID := urlParam(r, "id")
 
-	tag, err := s.db.Pool.Exec(r.Context(),
-		`DELETE FROM users WHERE id = $1 AND org_id = $2 AND role != 'owner'`,
-		userID, orgID)
-	if err != nil || tag.RowsAffected() == 0 {
+	user, err := orm.Get[db.User](s.db.ORM, userID)
+	if err != nil || user.OrgID != orgID {
 		writeError(w, http.StatusNotFound, "user not found or cannot delete owner")
+		return
+	}
+	if user.Role == "owner" {
+		writeError(w, http.StatusNotFound, "user not found or cannot delete owner")
+		return
+	}
+
+	if err := user.Delete(); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to delete user")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
 // API Key handlers
+
 func (s *Server) handleListAPIKeys(w http.ResponseWriter, r *http.Request) {
 	orgID := getOrgID(r.Context())
-	rows, err := s.db.Pool.Query(r.Context(),
-		`SELECT id, org_id, name, key_prefix, permissions, created_at, expires_at, last_used_at
-		 FROM api_keys WHERE org_id = $1 ORDER BY created_at DESC`, orgID)
+	keys, err := orm.TypedQuery[db.APIKey](s.db.ORM).
+		Filter("orgId =", orgID).
+		Order("-createdAt").
+		GetAll(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "database error")
 		return
 	}
-	defer rows.Close()
-
-	var keys []db.APIKey
-	for rows.Next() {
-		var k db.APIKey
-		if err := rows.Scan(&k.ID, &k.OrgID, &k.Name, &k.KeyPrefix, &k.Permissions,
-			&k.CreatedAt, &k.ExpiresAt, &k.LastUsedAt); err != nil {
-			continue
-		}
-		keys = append(keys, k)
-	}
 	if keys == nil {
-		keys = []db.APIKey{}
+		keys = []*db.APIKey{}
 	}
 	writeJSON(w, http.StatusOK, keys)
 }
@@ -168,22 +159,20 @@ func (s *Server) handleCreateAPIKey(w http.ResponseWriter, r *http.Request) {
 	}
 	prefix := key[:8]
 
-	var apiKey db.APIKey
-	err = s.db.Pool.QueryRow(r.Context(),
-		`INSERT INTO api_keys (org_id, name, key_hash, key_prefix, permissions)
-		 VALUES ($1, $2, $3, $4, $5)
-		 RETURNING id, org_id, name, key_prefix, permissions, created_at`,
-		orgID, req.Name, keyHash, prefix, req.Permissions).
-		Scan(&apiKey.ID, &apiKey.OrgID, &apiKey.Name, &apiKey.KeyPrefix,
-			&apiKey.Permissions, &apiKey.CreatedAt)
-	if err != nil {
+	apiKey := orm.New[db.APIKey](s.db.ORM)
+	apiKey.OrgID = orgID
+	apiKey.Name = req.Name
+	apiKey.KeyHash = keyHash
+	apiKey.KeyPrefix = prefix
+	apiKey.Permissions = req.Permissions
+	if err := apiKey.Create(); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create API key")
 		return
 	}
 
 	// Return full key only once
 	writeJSON(w, http.StatusCreated, map[string]interface{}{
-		"id":          apiKey.ID,
+		"id":          apiKey.Id(),
 		"name":        apiKey.Name,
 		"key":         key,
 		"key_prefix":  apiKey.KeyPrefix,
@@ -196,10 +185,14 @@ func (s *Server) handleDeleteAPIKey(w http.ResponseWriter, r *http.Request) {
 	orgID := getOrgID(r.Context())
 	keyID := urlParam(r, "id")
 
-	tag, err := s.db.Pool.Exec(r.Context(),
-		`DELETE FROM api_keys WHERE id = $1 AND org_id = $2`, keyID, orgID)
-	if err != nil || tag.RowsAffected() == 0 {
+	apiKey, err := orm.Get[db.APIKey](s.db.ORM, keyID)
+	if err != nil || apiKey.OrgID != orgID {
 		writeError(w, http.StatusNotFound, "api key not found")
+		return
+	}
+
+	if err := apiKey.Delete(); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to delete api key")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

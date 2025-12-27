@@ -15,6 +15,16 @@ services:
       timeout: 3s
       retries: 5
 
+  valkey:
+    image: valkey/valkey:8-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   api:
     build:
       context: .
@@ -22,12 +32,15 @@ services:
     command: >
       start --mode consensus
       --api-db postgres://mpc:${POSTGRES_PASSWORD:-changeme}@postgres:5432/mpc_api?sslmode=disable
+      --api-kv valkey:6379
       --api-listen :8081
       --jwt-secret ${JWT_SECRET:-dev-jwt-secret-change-in-production}
     ports:
       - "8081:8081"
     depends_on:
       postgres:
+        condition: service_healthy
+      valkey:
         condition: service_healthy
     environment:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-changeme}
