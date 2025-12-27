@@ -56,6 +56,7 @@ func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, l
 	// Default allowed issuers if none provided
 	if len(oidcIssuers) == 0 {
 		oidcIssuers = []string{
+			"https://hanzo.id",
 			"https://lux.id",
 			"https://pars.id",
 			"https://id.zoo.network",

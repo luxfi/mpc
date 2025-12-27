@@ -38,11 +38,11 @@ test.describe('Lux ID Login Flow', () => {
     const continueBtn = page.getByRole('button', { name: /Continue with/i })
     await continueBtn.click()
 
-    await page.waitForURL(/lux\.id\/login\/oauth\/authorize/, { timeout: 15_000 })
+    await page.waitForURL(/lux\.id\/oauth\/authorize/, { timeout: 15_000 })
 
     const url = new URL(page.url())
     expect(url.hostname).toBe('lux.id')
-    expect(url.pathname).toBe('/login/oauth/authorize')
+    expect(url.pathname).toBe('/oauth/authorize')
     expect(url.searchParams.get('response_type')).toBe('token')
     expect(url.searchParams.get('client_id')).toBe('lux-mpc')
     expect(url.searchParams.get('scope')).toContain('openid')
