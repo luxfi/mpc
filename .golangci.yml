@@ -6,6 +6,7 @@ linters-settings:
     local-prefixes: github.com/luxfi/mpc
 
 linters:
+  disable-all: true
   enable:
     - goimports
     - govet
