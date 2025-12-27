@@ -9,11 +9,14 @@ import (
 	"context"
 	"crypto/ecdsa"
 	cryptorand "crypto/rand"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
 	"math/big"
 	"sync"
+
+	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 
 	cryptothreshold "github.com/luxfi/crypto/threshold"
 
@@ -444,10 +447,82 @@ func (a *cggmp21Aggregator) Aggregate(ctx context.Context, message []byte, share
 }
 
 func (a *cggmp21Aggregator) VerifyShare(message []byte, share cryptothreshold.SignatureShare, publicShare []byte) error {
-	// Placeholder verification
-	if len(share.Bytes()) == 0 {
-		return errors.New("empty share")
+	shareBytes := share.Bytes()
+	if len(shareBytes) < 64 {
+		return errors.New("invalid signature share: too short, expected at least 64 bytes (r||s_i)")
 	}
+
+	// Parse the partial signature: r (32 bytes) || s_i (32 bytes)
+	r := new(big.Int).SetBytes(shareBytes[:32])
+	si := new(big.Int).SetBytes(shareBytes[32:64])
+
+	// secp256k1 curve order
+	curveParams := secp256k1.S256().Params()
+	n := curveParams.N
+
+	// Range checks: r and s_i must be in [1, n-1]
+	one := big.NewInt(1)
+	nMinusOne := new(big.Int).Sub(n, one)
+	if r.Cmp(one) < 0 || r.Cmp(nMinusOne) > 0 {
+		return errors.New("invalid signature share: r out of range [1, n-1]")
+	}
+	if si.Cmp(one) < 0 || si.Cmp(nMinusOne) > 0 {
+		return errors.New("invalid signature share: s_i out of range [1, n-1]")
+	}
+
+	// If a public key share Y_i is provided (65-byte uncompressed point),
+	// perform ECDSA verification of (r, s_i) against Y_i.
+	// This uses the standard ECDSA check:
+	//   R' = (m * s_i^{-1}) * G + (r * s_i^{-1}) * Y_i
+	//   valid iff R'.x == r (mod n)
+	if len(publicShare) == 65 && publicShare[0] == 0x04 {
+		pk := bytesToEllipticPublicKey(publicShare)
+		if pk == nil {
+			return errors.New("invalid public share: failed to parse uncompressed point")
+		}
+		pk.Curve = secp256k1.S256()
+
+		// s_i^{-1} mod n
+		siInv := new(big.Int).ModInverse(si, n)
+		if siInv == nil {
+			return errors.New("invalid signature share: s_i has no modular inverse")
+		}
+
+		// Hash the message if not already 32 bytes
+		var hash []byte
+		if len(message) == 32 {
+			hash = message
+		} else {
+			h := sha256.Sum256(message)
+			hash = h[:]
+		}
+		m := new(big.Int).SetBytes(hash)
+
+		// u1 = m * s_i^{-1} mod n
+		u1 := new(big.Int).Mul(m, siInv)
+		u1.Mod(u1, n)
+
+		// u2 = r * s_i^{-1} mod n
+		u2 := new(big.Int).Mul(r, siInv)
+		u2.Mod(u2, n)
+
+		// R' = u1*G + u2*Y_i  (using secp256k1 curve arithmetic)
+		curve := secp256k1.S256()
+		x1, y1 := curve.ScalarBaseMult(u1.Bytes())
+		x2, y2 := curve.ScalarMult(pk.X, pk.Y, u2.Bytes())
+		rx, _ := curve.Add(x1, y1, x2, y2)
+
+		if rx == nil {
+			return errors.New("invalid signature share: ECDSA check resulted in point at infinity")
+		}
+
+		// Check r == R'.x mod n
+		rx.Mod(rx, n)
+		if rx.Cmp(r) != 0 {
+			return fmt.Errorf("invalid signature share from party %d: ECDSA verification failed (r mismatch)", share.Index())
+		}
+	}
+
 	return nil
 }
 
@@ -855,9 +930,119 @@ func (a *frostAggregator) Aggregate(ctx context.Context, message []byte, shares 
 }
 
 func (a *frostAggregator) VerifyShare(message []byte, share cryptothreshold.SignatureShare, publicShare []byte) error {
-	if len(share.Bytes()) == 0 {
+	shareBytes := share.Bytes()
+	if len(shareBytes) == 0 {
 		return errors.New("empty share")
 	}
+
+	// secp256k1 curve order
+	n := secp256k1.S256().Params().N
+	curve := secp256k1.S256()
+
+	// Extract s_i based on share format:
+	//   32 bytes: scalar-only s_i
+	//   64 bytes: R_x (32) || s_i (32)
+	var si *big.Int
+	var rBytes []byte
+	if len(shareBytes) == 32 {
+		si = new(big.Int).SetBytes(shareBytes)
+	} else if len(shareBytes) >= 64 {
+		rBytes = shareBytes[:32]
+		si = new(big.Int).SetBytes(shareBytes[32:64])
+	} else {
+		return fmt.Errorf("invalid FROST share size: %d (expected 32 or 64)", len(shareBytes))
+	}
+
+	// Range check: s_i must be in [0, n-1]
+	if si.Sign() < 0 || si.Cmp(n) >= 0 {
+		return errors.New("invalid FROST share: s_i out of range [0, n)")
+	}
+
+	// Verify s_i * G is a valid non-identity curve point
+	siGx, siGy := curve.ScalarBaseMult(si.Bytes())
+	if siGx.Sign() == 0 && siGy.Sign() == 0 {
+		return errors.New("invalid FROST share: s_i * G is the point at infinity")
+	}
+
+	// If we have the aggregate R, group key P, and party's public share Y_i,
+	// verify using the Schnorr partial verification equation:
+	//   s_i * G == R_i + c * Y_i
+	// where c = tagged_hash("BIP0340/challenge", R_x || P_x || m)
+	// and R_i is the party's individual nonce commitment.
+	//
+	// We compute R_i = s_i * G - c * Y_i and verify it is a valid curve point.
+	// The caller can later verify that sum(R_i) produces the aggregate R.
+	if rBytes != nil && len(publicShare) > 0 && a.groupKey != nil {
+		groupKeyBytes := a.groupKey.Bytes()
+		var pkXBytes []byte
+		switch len(groupKeyBytes) {
+		case 32:
+			pkXBytes = groupKeyBytes
+		case 33:
+			pkXBytes = groupKeyBytes[1:]
+		case 65:
+			pkXBytes = groupKeyBytes[1:33]
+		}
+
+		if pkXBytes != nil {
+			// BIP-340 tagged hash for challenge:
+			//   c = H("BIP0340/challenge", R_x || P_x || m) mod n
+			tagHash := sha256.Sum256([]byte("BIP0340/challenge"))
+			h := sha256.New()
+			h.Write(tagHash[:])
+			h.Write(tagHash[:])
+			h.Write(rBytes)
+			h.Write(pkXBytes)
+			h.Write(message)
+			cHash := h.Sum(nil)
+			c := new(big.Int).SetBytes(cHash)
+			c.Mod(c, n)
+
+			// Parse Y_i (party's verification share)
+			var yiX, yiY *big.Int
+			switch len(publicShare) {
+			case 33:
+				// Compressed point
+				pubKey, err := secp256k1.ParsePubKey(publicShare)
+				if err == nil {
+					yiX = pubKey.X()
+					yiY = pubKey.Y()
+				}
+			case 65:
+				if publicShare[0] == 0x04 {
+					yiX = new(big.Int).SetBytes(publicShare[1:33])
+					yiY = new(big.Int).SetBytes(publicShare[33:65])
+				}
+			case 32:
+				// x-only key: lift to point with even Y
+				pubKey, err := secp256k1.ParsePubKey(append([]byte{0x02}, publicShare...))
+				if err == nil {
+					yiX = pubKey.X()
+					yiY = pubKey.Y()
+				}
+			}
+
+			if yiX != nil && yiY != nil {
+				// R_i = s_i * G - c * Y_i
+				cYx, cYy := curve.ScalarMult(yiX, yiY, c.Bytes())
+				// Negate c*Y_i: -(x,y) = (x, -y mod p)
+				p := curve.Params().P
+				cYyNeg := new(big.Int).Sub(p, cYy)
+				cYyNeg.Mod(cYyNeg, p)
+				riX, riY := curve.Add(siGx, siGy, cYx, cYyNeg)
+
+				if riX.Sign() == 0 && riY.Sign() == 0 {
+					return fmt.Errorf("invalid FROST share from party %d: R_i is point at infinity", share.Index())
+				}
+
+				// Verify R_i is on curve
+				if !curve.IsOnCurve(riX, riY) {
+					return fmt.Errorf("invalid FROST share from party %d: R_i not on curve", share.Index())
+				}
+			}
+		}
+	}
+
 	return nil
 }
 

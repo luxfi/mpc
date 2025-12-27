@@ -122,13 +122,24 @@ func (s *session) ListenToIncomingMessageAsync() {
 }
 
 func (s *session) ProcessInboundMessage(msgBytes []byte) {
-	// This should be implemented by specific session types
-	panic("ProcessInboundMessage must be implemented by session type")
+	// Base session does not process messages. Concrete session types (e.g.
+	// cggmp21KeygenSession, frostKeygenSession) override this method. If
+	// this base implementation is reached, it means a session was used
+	// without being properly embedded. Log an error and discard the message
+	// rather than crashing the process.
+	s.logger.Error().
+		Str("walletID", s.walletID).
+		Int("msgLen", len(msgBytes)).
+		Msg("ProcessInboundMessage called on base session (not overridden); message discarded")
 }
 
 func (s *session) ProcessOutboundMessage() {
-	// This should be implemented by specific session types
-	panic("ProcessOutboundMessage must be implemented by session type")
+	// Base session does not process outbound messages. Concrete session
+	// types override this. Log an error and return gracefully rather than
+	// crashing the process.
+	s.logger.Error().
+		Str("walletID", s.walletID).
+		Msg("ProcessOutboundMessage called on base session (not overridden); no-op")
 }
 
 // extractNodeID extracts the raw node ID from a party ID that may have suffixes

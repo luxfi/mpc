@@ -15,6 +15,7 @@ import (
 	"github.com/luxfi/mpc/pkg/messaging"
 	"github.com/luxfi/mpc/pkg/protocol"
 	"github.com/luxfi/mpc/pkg/protocol/cggmp21"
+	"github.com/luxfi/mpc/pkg/types"
 	"github.com/luxfi/mpc/pkg/utils"
 )
 
@@ -205,15 +206,82 @@ func (s *cggmp21ReshareSession) Reshare(done func()) {
 	}
 }
 
-// ProcessInboundMessage handles incoming protocol messages
+// ProcessInboundMessage handles incoming protocol messages from the transport
+// layer and routes them to the CGGMP21 reshare protocol party.
 func (s *cggmp21ReshareSession) ProcessInboundMessage(msgBytes []byte) {
-	// Implementation similar to keygen session
-	// Convert message and send to protocol party
+	s.processingLock.Lock()
+	defer s.processingLock.Unlock()
+
+	// Unmarshal wire format
+	inboundMessage := &types.Message{}
+	if err := json.Unmarshal(msgBytes, inboundMessage); err != nil {
+		s.logger.Error().Err(err).Msg("CGGMP21 reshare: failed to unmarshal inbound message")
+		return
+	}
+
+	// Deduplication
+	msgHashStr := fmt.Sprintf("%x", utils.GetMessageHash(inboundMessage.Body))
+	if s.processing[msgHashStr] {
+		return
+	}
+	s.processing[msgHashStr] = true
+
+	if s.party == nil {
+		s.logger.Warn().Msg("CGGMP21 reshare: protocol party not initialized, dropping message")
+		return
+	}
+
+	// Route to protocol party via the protocol.Message interface
+	protoMsg := &reshareProtocolMessage{
+		from:      inboundMessage.SenderID,
+		to:        inboundMessage.RecipientIDs,
+		data:      inboundMessage.Body,
+		broadcast: inboundMessage.IsBroadcast,
+	}
+
+	if err := s.party.Update(protoMsg); err != nil {
+		s.logger.Debug().Err(err).
+			Str("from", inboundMessage.SenderID).
+			Msg("CGGMP21 reshare: party rejected message")
+	}
 }
 
-// ProcessOutboundMessage handles outgoing protocol messages
+// ProcessOutboundMessage reads outgoing protocol messages from the CGGMP21
+// reshare party and sends them to peers via the transport layer.
 func (s *cggmp21ReshareSession) ProcessOutboundMessage() {
-	// Implementation similar to keygen session
+	s.logger.Info().Str("sessionID", s.sessionID).Msg("CGGMP21 reshare: ProcessOutboundMessage started")
+
+	if s.party == nil {
+		s.logger.Error().Msg("CGGMP21 reshare: protocol party not initialized")
+		return
+	}
+
+	msgCh := s.party.Messages()
+
+	for {
+		select {
+		case protoMsg, ok := <-msgCh:
+			if !ok {
+				// Protocol completed
+				s.logger.Info().Msg("CGGMP21 reshare: protocol messages channel closed")
+				s.finishCh <- true
+				return
+			}
+
+			wireMsg := &types.Message{
+				SessionID:    s.walletID,
+				SenderID:     string(s.selfPartyID),
+				RecipientIDs: protoMsg.GetTo(),
+				Body:         protoMsg.GetData(),
+				IsBroadcast:  protoMsg.IsBroadcast(),
+			}
+
+			s.sendMsg(wireMsg)
+
+		case err := <-s.errCh:
+			s.logger.Error().Err(err).Msg("CGGMP21 reshare: error during ProcessOutboundMessage")
+		}
+	}
 }
 
 // GetPubKeyResult returns the public key after successful resharing
