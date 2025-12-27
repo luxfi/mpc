@@ -64,7 +64,7 @@ func NewServer(database *db.DB, mpcBackend MPCBackend, jwtSecret string, listenA
 	r.Use(chimw.Recoverer)
 	r.Use(chimw.Timeout(30 * time.Second))
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"https://cloud.lux.network", "https://mpc.lux.network", "http://localhost:3000"},
+		AllowedOrigins:   []string{"https://cloud.lux.network", "https://mpc.lux.network", "https://bridge.lux.network", "http://localhost:3000"},
 		AllowedMethods:   []string{"GET", "POST", "PATCH", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-API-Key"},
 		ExposedHeaders:   []string{"Link"},
@@ -87,6 +87,13 @@ func NewServer(database *db.DB, mpcBackend MPCBackend, jwtSecret string, listenA
 
 		// Public payment page
 		r.Get("/pay/{token}", s.handlePublicPay)
+
+		// Bridge signing endpoints (API key or JWT auth)
+		r.Group(func(r chi.Router) {
+			r.Use(s.authMiddleware)
+			r.Post("/generate_mpc_sig", s.handleBridgeSign)
+			r.Post("/complete", s.handleBridgeComplete)
+		})
 
 		// Authenticated routes
 		r.Group(func(r chi.Router) {
