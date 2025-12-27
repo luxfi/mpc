@@ -9,8 +9,7 @@ import (
 	"math/big"
 	"sync"
 
-	log "github.com/luxfi/log/logger"
-	"github.com/luxfi/log/level"
+	log "github.com/luxfi/log"
 	mpsEcdsa "github.com/luxfi/threshold/pkg/ecdsa"
 	"github.com/luxfi/threshold/pkg/math/curve"
 	"github.com/luxfi/threshold/pkg/party"
@@ -32,7 +31,7 @@ type CGGMP21Protocol struct {
 func NewCGGMP21Protocol() *CGGMP21Protocol {
 	return &CGGMP21Protocol{
 		pool:   pool.NewPool(0), // Use max threads
-		logger: log.NewTestLogger(level.Info),
+		logger: log.NewTestLogger(log.InfoLevel),
 	}
 }
 

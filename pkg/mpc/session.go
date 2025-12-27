@@ -1,6 +1,7 @@
 package mpc
 
 import (
+	"strings"
 	"sync"
 
 	"github.com/luxfi/threshold/pkg/party"
@@ -130,6 +131,17 @@ func (s *session) ProcessOutboundMessage() {
 	panic("ProcessOutboundMessage must be implemented by session type")
 }
 
+// extractNodeID extracts the raw node ID from a party ID that may have suffixes
+// e.g., "nodeID:keygen:1" -> "nodeID"
+func extractNodeID(partyID string) string {
+	// Check for the pattern nodeID:purpose:version
+	parts := strings.Split(partyID, ":")
+	if len(parts) >= 1 {
+		return parts[0]
+	}
+	return partyID
+}
+
 func (s *session) sendMsg(message *types.Message) {
 	data, err := encoding.StructToJsonBytes(message)
 	if err != nil {
@@ -147,13 +159,16 @@ func (s *session) sendMsg(message *types.Message) {
 	} else {
 		// Send to specific recipients
 		for _, recipient := range message.RecipientIDs {
-			topic := s.topicComposer.ComposeDirectTopic(recipient)
+			// Extract raw nodeID from party ID (e.g., "nodeID:keygen:1" -> "nodeID")
+			nodeID := extractNodeID(recipient)
+			topic := s.topicComposer.ComposeDirectTopic(nodeID)
 			if err := s.pubSub.Publish(topic, data); err != nil {
 				s.logger.Error().Err(err).Msgf("Failed to publish direct message to %s", topic)
 			} else {
 				s.logger.Debug().
 					Str("topic", topic).
 					Str("recipient", recipient).
+					Str("nodeID", nodeID).
 					Msg("Published direct message")
 			}
 		}
