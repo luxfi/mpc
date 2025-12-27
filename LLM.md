@@ -1,72 +1,98 @@
-# LLM.md - Lux MPC Architecture & Development Guide
+# LLM.md - Hanzo MPC Signer Architecture & Development Guide
 
-This document provides comprehensive guidance for AI assistants working with the Lux MPC (Multi-Party Computation) codebase.
+This document provides comprehensive guidance for AI assistants working with the Hanzo MPC (Multi-Party Computation) codebase.
 
-## 📚 Documentation Status (2025-11-12)
+## 📚 Overview
 
-### Comprehensive Documentation Completed
-The MPC documentation has been significantly enhanced with complete coverage of:
-- **Protocol Overview**: Detailed MPC phases (Setup, Key Generation, Signing, Resharing)
-- **Security Model**: Threat analysis, cryptographic foundations, security properties
-- **API Reference**: Complete Go SDK examples, REST endpoints, integration guides
-- **Use Cases**: 5 real-world scenarios with code examples
-- **Performance**: Benchmarks for 3-9 node configurations
-- **Best Practices**: Security, deployment, monitoring, incident response
+Hanzo MPC is a threshold signing service that provides:
+- **ECDSA (secp256k1)** for Bitcoin/Ethereum/EVM chains
+- **EdDSA (Ed25519)** for Solana/Polkadot/Sui
+- **Threshold signatures** (t-of-n) with CGGMP21 protocol
+- **Key resharing** for rotation without changing addresses
 
-### Documentation Build
-- **Location**: `/Users/z/work/lux/mpc/docs/`
-- **Main File**: `/Users/z/work/lux/mpc/docs/content/docs/index.mdx` (835 lines)
-- **Build Status**: ✅ Successfully built with Next.js 16.0.1
-- **Static Pages**: 8 pages generated including API, protocol, security sections
-- **Completeness Score**: 95/100 (missing only advanced cryptographic proofs)
+### Architecture Position
 
-### Key Enhancements Added
-1. **Protocol Phases**: Complete 5-round CGGMP21 protocol specification
-2. **Security Analysis**: 7 threat vectors, 4 assumptions, 5 security properties
-3. **Code Examples**: 20+ Go code snippets for all operations
-4. **Use Cases**: Cryptocurrency custody, secure auctions, private ML, identity, settlements
-5. **Performance Metrics**: Detailed benchmarks and scalability analysis
-6. **Architecture Diagrams**: Mermaid diagrams for system and state machines
-7. **Troubleshooting**: Common issues and solutions
-8. **Network Support**: Complete list of ECDSA and EdDSA compatible chains
+Hanzo MPC is designed as a **pluggable signer backend** for Hanzo KMS:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      Hanzo KMS (Control Plane)                  │
+│  ┌──────────┬─────────────┬──────────────┬─────────────────┐    │
+│  │ Policy   │ Approvals   │  Audit Log   │  Key Registry   │    │
+│  └────┬─────┴──────┬──────┴───────┬──────┴───────┬─────────┘    │
+│       │            │              │              │              │
+│  ┌────▼────────────▼──────────────▼──────────────▼─────────┐    │
+│  │              Unified Signing API                         │    │
+│  └────┬────────────┬──────────────┬──────────────┬─────────┘    │
+│       │            │              │              │              │
+│  ┌────▼────┐  ┌────▼────┐   ┌─────▼─────┐  ┌─────▼─────┐        │
+│  │  HSM    │  │  MPC    │   │  Software │  │  Remote   │        │
+│  │ Signer  │  │ Signer  │   │  Signer   │  │  Signer   │        │
+│  └─────────┘  └─────────┘   └───────────┘  └───────────┘        │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Product Architecture
+
+1. **Hanzo KMS Platform** (Control Plane)
+   - Key registry + metadata
+   - Policy + workflow (quorum, time locks, spend limits, allowlists)
+   - Audit log
+   - Unified API
+   - Secrets manager
+
+2. **Hanzo MPC Signer** (This Project - Data Plane)
+   - DKG / key share management
+   - Threshold signing sessions
+   - Reshare/rotate shares
+   - Optional hardware-rooted modes
+
+3. **Hanzo HSM** (Alternative Signer)
+   - HSM-backed keys for classic KMS workloads
+   - HSM-sealed share storage for MPC nodes
+
+4. **Hanzo Treasury** (Optional UI)
+   - Transaction building + chain adapters
+   - Simulation / policy previews
+   - Approvals UI (backed by KMS workflow engine)
 
 ## 🚀 Quick Start
 
 ### Build and Install
 ```bash
-# Build both binaries
+# Build binaries
 make build
 
 # Or install directly
-go install ./cmd/lux-mpc
-go install ./cmd/lux-mpc-cli
+go install ./cmd/hanzo-mpc
+go install ./cmd/hanzo-mpc-cli
 ```
 
 ### Basic Usage
 ```bash
 # Generate peers configuration
-lux-mpc-cli generate-peers -n 3
+hanzo-mpc-cli generate-peers -n 3
 
 # Register peers to Consul
-lux-mpc-cli register-peers
+hanzo-mpc-cli register-peers
 
 # Generate event initiator
-lux-mpc-cli generate-initiator
+hanzo-mpc-cli generate-initiator
 
 # Generate node identity
-lux-mpc-cli generate-identity --node node0
+hanzo-mpc-cli generate-identity --node node0
 
 # Start MPC node
-lux-mpc start -n node0
+hanzo-mpc start -n node0
 ```
 
 ## 📁 Project Structure
 
 ```
-/Users/z/work/lux/mpc/
+/Users/z/work/hanzo/mpc/
 ├── cmd/                    # Command-line applications
-│   ├── lux-mpc/           # Main MPC node binary
-│   └── lux-mpc-cli/       # CLI tools for configuration
+│   ├── hanzo-mpc/         # Main MPC node binary
+│   └── hanzo-mpc-cli/     # CLI tools for configuration
 ├── pkg/                    # Core packages
 │   ├── client/            # Go client library
 │   ├── mpc/               # MPC implementation (TSS)
@@ -79,42 +105,84 @@ lux-mpc start -n node0
 └── scripts/                # Utility scripts
 ```
 
-## 🏗️ Architecture Overview
+## 🏗️ Core Components
 
-### Core Components
+### 1. MPC Engine
+Based on threshold cryptography:
+- **CGGMP21** protocol for ECDSA (secp256k1) - **IMPLEMENTED & TESTED**
+- **FROST** protocol for EdDSA (Ed25519) - **IMPLEMENTED & TESTED** (keygen generates both ECDSA and EdDSA keys)
+- Configurable threshold (t-of-n)
+- Default: t = ⌊n/2⌋ + 1 (majority)
 
-1. **MPC Engine**: Based on Lux's threshold
-   - ECDSA (secp256k1) for Bitcoin/Ethereum
-   - EdDSA (Ed25519) for Solana/Polkadot
-   - Threshold signatures (t-of-n)
+### 2. Storage Layer: BadgerDB
+- AES-256 encrypted key shares
+- Session data persistence
+- Automatic backups
 
-2. **Storage Layer**: BadgerDB
-   - Encrypted key shares
-   - Session data persistence
-   - Automatic backups
+### 3. Messaging: NATS JetStream
+- Pub/sub for broadcasts
+- Direct messaging for P2P
+- Message persistence
 
-3. **Messaging**: NATS JetStream
-   - Pub/sub for broadcasts
-   - Direct messaging for P2P
-   - Message persistence
+### 4. Service Discovery: Consul
+- Node registration
+- Health checking
+- Configuration management
 
-4. **Service Discovery**: Consul
-   - Node registration
-   - Health checking
-   - Configuration management
+### 5. Identity: Ed25519 keypairs
+- Node authentication
+- Message signing/verification
+- Encrypted with Age
 
-5. **Identity**: Ed25519 keypairs
-   - Node authentication
-   - Message signing/verification
-   - Encrypted with Age
+## 🔧 Configuration
 
-### Key Technical Details
+```yaml
+# config.yaml
+environment: development
+consul:
+  address: localhost:8500
+nats:
+  url: nats://localhost:4222
+badger_password: "secure-password"
+event_initiator_pubkey: "hex-encoded-pubkey"
+```
 
-- **Environment Variable**: `LUX_MPC_CONFIG` (points to config.yaml)
-- **Backup Magic**: `LUX_MPC_BACKUP` (identifies backup files)
-- **Default Threshold**: t = ⌊n/2⌋ + 1 (majority)
-- **Database**: BadgerDB with AES-256 encryption
-- **Network**: TLS for production, mutual Ed25519 auth
+### Environment Variables
+- `HANZO_MPC_CONFIG` - Path to config.yaml
+- `HANZO_MPC_BACKUP` - Backup file identifier
+
+## 🔐 Security Model
+
+- **Threshold Security**: No single node has the complete key
+- **Message Authentication**: All messages signed with Ed25519
+- **Storage Encryption**: BadgerDB encrypted with user password
+- **Network Security**: TLS + mutual authentication
+- **Key Rotation**: Supports resharing without changing addresses
+
+## 📊 Performance
+
+- **Key Generation**: ~30s for 3 nodes
+- **Signing**: <1s for threshold signatures
+- **Storage**: ~100MB per node (with backups)
+- **Network**: Low bandwidth, resilient to failures
+
+## 🔗 Integration with Hanzo Commerce
+
+The MPC Signer integrates with Commerce for crypto payments:
+
+```go
+// Commerce uses MPC via the processor interface
+type MPCProcessor struct {
+    kmsClient  *kms.Client   // Hanzo KMS for policy/approval
+    mpcClient  *mpc.Client   // Hanzo MPC for signing
+}
+
+func (p *MPCProcessor) Charge(ctx context.Context, req PaymentRequest) (*PaymentResult, error) {
+    // 1. KMS validates policy and approvals
+    // 2. MPC signs the transaction
+    // 3. Transaction broadcast to blockchain
+}
+```
 
 ## 🔧 Development Workflow
 
@@ -130,18 +198,6 @@ make test-coverage
 make e2e-test
 ```
 
-### Configuration
-```yaml
-# config.yaml
-environment: development
-consul:
-  address: localhost:8500
-nats:
-  url: nats://localhost:4222
-badger_password: "secure-password"
-event_initiator_pubkey: "hex-encoded-pubkey"
-```
-
 ### Common Tasks
 
 1. **Generate 3-node test cluster**:
@@ -151,28 +207,13 @@ event_initiator_pubkey: "hex-encoded-pubkey"
 
 2. **Recover from backup**:
    ```bash
-   lux-mpc-cli recover --backup-dir ./backups --recovery-path ./recovered-db
+   hanzo-mpc-cli recover --backup-dir ./backups --recovery-path ./recovered-db
    ```
 
 3. **Production deployment**:
    - Use `--encrypt` flag for identity generation
    - Enable TLS on all services
    - Use `--prompt-credentials` to avoid hardcoded passwords
-
-## 🔐 Security Model
-
-- **Threshold Security**: No single node has the complete key
-- **Message Authentication**: All messages signed with Ed25519
-- **Storage Encryption**: BadgerDB encrypted with user password
-- **Network Security**: TLS + mutual authentication
-- **Key Rotation**: Supports resharing for key rotation
-
-## 📊 Performance Characteristics
-
-- **Key Generation**: ~30s for 3 nodes
-- **Signing**: <1s for threshold signatures
-- **Storage**: ~100MB per node (with backups)
-- **Network**: Low bandwidth, resilient to failures
 
 ## 🐛 Common Issues
 
@@ -181,13 +222,63 @@ event_initiator_pubkey: "hex-encoded-pubkey"
 3. **Network delays**: Check NATS/Consul connectivity
 4. **Backup failures**: Verify disk space and permissions
 
-## 📚 Additional Resources
+### CGGMP21 Protocol Issues (Debugged Jan 2026)
 
-- **Lux Network Docs**: https://docs.lux.network/mpc
-- **TSS Library**: https://github.com/luxfi/threshold
-- **Client Libraries**:
-  - TypeScript: https://github.com/luxfi/mpc-client-ts
-  - Go: See `/pkg/client/`
+5. **Protocol message serialization**: Protocol messages MUST use `MarshalBinary/UnmarshalBinary` to preserve all fields (SSID, RoundNumber, etc.). Raw JSON marshaling loses critical protocol state.
+
+6. **Party ID ordering**: Party IDs must be sorted consistently across all nodes. The `GetReadyPeersIncludeSelf()` function in `registry.go` sorts peer IDs to ensure deterministic ordering.
+
+7. **NATS topic naming**: Result topics must match JetStream stream configuration:
+   - Keygen results: `mpc.mpc_keygen_result.<walletID>` (note the `mpc.mpc_` prefix)
+   - Signing results: `mpc.mpc_signing_result.<walletID>`
+   - Stream expects pattern: `mpc.mpc_*_result.*`
+
+8. **Self-message rejection**: It's NORMAL for nodes to log "Handler cannot accept message" warnings when they receive their own broadcast messages back. This is expected behavior in pub/sub systems.
+
+9. **Binary rebuild for e2e tests**: E2E tests use `hanzo-mpc` from PATH. After code changes, run `go install ./cmd/hanzo-mpc && go install ./cmd/hanzo-mpc-cli` to update the installed binaries.
+
+10. **Session result publishing pattern**: Individual protocol sessions (CGGMP21, FROST) should NOT publish success events directly to the result queue. The handler (`keygen_handler_cggmp21.go`) is responsible for publishing the combined result with both ECDSA and EdDSA keys. Sessions should only:
+    - Publish FAILURE events to the queue (for immediate error notification)
+    - Send success pubkey via `externalFinishChan` so `WaitForFinish()` returns
+    - Always send to `externalFinishChan` (even empty string for errors) to prevent blocking
+
+11. **Dual keygen architecture**: The `handleKeyGenEventCGGMP21` function runs both ECDSA (CGGMP21) and EdDSA (FROST) keygen protocols in parallel via goroutines with WaitGroup. Both sessions must complete before the handler publishes the combined result containing both public keys.
+
+### FROST Signing Issues (Debugged Jan 2026)
+
+12. **FROST config serialization (CRITICAL)**: `frost.TaprootConfig` contains crypto types (`*curve.Secp256k1Scalar`, `*curve.Secp256k1Point`) that **do NOT have JSON marshalers**. Using `json.Marshal()` corrupts the key shares. **MUST use CBOR serialization** via `MarshalFROSTConfig()` and `UnmarshalFROSTConfig()` in `frost_config_marshal.go`.
+
+13. **FROST signing result type**: The FROST Taproot signing protocol returns `taproot.Signature` (which is `[]byte` of 64 bytes), NOT `*frost.Signature`. The `signing_session_frost.go` handles this correctly with: `s.signature = result.(taproot.Signature)`.
+
+14. **BIP-340/Taproot signature format**: FROST signing produces BIP-340 compatible signatures (64 bytes: R_x || s). The `taproot.Signature` type is already in this format, so no additional conversion is needed in `publishResult()`.
+
+### LSS Protocol Issues (Fixed Jan 2026)
+
+15. **LSS config serialization (CRITICAL - FIXED)**: Similar to FROST, `lssConfig.Config` contains crypto types (`curve.Scalar`, `curve.Point`) that **do NOT have JSON marshalers**. Fixed by implementing `MarshalLSSConfig()` and `UnmarshalLSSConfig()` in `lss_config_marshal.go` using CBOR serialization.
+
+16. **LSS capabilities vs CGGMP21**: LSS supports dynamic resharing (change T-of-N without reconstructing keys), threshold changes, and adding/removing participants. CGGMP21 only supports refresh (same committee). Both produce valid ECDSA signatures.
+
+### Security Audit Findings (Jan 2026)
+
+17. **Message authentication**: Protocol messages between nodes are not signed. Ed25519 signing code exists but is disabled. Consider re-enabling for production deployments.
+
+18. **Deduplication map cleanup**: The `processing` map used for deduplication grows unbounded. Recommend adding TTL-based cleanup for long-running sessions.
+
+19. **Protocol timeouts**: No timeout enforcement on protocol handlers. Recommend adding context with timeout to prevent indefinite hangs from stalling parties.
+
+## 🌐 Blockchain Support
+
+| Blockchain | Support | Curve | Protocol |
+|------------|---------|-------|----------|
+| Bitcoin (Legacy/SegWit) | ✅ Full | secp256k1 | CGGMP21/LSS |
+| Bitcoin (Taproot) | ✅ Full | secp256k1 | FROST |
+| Ethereum/EVM | ✅ Full | secp256k1 | CGGMP21/LSS |
+| XRPL (XRP Ledger) | ✅ Full | secp256k1 | CGGMP21/LSS |
+| Lux Network | ✅ Full | secp256k1 | CGGMP21/LSS |
+| Solana | ⚠️ Partial | Ed25519 | FROST (Taproot mode) |
+| TON | ⚠️ Partial | Ed25519 | FROST (Taproot mode) |
+
+**Note**: Solana/TON use Ed25519 natively but our FROST implementation produces Taproot/BIP-340 signatures. Native Ed25519 support requires implementing the Ed25519 FROST variant.
 
 ## 🎯 Best Practices
 
@@ -197,8 +288,6 @@ event_initiator_pubkey: "hex-encoded-pubkey"
 4. **Rotate keys** periodically using reshare functionality
 5. **Use Age encryption** for production identities
 6. **Keep logs** for debugging MPC rounds
-
-This guide is continuously updated. Check git history for recent changes.
 
 ## Context for All AI Assistants
 
