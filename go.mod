@@ -37,6 +37,7 @@ require (
 	github.com/agl/ed25519 v0.0.0-20200225211852-fd4d107ace12 // indirect
 	github.com/armon/go-metrics v0.4.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
+	github.com/boombuler/barcode v1.0.1-0.20190219062509-6c824513bacc // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cloudflare/circl v1.6.3 // indirect
 	github.com/cronokirby/saferith v0.33.0 // indirect
@@ -82,6 +83,7 @@ require (
 	github.com/philhofer/fwd v1.2.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
+	github.com/pquerna/otp v1.5.0 // indirect
 	github.com/prometheus/client_golang v1.23.2 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.67.5 // indirect

@@ -4,7 +4,7 @@ import { useState, type FormEvent } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { api, APIError } from '@/lib/api'
-import { setTokens } from '@/lib/auth'
+import { setTokens, setUserEmail } from '@/lib/auth'
 
 export default function RegisterPage() {
   const router = useRouter()
@@ -22,6 +22,7 @@ export default function RegisterPage() {
     try {
       const data = await api.register({ org_name: orgName, email, password })
       setTokens(data.access_token, data.refresh_token)
+      setUserEmail(email)
       router.push('/')
     } catch (err) {
       setError(err instanceof APIError ? err.message : 'Registration failed')
