@@ -29,6 +29,10 @@ spec:
           env:
             - name: NEXT_PUBLIC_API_URL
               value: "https://mpc.lux.network/api/v1"
+            - name: NEXT_PUBLIC_IAM_URL
+              value: "https://lux.id"
+            - name: NEXT_PUBLIC_IAM_CLIENT_ID
+              value: "lux-mpc"
           livenessProbe:
             httpGet:
               path: /
