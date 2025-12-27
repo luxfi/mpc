@@ -17,7 +17,7 @@ var (
 // BadgerKVStore is an implementation of the KVStore interface using BadgerDB.
 type BadgerKVStore struct {
 	DB             *badger.DB
-	BackupExecutor *badgerBackupExecutor
+	BackupExecutor *BadgerBackupExecutor
 }
 
 type BadgerConfig struct {

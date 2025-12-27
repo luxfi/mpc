@@ -14,9 +14,9 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Build the binaries
-RUN go build -o mpcd ./cmd/mpcd
-RUN go build -o lux-mpc-cli ./cmd/lux-mpc-cli
+# Build the binaries (CGO_ENABLED=0 for static, GOFIPS140=off to avoid QEMU FIPS issue)
+RUN CGO_ENABLED=0 GOFIPS140=off go build -o mpcd ./cmd/mpcd
+RUN CGO_ENABLED=0 GOFIPS140=off go build -o lux-mpc-cli ./cmd/lux-mpc-cli
 
 # Runtime stage
 FROM alpine:latest

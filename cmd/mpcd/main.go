@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -20,6 +21,7 @@ import (
 	"github.com/urfave/cli/v3"
 	"golang.org/x/term"
 
+	"github.com/luxfi/mpc/pkg/backup"
 	"github.com/luxfi/mpc/pkg/config"
 	"github.com/luxfi/mpc/pkg/constant"
 	"github.com/luxfi/mpc/pkg/event"
@@ -36,7 +38,7 @@ import (
 )
 
 const (
-	Version                    = "0.3.1"
+	Version                    = "0.3.2"
 	DefaultBackupPeriodSeconds = 300 // (5 minutes)
 )
 
@@ -697,6 +699,92 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 		logger.Error("Failed to mark peer registry as ready", err)
 	}
 	logger.Info("[READY] Node is ready (consensus mode)", "nodeID", nodeID)
+
+	// Start HTTP API server
+	apiAddr := c.String("api")
+	if apiAddr != "" {
+		mux := http.NewServeMux()
+		mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+			ready := peerRegistry.ArePeersReady()
+			connected := factory.Transport().GetPeers()
+			status := "healthy"
+			httpCode := http.StatusOK
+			if !ready {
+				status = "degraded"
+				httpCode = http.StatusServiceUnavailable
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(httpCode)
+			resp := map[string]interface{}{
+				"status":         status,
+				"nodeID":         nodeID,
+				"mode":           "consensus",
+				"expectedPeers":  len(peerIDs),
+				"connectedPeers": connected,
+				"ready":          ready,
+				"threshold":      threshold,
+				"version":        Version,
+			}
+			json.NewEncoder(w).Encode(resp)
+		})
+		mux.HandleFunc("/keys", func(w http.ResponseWriter, r *http.Request) {
+			keys, err := factory.KeyInfoStore().ListKeys()
+			w.Header().Set("Content-Type", "application/json")
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+				return
+			}
+			json.NewEncoder(w).Encode(keys)
+		})
+		mux.HandleFunc("/backup", func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost {
+				w.WriteHeader(http.StatusMethodNotAllowed)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			if badgerKV, ok := factory.KVStore().(*kvstore.BadgerKVStore); ok && badgerKV.BackupExecutor != nil {
+				s3Cfg := backup.S3ConfigFromEnv(nodeID)
+				mgr, err := backup.NewManager(badgerKV.BackupExecutor, filepath.Join(dataDir, "backups"), nodeID, 0, s3Cfg)
+				if err != nil {
+					w.WriteHeader(http.StatusInternalServerError)
+					json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+					return
+				}
+				if err := mgr.RunBackup(); err != nil {
+					w.WriteHeader(http.StatusInternalServerError)
+					json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+					return
+				}
+				json.NewEncoder(w).Encode(map[string]string{"status": "backup completed"})
+			} else {
+				w.WriteHeader(http.StatusServiceUnavailable)
+				json.NewEncoder(w).Encode(map[string]string{"error": "backup not available"})
+			}
+		})
+		srv := &http.Server{Addr: apiAddr, Handler: mux}
+		go func() {
+			logger.Info("HTTP API server starting", "addr", apiAddr)
+			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				logger.Error("HTTP API server failed", err)
+			}
+		}()
+		defer srv.Close()
+	}
+
+	// Start periodic backup with optional S3 upload
+	backupDir := filepath.Join(dataDir, "backups")
+	if badgerKV, ok := factory.KVStore().(*kvstore.BadgerKVStore); ok && badgerKV.BackupExecutor != nil {
+		s3Cfg := backup.S3ConfigFromEnv(nodeID)
+		backupMgr, err := backup.NewManager(badgerKV.BackupExecutor, backupDir, nodeID, 5*time.Minute, s3Cfg)
+		if err != nil {
+			logger.Warn("Failed to create backup manager", "err", err)
+		} else {
+			backupMgr.Start()
+			defer backupMgr.Stop()
+			logger.Info("Backup manager started", "period", "5m", "s3", s3Cfg != nil)
+		}
+	}
 
 	// Wait for shutdown signal
 	sigChan := make(chan os.Signal, 1)
