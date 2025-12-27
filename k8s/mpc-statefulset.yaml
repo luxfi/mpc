@@ -57,6 +57,7 @@ spec:
       containers:
         - name: mpc-node
           image: ghcr.io/luxfi/mpc-api:latest
+          imagePullPolicy: Always
           command:
             - sh
             - -c
