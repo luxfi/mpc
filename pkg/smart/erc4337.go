@@ -94,11 +94,54 @@ func PredictAccountAddress(cfg AccountConfig) string {
 		abiUint256(salt),
 	)
 
-	// We cannot know the exact initCode without the factory's bytecode.
-	// Return a placeholder that signals "will be determined on-chain".
-	// Actual address is set after deployment by polling the factory's getAddress().
-	_ = innerSalt
-	return ""
+	// Decode factory address to raw bytes
+	factoryHex := strings.TrimPrefix(cfg.FactoryAddress, "0x")
+	factoryHex = strings.TrimPrefix(factoryHex, "0X")
+	factoryBytes, _ := hex.DecodeString(factoryHex)
+	if len(factoryBytes) < 20 {
+		pad := make([]byte, 20-len(factoryBytes))
+		factoryBytes = append(pad, factoryBytes...)
+	}
+	factoryBytes = factoryBytes[len(factoryBytes)-20:]
+
+	// Build the initCode for CREATE2 hash. For SimpleAccountFactory, the
+	// creation code corresponds to the ABI-encoded createAccount call
+	// (selector + owner + salt).
+	createCalldata := make([]byte, 0, 4+64)
+	createCalldata = append(createCalldata, abiSelector("createAccount(address,uint256)")...)
+	createCalldata = append(createCalldata, abiAddress(cfg.OwnerAddress)...)
+	createCalldata = append(createCalldata, abiUint256(salt)...)
+	initCodeHash := keccak256(createCalldata)
+
+	// CREATE2 address = keccak256(0xff ++ factory ++ salt32 ++ keccak256(initCode))[12:]
+	raw := make([]byte, 0, 85)
+	raw = append(raw, 0xff)
+	raw = append(raw, factoryBytes...)
+	raw = append(raw, innerSalt...)
+	raw = append(raw, initCodeHash...)
+
+	hash := keccak256(raw)
+	addr := hash[12:]
+	return "0x" + hex.EncodeToString(addr)
+}
+
+// PredictCreate2Address computes a raw CREATE2 address given explicit parameters.
+// This is the general-purpose CREATE2 formula:
+//
+//	address = keccak256(0xff ++ deployer ++ salt32 ++ keccak256(initCode))[12:]
+func PredictCreate2Address(deployer [20]byte, salt [32]byte, initCode []byte) [20]byte {
+	initCodeHash := keccak256(initCode)
+
+	raw := make([]byte, 0, 85)
+	raw = append(raw, 0xff)
+	raw = append(raw, deployer[:]...)
+	raw = append(raw, salt[:]...)
+	raw = append(raw, initCodeHash...)
+
+	hash := keccak256(raw)
+	var addr [20]byte
+	copy(addr[:], hash[12:])
+	return addr
 }
 
 // hexToBig converts a 0x-prefixed or plain hex string to *big.Int.

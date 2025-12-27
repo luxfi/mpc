@@ -33,6 +33,7 @@ import (
 	"github.com/luxfi/mpc/pkg/db"
 	"github.com/luxfi/mpc/pkg/event"
 	"github.com/luxfi/mpc/pkg/eventconsumer"
+	"github.com/luxfi/mpc/pkg/hsm"
 	"github.com/luxfi/mpc/pkg/identity"
 	"github.com/luxfi/mpc/pkg/infra"
 	"github.com/luxfi/mpc/pkg/keyinfo"
@@ -126,6 +127,18 @@ func main() {
 					&cli.StringFlag{
 						Name:  "jwt-secret",
 						Usage: "JWT signing secret for dashboard auth",
+					},
+					// HSM / password provider flags
+					&cli.StringFlag{
+						Name:    "hsm-provider",
+						Usage:   "Password provider type: aws|gcp|azure|env|file (default: env)",
+						Sources: cli.EnvVars("MPC_HSM_PROVIDER"),
+						Value:   "env",
+					},
+					&cli.StringFlag{
+						Name:    "hsm-key-id",
+						Usage:   "HSM key ARN/name/path for ZapDB password decryption",
+						Sources: cli.EnvVars("MPC_HSM_KEY_ID"),
 					},
 					// Legacy mode flags
 					&cli.BoolFlag{
@@ -669,14 +682,28 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 		}
 	}
 
-	// Get ZapDB password from environment or config
-	zapDBPassword := os.Getenv("LUX_MPC_PASSWORD")
-	if zapDBPassword == "" {
-		zapDBPassword = viper.GetString("zapdb_password") // legacy config key
+	// Get ZapDB password via HSM provider (supports AWS KMS, GCP Cloud KMS, Azure Key Vault, env, file)
+	hsmProviderType := c.String("hsm-provider")
+	hsmKeyID := c.String("hsm-key-id")
+
+	provider, err := hsm.NewPasswordProvider(hsmProviderType, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create HSM password provider (%s): %w", hsmProviderType, err)
 	}
-	if zapDBPassword == "" {
-		logger.Warn("No ZapDB password set, using default (NOT for production!)")
-		zapDBPassword = "dev-password-change-me"
+
+	zapDBPassword, err := provider.GetPassword(ctx, hsmKeyID)
+	if err != nil {
+		// Fall back to viper config for backward compatibility
+		zapDBPassword = viper.GetString("zapdb_password")
+		if zapDBPassword == "" {
+			logger.Warn("No ZapDB password set via HSM provider or config, using default (NOT for production!)",
+				"provider", hsmProviderType, "error", err)
+			zapDBPassword = "dev-password-change-me"
+		} else {
+			logger.Info("ZapDB password loaded from config file (consider using HSM provider for production)")
+		}
+	} else {
+		logger.Info("ZapDB password loaded via HSM provider", "provider", hsmProviderType)
 	}
 
 	// Create transport factory (uses ZapDB for embedded key-share storage)
@@ -1483,8 +1510,19 @@ func runAPIOnly(ctx context.Context, c *cli.Command) error {
 
 	logger.Info("Database connected")
 
-	// Stub MPC backend that returns errors for MPC operations
-	mpcBackend := &stubMPCBackend{}
+	// Determine MPC backend: if cluster-url is provided, forward to the cluster;
+	// otherwise use a stub that returns descriptive errors.
+	clusterURL := c.String("cluster-url")
+	clusterAPIKey := c.String("cluster-api-key")
+
+	var mpcBackend mpcapi.MPCBackend
+	if clusterURL != "" {
+		mpcBackend = newAPIOnlyMPCBackend(clusterURL, clusterAPIKey)
+		logger.Info("API-only mode: forwarding MPC operations to cluster", "url", clusterURL)
+	} else {
+		mpcBackend = &stubMPCBackend{}
+		logger.Warn("API-only mode: no MPC_CLUSTER_URL set, MPC operations will fail")
+	}
 
 	apiServer := mpcapi.NewServer(database, mpcBackend, jwtSecret, listenAddr)
 	apiServer.StartScheduler(ctx)
@@ -1510,26 +1548,140 @@ func runAPIOnly(ctx context.Context, c *cli.Command) error {
 	return apiServer.Shutdown(shutdownCtx)
 }
 
-// stubMPCBackend returns errors for MPC operations when running in API-only mode.
+// stubMPCBackend returns errors for MPC operations when no cluster URL is configured.
 type stubMPCBackend struct{}
 
 func (s *stubMPCBackend) TriggerKeygen(walletID string) (*mpcapi.KeygenResult, error) {
-	return nil, fmt.Errorf("MPC operations not available in API-only mode")
+	return nil, fmt.Errorf("MPC operations not available: set MPC_CLUSTER_URL to enable forwarding")
 }
 
 func (s *stubMPCBackend) TriggerSign(walletID string, payload []byte) (*mpcapi.SignResult, error) {
-	return nil, fmt.Errorf("MPC operations not available in API-only mode")
+	return nil, fmt.Errorf("MPC operations not available: set MPC_CLUSTER_URL to enable forwarding")
 }
 
 func (s *stubMPCBackend) TriggerReshare(walletID string, newThreshold int, newParticipants []string) error {
-	return fmt.Errorf("MPC operations not available in API-only mode")
+	return fmt.Errorf("MPC operations not available: set MPC_CLUSTER_URL to enable forwarding")
 }
 
 func (s *stubMPCBackend) GetClusterStatus() *mpcapi.ClusterStatus {
 	return &mpcapi.ClusterStatus{
 		NodeID:  "api-only",
 		Mode:    "api-only",
-		Ready:   true,
+		Ready:   false,
 		Version: Version,
 	}
+}
+
+// apiOnlyMPCBackend forwards MPC operations to the actual MPC cluster via HTTP.
+type apiOnlyMPCBackend struct {
+	clusterURL string
+	apiKey     string
+	httpClient *http.Client
+}
+
+func newAPIOnlyMPCBackend(clusterURL, apiKey string) *apiOnlyMPCBackend {
+	// Strip trailing slash from cluster URL
+	clusterURL = strings.TrimRight(clusterURL, "/")
+	return &apiOnlyMPCBackend{
+		clusterURL: clusterURL,
+		apiKey:     apiKey,
+		httpClient: &http.Client{
+			Timeout: 120 * time.Second, // MPC keygen can take ~30s; allow generous timeout
+		},
+	}
+}
+
+// doRequest sends an HTTP request to the MPC cluster and decodes the JSON response.
+func (a *apiOnlyMPCBackend) doRequest(method, path string, reqBody interface{}, respBody interface{}) error {
+	var bodyReader *strings.Reader
+	if reqBody != nil {
+		data, err := json.Marshal(reqBody)
+		if err != nil {
+			return fmt.Errorf("failed to marshal request: %w", err)
+		}
+		bodyReader = strings.NewReader(string(data))
+	} else {
+		bodyReader = strings.NewReader("")
+	}
+
+	url := a.clusterURL + path
+	req, err := http.NewRequest(method, url, bodyReader)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if a.apiKey != "" {
+		req.Header.Set("X-API-Key", a.apiKey)
+	}
+
+	resp, err := a.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("cluster request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		var errBody struct {
+			Error string `json:"error"`
+		}
+		_ = json.NewDecoder(resp.Body).Decode(&errBody)
+		if errBody.Error != "" {
+			return fmt.Errorf("cluster returned %d: %s", resp.StatusCode, errBody.Error)
+		}
+		return fmt.Errorf("cluster returned status %d", resp.StatusCode)
+	}
+
+	if respBody != nil {
+		if err := json.NewDecoder(resp.Body).Decode(respBody); err != nil {
+			return fmt.Errorf("failed to decode cluster response: %w", err)
+		}
+	}
+	return nil
+}
+
+func (a *apiOnlyMPCBackend) TriggerKeygen(walletID string) (*mpcapi.KeygenResult, error) {
+	reqBody := map[string]string{"wallet_id": walletID}
+	var result mpcapi.KeygenResult
+	if err := a.doRequest("POST", "/api/v1/keygen", reqBody, &result); err != nil {
+		return nil, fmt.Errorf("keygen forwarding failed: %w", err)
+	}
+	return &result, nil
+}
+
+func (a *apiOnlyMPCBackend) TriggerSign(walletID string, payload []byte) (*mpcapi.SignResult, error) {
+	reqBody := map[string]interface{}{
+		"wallet_id": walletID,
+		"payload":   hex.EncodeToString(payload),
+	}
+	var result mpcapi.SignResult
+	if err := a.doRequest("POST", "/api/v1/sign", reqBody, &result); err != nil {
+		return nil, fmt.Errorf("sign forwarding failed: %w", err)
+	}
+	return &result, nil
+}
+
+func (a *apiOnlyMPCBackend) TriggerReshare(walletID string, newThreshold int, newParticipants []string) error {
+	reqBody := map[string]interface{}{
+		"wallet_id":        walletID,
+		"new_threshold":    newThreshold,
+		"new_participants": newParticipants,
+	}
+	if err := a.doRequest("POST", "/api/v1/reshare", reqBody, nil); err != nil {
+		return fmt.Errorf("reshare forwarding failed: %w", err)
+	}
+	return nil
+}
+
+func (a *apiOnlyMPCBackend) GetClusterStatus() *mpcapi.ClusterStatus {
+	var status mpcapi.ClusterStatus
+	if err := a.doRequest("GET", "/api/v1/status", nil, &status); err != nil {
+		logger.Warn("Failed to get cluster status", "err", err, "url", a.clusterURL)
+		return &mpcapi.ClusterStatus{
+			NodeID:  "api-only",
+			Mode:    "api-only-proxy",
+			Ready:   false,
+			Version: Version,
+		}
+	}
+	return &status
 }
