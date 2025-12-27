@@ -45,12 +45,9 @@ spec:
                 secretKeyRef:
                   name: mpc-secrets
                   key: jwt-secret
-          # NOTE: /api/v1/status requires auth and returns 401 for unauthenticated
-          # requests. If the probe fails, add a public /healthz endpoint to the API
-          # or switch to tcpSocket probe.
           livenessProbe:
             httpGet:
-              path: /api/v1/status
+              path: /healthz
               port: 8081
             initialDelaySeconds: 15
             periodSeconds: 30
@@ -58,7 +55,7 @@ spec:
             failureThreshold: 3
           readinessProbe:
             httpGet:
-              path: /api/v1/status
+              path: /healthz
               port: 8081
             initialDelaySeconds: 10
             periodSeconds: 10
