@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/luxfi/zapdb/v4"
-
 	"github.com/luxfi/mpc/pkg/kvstore"
 	"github.com/luxfi/mpc/pkg/logger"
 )
@@ -14,68 +12,62 @@ import (
 func main() {
 	logger.Init("production", false)
 	nodeName := flag.String("name", "", "Provide node name")
+	password := flag.String("password", "", "ZapDB encryption password")
 	flag.Parse()
 	if *nodeName == "" {
 		logger.Fatal("Node name is required", nil)
 	}
+	if *password == "" {
+		logger.Fatal("ZapDB password is required", nil)
+	}
 
 	dbPath := fmt.Sprintf("./db/%s", *nodeName)
 
-	// Create BadgerConfig struct
 	config := kvstore.BadgerConfig{
 		NodeID:              *nodeName,
-		EncryptionKey:       []byte(""), // Empty key for migration
-		BackupEncryptionKey: []byte(""), // Empty key for migration
+		EncryptionKey:       []byte(*password),
+		BackupEncryptionKey: []byte(*password),
 		BackupDir:           "./backups",
 		DBPath:              dbPath,
 	}
 
-	badgerKv, err := kvstore.NewBadgerKVStore(config)
+	store, err := kvstore.NewBadgerKVStore(config)
 	if err != nil {
-		logger.Fatal("Failed to create badger kv store", err)
+		logger.Fatal("Failed to create zapdb store", err)
+	}
+	defer store.Close()
+
+	keys, err := store.Keys()
+	if err != nil {
+		logger.Fatal("Failed to get keys from zapdb store", err)
 	}
 
-	if err := badgerKv.DB.View(func(txn *badger.Txn) error {
-		opts := badger.DefaultIteratorOptions
-		opts.PrefetchSize = 10
-		it := txn.NewIterator(opts)
-		defer it.Close()
-
-		for it.Rewind(); it.Valid(); it.Next() {
-			item := it.Item()
-			key := item.Key()
-			var result []byte
-
-			if err := item.Value(func(val []byte) error {
-				result = append(result, val...)
-				return nil
-			}); err != nil {
-				return err
-			}
-
-			if !strings.HasPrefix(string(key), "eddsa:") {
-				if !strings.HasPrefix(string(key), "ecdsa:") {
-					if err := badgerKv.DB.Update(func(txn *badger.Txn) error {
-						if err := txn.Set([]byte(fmt.Sprintf("ecdsa:%s", key)), result); err != nil {
-							return err
-						}
-						return txn.Delete(key)
-					}); err != nil {
-						return err
-					}
-				}
-			}
+	migrated := 0
+	for _, key := range keys {
+		if strings.HasPrefix(key, "eddsa:") || strings.HasPrefix(key, "ecdsa:") {
+			continue
 		}
-		return nil
-	}); err != nil {
-		logger.Fatal("Failed to migrate keys", err)
+		value, err := store.Get(key)
+		if err != nil {
+			logger.Fatal(fmt.Sprintf("Failed to get key %q", key), err)
+		}
+		newKey := fmt.Sprintf("ecdsa:%s", key)
+		if err := store.Put(newKey, value); err != nil {
+			logger.Fatal(fmt.Sprintf("Failed to write migrated key %q", newKey), err)
+		}
+		if err := store.Delete(key); err != nil {
+			logger.Fatal(fmt.Sprintf("Failed to delete old key %q", key), err)
+		}
+		migrated++
+		fmt.Printf("migrated: %s → %s\n", key, newKey)
 	}
 
-	keys, err := badgerKv.Keys()
+	fmt.Printf("Migration complete. %d keys migrated.\n", migrated)
+
+	keys, err = store.Keys()
 	if err != nil {
-		logger.Fatal("Failed to get keys from badger kv store", err)
+		logger.Fatal("Failed to get keys", err)
 	}
-
 	for _, key := range keys {
 		fmt.Printf("key = %+v\n", key)
 	}

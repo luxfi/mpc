@@ -11,7 +11,7 @@ import (
 func (s *Server) handleListPolicies(w http.ResponseWriter, r *http.Request) {
 	orgID := getOrgID(r.Context())
 	policies, err := orm.TypedQuery[db.Policy](s.db.ORM).
-		Filter("orgId =", orgID).
+		Filter("orgId=", orgID).
 		Order("-priority").
 		GetAll(r.Context())
 	if err != nil {

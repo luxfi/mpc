@@ -3,8 +3,10 @@ package kvstore
 import (
 	"errors"
 
-	"github.com/luxfi/zapdb/v4"
-	"github.com/luxfi/zapdb/v4/options"
+	"github.com/luxfi/database"
+	"github.com/luxfi/database/encdb"
+	"github.com/luxfi/database/zapdb"
+	"github.com/luxfi/metric"
 
 	"github.com/luxfi/mpc/pkg/logger"
 )
@@ -14,9 +16,9 @@ var (
 	ErrBackupEncryptionKeyNotProvided = errors.New("backup encryption key not provided")
 )
 
-// BadgerKVStore is an implementation of the KVStore interface using BadgerDB.
+// BadgerKVStore is an implementation of the KVStore interface using ZapDB.
 type BadgerKVStore struct {
-	DB             *badger.DB
+	db             database.Database
 	BackupExecutor *BadgerBackupExecutor
 }
 
@@ -28,9 +30,8 @@ type BadgerConfig struct {
 	DBPath              string
 }
 
-// NewBadgerKVStore creates a new BadgerKVStore instance.
+// NewBadgerKVStore creates a new BadgerKVStore backed by ZapDB with encryption.
 func NewBadgerKVStore(config BadgerConfig) (*BadgerKVStore, error) {
-	// must ensure encryption key is provided
 	if len(config.EncryptionKey) == 0 {
 		return nil, ErrEncryptionKeyNotProvided
 	}
@@ -38,80 +39,60 @@ func NewBadgerKVStore(config BadgerConfig) (*BadgerKVStore, error) {
 		return nil, ErrBackupEncryptionKeyNotProvided
 	}
 
-	opts := badger.DefaultOptions(config.DBPath).
-		WithCompression(options.ZSTD).
-		WithEncryptionKey(config.EncryptionKey).
-		WithIndexCacheSize(128 << 20).
-		WithBlockCacheSize(256 << 20).
-		WithSyncWrites(true).
-		WithVerifyValueChecksum(true). // validate every value-log entry's checksum on read, surfacing corruption instead of masking it
-		WithCompactL0OnClose(true).    // compacts level-0 SSTables on shutdown, reducing startup work and avoiding stalls on open
-		WithLogger(newQuietBadgerLogger())
-
-	db, err := badger.Open(opts)
+	raw, err := zapdb.New(config.DBPath, nil, config.NodeID, metric.NewNoOpRegistry())
 	if err != nil {
 		return nil, err
 	}
 
-	logger.Info("Connected to BadgerDB successfully!", "path", config.DBPath)
+	enc, err := encdb.New(config.EncryptionKey, raw)
+	if err != nil {
+		raw.Close() //nolint:errcheck
+		return nil, err
+	}
+
+	logger.Info("Connected to ZapDB successfully!", "path", config.DBPath)
 
 	backupExecutor := NewBadgerBackupExecutor(
 		config.NodeID,
-		db,
+		enc,
 		config.BackupEncryptionKey,
 		config.BackupDir,
 	)
 
-	return &BadgerKVStore{DB: db, BackupExecutor: backupExecutor}, nil
+	return &BadgerKVStore{db: enc, BackupExecutor: backupExecutor}, nil
 }
 
-// Put stores a key-value pair in the BadgerDB.
+// Put stores a key-value pair in ZapDB.
 func (b *BadgerKVStore) Put(key string, value []byte) error {
-	return b.DB.Update(func(txn *badger.Txn) error {
-		return txn.Set([]byte(key), value)
-	})
+	return b.db.Put([]byte(key), value)
 }
 
-// Get retrieves the value associated with a key from BadgerDB.
+// Get retrieves the value associated with a key from ZapDB.
 func (b *BadgerKVStore) Get(key string) ([]byte, error) {
-	var result []byte
-	err := b.DB.View(func(txn *badger.Txn) error {
-		item, err := txn.Get([]byte(key))
-		if err == nil {
-			return item.Value(func(val []byte) error {
-				result = append([]byte{}, val...)
-				return nil
-			})
-		}
-		return err
-	})
-
-	return result, err
+	v, err := b.db.Get([]byte(key))
+	if errors.Is(err, database.ErrNotFound) {
+		return nil, err
+	}
+	return v, err
 }
 
 func (b *BadgerKVStore) Keys() ([]string, error) {
+	it := b.db.NewIterator()
+	defer it.Release()
+
 	var keys []string
-	err := b.DB.View(func(txn *badger.Txn) error {
-		opts := badger.DefaultIteratorOptions
-		opts.PrefetchValues = false
-		it := txn.NewIterator(opts)
-		defer it.Close()
-
-		for it.Rewind(); it.Valid(); it.Next() {
-			item := it.Item()
-			keys = append(keys, string(item.Key()))
-		}
-		return nil
-	})
-
-	return keys, err
+	for it.Next() {
+		keys = append(keys, string(it.Key()))
+	}
+	if err := it.Error(); err != nil {
+		return nil, err
+	}
+	return keys, nil
 }
 
-// Delete removes a key-value pair from BadgerDB.
+// Delete removes a key-value pair from ZapDB.
 func (b *BadgerKVStore) Delete(key string) error {
-	return b.DB.Update(func(txn *badger.Txn) error {
-		return txn.Delete([]byte(key))
-	})
+	return b.db.Delete([]byte(key))
 }
 
 func (b *BadgerKVStore) Backup() error {
@@ -121,7 +102,7 @@ func (b *BadgerKVStore) Backup() error {
 	return b.BackupExecutor.Execute()
 }
 
-// Close closes the BadgerDB.
+// Close closes the ZapDB.
 func (b *BadgerKVStore) Close() error {
-	return b.DB.Close()
+	return b.db.Close()
 }

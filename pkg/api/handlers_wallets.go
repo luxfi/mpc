@@ -13,8 +13,8 @@ func (s *Server) handleListWallets(w http.ResponseWriter, r *http.Request) {
 	vaultID := urlParam(r, "id")
 
 	wallets, err := orm.TypedQuery[db.Wallet](s.db.ORM).
-		Filter("vaultId =", vaultID).
-		Filter("orgId =", orgID).
+		Filter("vaultId=", vaultID).
+		Filter("orgId=", orgID).
 		Order("-createdAt").
 		GetAll(r.Context())
 	if err != nil {
@@ -165,8 +165,8 @@ func (s *Server) handleWalletHistory(w http.ResponseWriter, r *http.Request) {
 	walletID := urlParam(r, "id")
 
 	txs, err := orm.TypedQuery[db.Transaction](s.db.ORM).
-		Filter("walletId =", walletID).
-		Filter("orgId =", orgID).
+		Filter("walletId=", walletID).
+		Filter("orgId=", orgID).
 		Order("-createdAt").
 		Limit(100).
 		GetAll(r.Context())

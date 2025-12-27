@@ -10,7 +10,7 @@ import (
 func (s *Server) handleListAudit(w http.ResponseWriter, r *http.Request) {
 	orgID := getOrgID(r.Context())
 	entries, err := orm.TypedQuery[db.AuditEntry](s.db.ORM).
-		Filter("orgId =", orgID).
+		Filter("orgId=", orgID).
 		Order("-createdAt").
 		Limit(200).
 		GetAll(r.Context())

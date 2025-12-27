@@ -28,7 +28,7 @@ func (s *Server) StartScheduler(ctx context.Context) {
 func (s *Server) processDueSubscriptions(ctx context.Context) {
 	now := time.Now()
 	subs, err := orm.TypedQuery[db.Subscription](s.db.ORM).
-		Filter("status =", "active").
+		Filter("status=", "active").
 		Limit(50).
 		GetAll(ctx)
 	if err != nil {

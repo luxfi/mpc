@@ -16,8 +16,8 @@ import (
 
 func (s *Server) fireWebhook(ctx context.Context, orgID, event string, data interface{}) {
 	webhooks, err := orm.TypedQuery[db.Webhook](s.db.ORM).
-		Filter("orgId =", orgID).
-		Filter("enabled =", true).
+		Filter("orgId=", orgID).
+		Filter("enabled=", true).
 		GetAll(ctx)
 	if err != nil {
 		return
