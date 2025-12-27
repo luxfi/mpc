@@ -726,7 +726,7 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 		peerIDs,
 		pubSub,
 		factory.KVStore(),
-		NewConsensusKeyInfoStore(factory.KeyInfoStore()),
+		NewConsensusKeyInfoStore(factory.KeyInfoStore(), peerRegistry),
 		peerRegistry,
 		consensusIdentity,
 	)
@@ -1296,11 +1296,12 @@ func (r *ConsensusPeerRegistry) GetReadyPeersIncludeSelf() []string {
 
 // ConsensusKeyInfoStore adapts transport.KeyInfoStore to keyinfo.Store
 type ConsensusKeyInfoStore struct {
-	store *transport.KeyInfoStore
+	store        *transport.KeyInfoStore
+	peerRegistry *ConsensusPeerRegistry
 }
 
-func NewConsensusKeyInfoStore(store *transport.KeyInfoStore) *ConsensusKeyInfoStore {
-	return &ConsensusKeyInfoStore{store: store}
+func NewConsensusKeyInfoStore(store *transport.KeyInfoStore, peerRegistry *ConsensusPeerRegistry) *ConsensusKeyInfoStore {
+	return &ConsensusKeyInfoStore{store: store, peerRegistry: peerRegistry}
 }
 
 func (s *ConsensusKeyInfoStore) Get(walletID string) (*keyinfo.KeyInfo, error) {
@@ -1309,10 +1310,12 @@ func (s *ConsensusKeyInfoStore) Get(walletID string) (*keyinfo.KeyInfo, error) {
 		return nil, err
 	}
 	// Convert transport.KeyInfo to keyinfo.KeyInfo
-	// The keyinfo.KeyInfo has different fields (ParticipantPeerIDs, Threshold, Version)
+	// Populate ParticipantPeerIDs from peer registry (all ready peers including self)
+	participantPeerIDs := s.peerRegistry.GetReadyPeersIncludeSelf()
 	return &keyinfo.KeyInfo{
-		Threshold: info.Threshold,
-		Version:   1, // Default version
+		ParticipantPeerIDs: participantPeerIDs,
+		Threshold:          info.Threshold,
+		Version:            1, // Default version
 	}, nil
 }
 
