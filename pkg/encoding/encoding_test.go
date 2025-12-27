@@ -24,15 +24,21 @@ func TestEncodeS256PubKey(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotEmpty(t, encoded)
 
-	// The encoded key should contain both X and Y coordinates appended together
-	xBytes := pubKey.X.Bytes()
-	yBytes := pubKey.Y.Bytes()
-	expectedLength := len(xBytes) + len(yBytes)
-	assert.Equal(t, expectedLength, len(encoded))
+	// The encoded key should be exactly 64 bytes (32 bytes X + 32 bytes Y)
+	// regardless of the actual byte length of X and Y (fixed-size encoding)
+	assert.Equal(t, 64, len(encoded))
 
-	// Verify the encoded data contains the coordinates
-	assert.Equal(t, xBytes, encoded[:len(xBytes)])
-	assert.Equal(t, yBytes, encoded[len(xBytes):])
+	// Verify X is right-aligned in first 32 bytes
+	xBytes := pubKey.X.Bytes()
+	expectedX := make([]byte, 32)
+	copy(expectedX[32-len(xBytes):], xBytes)
+	assert.Equal(t, expectedX, encoded[:32])
+
+	// Verify Y is right-aligned in last 32 bytes
+	yBytes := pubKey.Y.Bytes()
+	expectedY := make([]byte, 32)
+	copy(expectedY[32-len(yBytes):], yBytes)
+	assert.Equal(t, expectedY, encoded[32:])
 }
 
 func TestEncodeS256PubKey_SpecificValues(t *testing.T) {
@@ -48,12 +54,18 @@ func TestEncodeS256PubKey_SpecificValues(t *testing.T) {
 	encoded, err := EncodeS256PubKey(pubKey)
 	require.NoError(t, err)
 
-	// Verify the encoding - should be X bytes followed by Y bytes
-	xBytes := x.Bytes()
-	yBytes := y.Bytes()
-	expected := append(xBytes, yBytes...)
+	// The encoding should be exactly 64 bytes with fixed-size padding
+	assert.Equal(t, 64, len(encoded))
 
-	assert.Equal(t, expected, encoded)
+	// X = 12345 = 0x3039, padded to 32 bytes (right-aligned)
+	expectedX := make([]byte, 32)
+	copy(expectedX[32-len(x.Bytes()):], x.Bytes())
+	assert.Equal(t, expectedX, encoded[:32])
+
+	// Y = 67890 = 0x10932, padded to 32 bytes (right-aligned)
+	expectedY := make([]byte, 32)
+	copy(expectedY[32-len(y.Bytes()):], y.Bytes())
+	assert.Equal(t, expectedY, encoded[32:])
 }
 
 func TestEncodeEDDSAPubKey(t *testing.T) {
@@ -163,6 +175,9 @@ func TestEncodeS256PubKey_ZeroCoordinates(t *testing.T) {
 	encoded, err := EncodeS256PubKey(pubKey)
 	require.NoError(t, err)
 
-	// Should still work, though the result will be a very short byte array
-	assert.NotNil(t, encoded)
+	// Should be exactly 64 bytes (all zeros for zero coordinates)
+	assert.Equal(t, 64, len(encoded))
+	// All bytes should be zero
+	expected := make([]byte, 64)
+	assert.Equal(t, expected, encoded)
 }

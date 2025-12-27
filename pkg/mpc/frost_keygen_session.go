@@ -392,7 +392,12 @@ func (s *frostKeygenSession) publishResult() {
 	} else {
 		s.logger.Warn().
 			Bool("configNil", s.config == nil).
-			Int("configPubKeyLen", func() int { if s.config != nil { return len(s.config.PublicKey) }; return -1 }()).
+			Int("configPubKeyLen", func() int {
+				if s.config != nil {
+					return len(s.config.PublicKey)
+				}
+				return -1
+			}()).
 			Msg("[FROST-PUBLISH] PublicKey is empty or config is nil!")
 	}
 
