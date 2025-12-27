@@ -58,6 +58,7 @@ jobs:
         uses: golangci/golangci-lint-action@v6
         with:
           version: latest
+          install-mode: goinstall
           args: --timeout=5m
 
   # Security vulnerability scanning
@@ -115,6 +116,7 @@ jobs:
       - name: Upload govulncheck results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v3
         if: always()
+        continue-on-error: true
         with:
           sarif_file: govulncheck-results.sarif
           category: govulncheck
@@ -130,6 +132,7 @@ jobs:
       - name: Upload gosec results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v3
         if: always()
+        continue-on-error: true
         with:
           sarif_file: gosec-results.sarif
           category: gosec
@@ -178,7 +181,7 @@ jobs:
 
       - name: Build for CodeQL
         run: |
-          go build -v ./cmd/lux-mpc
+          go build -v ./cmd/mpcd
           go build -v ./cmd/lux-mpc-cli
 
       - name: Perform CodeQL Analysis
@@ -219,7 +222,7 @@ jobs:
 
       - name: Build binaries
         run: |
-          go build -o lux-mpc ./cmd/lux-mpc
+          go build -o mpcd ./cmd/mpcd
           go build -o lux-mpc-cli ./cmd/lux-mpc-cli
 
       - name: Generate SBOM with anchore/sbom-action (SPDX-JSON)
@@ -307,8 +310,8 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-go-
 
-      - name: Build lux-mpc
-        run: go build -v ./cmd/lux-mpc
+      - name: Build mpcd
+        run: go build -v ./cmd/mpcd
 
       - name: Build lux-mpc-cli
         run: go build -v ./cmd/lux-mpc-cli
