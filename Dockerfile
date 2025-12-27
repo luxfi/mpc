@@ -1,50 +1,14 @@
-# Build stage
-FROM golang:1.25-alpine AS builder
-
+FROM golang:1.23-alpine AS builder
 RUN apk add --no-cache git make
-
-WORKDIR /build
-
-# Copy go mod files
+WORKDIR /src
 COPY go.mod go.sum ./
-
-# Download dependencies
 RUN go mod download
-
-# Copy source code
 COPY . .
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /mpcd ./cmd/mpcd/
 
-# Build the binaries (CGO_ENABLED=0 for static, GOFIPS140=off to avoid QEMU FIPS issue)
-RUN CGO_ENABLED=0 GOFIPS140=off go build -o mpcd ./cmd/mpcd
-RUN CGO_ENABLED=0 GOFIPS140=off go build -o lux-mpc-cli ./cmd/lux-mpc-cli
-
-# Runtime stage
-FROM alpine:latest
-
-RUN apk add --no-cache ca-certificates curl bash
-
-WORKDIR /app
-
-# Copy binaries from builder
-COPY --from=builder /build/mpcd /usr/local/bin/mpcd
-COPY --from=builder /build/lux-mpc-cli /usr/local/bin/lux-mpc-cli
-
-# Symlink for backward compatibility (StatefulSet runs /usr/local/bin/lux-mpc)
-RUN ln -s /usr/local/bin/mpcd /usr/local/bin/lux-mpc
-
-# Copy config templates
-COPY config.yaml.template /app/
-COPY peers.json /app/
-
-# Create data and log directories
-RUN mkdir -p /data/mpc /app/logs /app/identity
-
-# Expose ports
-EXPOSE 6000 8080 9090
-
-# Health check
-HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:8080/health || exit 1
-
-# Default command
-CMD ["mpcd", "start", "--config", "/app/config.yaml"]
+FROM alpine:3.20
+RUN apk add --no-cache ca-certificates
+COPY --from=builder /mpcd /usr/local/bin/mpcd
+COPY --from=builder /src/pkg/db/migrations /migrations
+EXPOSE 8081
+ENTRYPOINT ["mpcd"]

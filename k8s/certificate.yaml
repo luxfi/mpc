@@ -1,0 +1,15 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: mpc-lux-network-tls
+  namespace: lux-mpc
+  labels:
+    app.kubernetes.io/part-of: lux-mpc
+spec:
+  secretName: mpc-lux-network-tls
+  dnsNames:
+    - mpc.lux.network
+    - cloud.lux.network
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
