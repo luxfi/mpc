@@ -45,6 +45,8 @@ export default function WalletDetailPage() {
                 <p className="mt-1 text-sm text-muted-foreground">
                   <span className="font-mono">{wallet.key_type}</span>
                   {' -- '}
+                  <span className="capitalize">{wallet.protocol || 'cggmp21'}</span>
+                  {' -- '}
                   Threshold: {wallet.threshold} of {wallet.participants.length}
                 </p>
                 <div className="mt-2">

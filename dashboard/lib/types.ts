@@ -48,6 +48,7 @@ export interface Wallet {
   wallet_id: string
   name?: string | null
   key_type: string // secp256k1 | ed25519
+  protocol?: string // cggmp21 | frost | lss
   ecdsa_pubkey?: string | null
   eddsa_pubkey?: string | null
   eth_address?: string | null
@@ -278,6 +279,7 @@ export interface UpdateVaultRequest {
 export interface CreateWalletRequest {
   name?: string
   key_type?: string // secp256k1 | ed25519
+  protocol?: string // cggmp21 | frost | lss
 }
 
 export interface ReshareWalletRequest {
