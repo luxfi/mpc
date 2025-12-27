@@ -11,13 +11,21 @@ env:
 
 jobs:
   build-api:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, amd64]
     permissions:
       contents: read
       packages: write
     steps:
       - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
+
+      - name: Set up Go 1.26
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: false
+
+      - name: Vendor dependencies
+        run: GOWORK=off go mod vendor
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -51,13 +59,12 @@ jobs:
           cache-to: type=gha,mode=max,scope=api
 
   build-dashboard:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, amd64]
     permissions:
       contents: read
       packages: write
     steps:
       - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -91,31 +98,42 @@ jobs:
           cache-to: type=gha,mode=max,scope=dashboard
           build-args: |
             NEXT_PUBLIC_API_URL=https://mpc.lux.network/api/v1
+            NEXT_PUBLIC_IAM_URL=https://lux.id
+            NEXT_PUBLIC_IAM_CLIENT_ID=lux-mpc
 
   deploy:
     needs: [build-api, build-dashboard]
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, amd64]
     if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install doctl
-        uses: digitalocean/action-doctl@v2
-        with:
-          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
-
       - name: Configure kubectl
         run: doctl kubernetes cluster kubeconfig save hanzo-k8s
 
-      - name: Apply K8s manifests
+      - name: Apply namespace and secrets first
         run: |
           kubectl apply -f k8s/namespace.yaml
+          kubectl apply -f k8s/secrets.yaml
+
+      - name: Apply infrastructure
+        run: |
           kubectl apply -f k8s/certificate.yaml
           kubectl apply -f k8s/postgres.yaml
+          kubectl apply -f k8s/valkey.yaml
+
+      - name: Apply MPC nodes and API
+        run: |
           kubectl apply -f k8s/api-service.yaml
           kubectl apply -f k8s/mpc-statefulset.yaml
+
+      - name: Apply dashboard
+        run: |
           kubectl apply -f k8s/dashboard-service.yaml
           kubectl apply -f k8s/dashboard-deployment.yaml
+
+      - name: Apply ingress
+        run: |
           kubectl apply -f k8s/ingressroute.yaml
 
       - name: Restart deployments
@@ -125,5 +143,5 @@ jobs:
 
       - name: Wait for rollout
         run: |
-          kubectl rollout status statefulset/mpc-node -n lux-mpc --timeout=180s
-          kubectl rollout status deployment/mpc-dashboard -n lux-mpc --timeout=120s
+          kubectl rollout status statefulset/mpc-node -n lux-mpc --timeout=300s
+          kubectl rollout status deployment/mpc-dashboard -n lux-mpc --timeout=180s

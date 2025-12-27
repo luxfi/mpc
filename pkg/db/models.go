@@ -2,192 +2,220 @@ package db
 
 import (
 	"time"
+
+	"github.com/hanzoai/orm"
 )
 
+// Organization represents a tenant organization.
 type Organization struct {
-	ID        string    `json:"id" db:"id"`
-	Name      string    `json:"name" db:"name"`
-	Slug      string    `json:"slug" db:"slug"`
-	CreatedAt time.Time `json:"created_at" db:"created_at"`
+	orm.Model[Organization]
+	Name string `json:"name"`
+	Slug string `json:"slug"`
 }
 
+func init() { orm.Register[Organization]("organization") }
+
+// User represents an authenticated user within an organization.
 type User struct {
-	ID           string    `json:"id" db:"id"`
-	OrgID        string    `json:"org_id" db:"org_id"`
-	Email        string    `json:"email" db:"email"`
-	PasswordHash string    `json:"-" db:"password_hash"`
-	Role         string    `json:"role" db:"role"`
-	MFASecret    *string   `json:"-" db:"mfa_secret"`
-	CreatedAt    time.Time `json:"created_at" db:"created_at"`
+	orm.Model[User]
+	OrgID        string  `json:"orgId"`
+	Email        string  `json:"email"`
+	PasswordHash string  `json:"passwordHash"`
+	Role         string  `json:"role"`
+	MFASecret    *string `json:"mfaSecret,omitempty"`
 }
 
+func init() { orm.Register[User]("user") }
+
+// APIKey represents an API key for programmatic access.
 type APIKey struct {
-	ID          string    `json:"id" db:"id"`
-	OrgID       string    `json:"org_id" db:"org_id"`
-	Name        string    `json:"name" db:"name"`
-	KeyHash     string    `json:"-" db:"key_hash"`
-	KeyPrefix   string    `json:"key_prefix" db:"key_prefix"`
-	Permissions []string  `json:"permissions" db:"permissions"`
-	CreatedAt   time.Time `json:"created_at" db:"created_at"`
-	ExpiresAt   *time.Time `json:"expires_at,omitempty" db:"expires_at"`
-	LastUsedAt  *time.Time `json:"last_used_at,omitempty" db:"last_used_at"`
+	orm.Model[APIKey]
+	OrgID       string     `json:"orgId"`
+	Name        string     `json:"name"`
+	KeyHash     string     `json:"keyHash"`
+	KeyPrefix   string     `json:"keyPrefix"`
+	Permissions []string   `json:"permissions"`
+	ExpiresAt   *time.Time `json:"expiresAt,omitempty"`
+	LastUsedAt  *time.Time `json:"lastUsedAt,omitempty"`
 }
 
+func init() { orm.Register[APIKey]("api-key") }
+
+// Vault is a logical grouping of wallets.
 type Vault struct {
-	ID          string    `json:"id" db:"id"`
-	OrgID       string    `json:"org_id" db:"org_id"`
-	Name        string    `json:"name" db:"name"`
-	Description *string   `json:"description,omitempty" db:"description"`
-	AppID       *string   `json:"app_id,omitempty" db:"app_id"`
-	CreatedAt   time.Time `json:"created_at" db:"created_at"`
+	orm.Model[Vault]
+	OrgID       string  `json:"orgId"`
+	Name        string  `json:"name"`
+	Description *string `json:"description,omitempty"`
+	AppID       *string `json:"appId,omitempty"`
 }
 
+func init() { orm.Register[Vault]("vault") }
+
+// Wallet holds an MPC key share group.
 type Wallet struct {
-	ID           string    `json:"id" db:"id"`
-	VaultID      string    `json:"vault_id" db:"vault_id"`
-	OrgID        string    `json:"org_id" db:"org_id"`
-	WalletID     string    `json:"wallet_id" db:"wallet_id"`
-	Name         *string   `json:"name,omitempty" db:"name"`
-	KeyType      string    `json:"key_type" db:"key_type"`
-	ECDSAPubkey  *string   `json:"ecdsa_pubkey,omitempty" db:"ecdsa_pubkey"`
-	EDDSAPubkey  *string   `json:"eddsa_pubkey,omitempty" db:"eddsa_pubkey"`
-	EthAddress   *string   `json:"eth_address,omitempty" db:"eth_address"`
-	BtcAddress   *string   `json:"btc_address,omitempty" db:"btc_address"`
-	SolAddress   *string   `json:"sol_address,omitempty" db:"sol_address"`
-	Threshold    int       `json:"threshold" db:"threshold"`
-	Participants []string  `json:"participants" db:"participants"`
-	Version      int       `json:"version" db:"version"`
-	Status       string    `json:"status" db:"status"`
-	CreatedBy    *string   `json:"created_by,omitempty" db:"created_by"`
-	CreatedAt    time.Time `json:"created_at" db:"created_at"`
+	orm.Model[Wallet]
+	VaultID      string   `json:"vaultId"`
+	OrgID        string   `json:"orgId"`
+	WalletID     string   `json:"walletId"`
+	Name         *string  `json:"name,omitempty"`
+	KeyType      string   `json:"keyType"`
+	ECDSAPubkey  *string  `json:"ecdsaPubkey,omitempty"`
+	EDDSAPubkey  *string  `json:"eddsaPubkey,omitempty"`
+	EthAddress   *string  `json:"ethAddress,omitempty"`
+	BtcAddress   *string  `json:"btcAddress,omitempty"`
+	SolAddress   *string  `json:"solAddress,omitempty"`
+	Threshold    int      `json:"threshold"`
+	Participants []string `json:"participants"`
+	Version      int      `json:"version"`
+	Status       string   `json:"status"`
+	CreatedBy    *string  `json:"createdBy,omitempty"`
 }
 
+func init() { orm.Register[Wallet]("wallet") }
+
+// Transaction is a blockchain transaction record.
 type Transaction struct {
-	ID              string     `json:"id" db:"id"`
-	OrgID           string     `json:"org_id" db:"org_id"`
-	WalletID        *string    `json:"wallet_id,omitempty" db:"wallet_id"`
-	TxType          string     `json:"tx_type" db:"tx_type"`
-	Chain           string     `json:"chain" db:"chain"`
-	ToAddress       *string    `json:"to_address,omitempty" db:"to_address"`
-	Amount          *string    `json:"amount,omitempty" db:"amount"`
-	Token           *string    `json:"token,omitempty" db:"token"`
-	TxHash          *string    `json:"tx_hash,omitempty" db:"tx_hash"`
-	RawTx           []byte     `json:"-" db:"raw_tx"`
-	SignatureR      *string    `json:"signature_r,omitempty" db:"signature_r"`
-	SignatureS      *string    `json:"signature_s,omitempty" db:"signature_s"`
-	SignatureEdDSA  *string    `json:"signature_eddsa,omitempty" db:"signature_eddsa"`
-	Status          string     `json:"status" db:"status"`
-	InitiatedBy     *string    `json:"initiated_by,omitempty" db:"initiated_by"`
-	ApprovedBy      []string   `json:"approved_by,omitempty" db:"approved_by"`
-	RejectedBy      *string    `json:"rejected_by,omitempty" db:"rejected_by"`
-	RejectionReason *string    `json:"rejection_reason,omitempty" db:"rejection_reason"`
-	CreatedAt       time.Time  `json:"created_at" db:"created_at"`
-	SignedAt        *time.Time `json:"signed_at,omitempty" db:"signed_at"`
-	BroadcastAt     *time.Time `json:"broadcast_at,omitempty" db:"broadcast_at"`
+	orm.Model[Transaction]
+	OrgID           string     `json:"orgId"`
+	WalletID        *string    `json:"walletId,omitempty"`
+	TxType          string     `json:"txType"`
+	Chain           string     `json:"chain"`
+	ToAddress       *string    `json:"toAddress,omitempty"`
+	Amount          *string    `json:"amount,omitempty"`
+	Token           *string    `json:"token,omitempty"`
+	TxHash          *string    `json:"txHash,omitempty"`
+	RawTx           []byte     `json:"rawTx,omitempty"`
+	SignatureR      *string    `json:"signatureR,omitempty"`
+	SignatureS      *string    `json:"signatureS,omitempty"`
+	SignatureEdDSA  *string    `json:"signatureEdDSA,omitempty"`
+	Status          string     `json:"status"`
+	InitiatedBy     *string    `json:"initiatedBy,omitempty"`
+	ApprovedBy      []string   `json:"approvedBy,omitempty"`
+	RejectedBy      *string    `json:"rejectedBy,omitempty"`
+	RejectionReason *string    `json:"rejectionReason,omitempty"`
+	SignedAt        *time.Time `json:"signedAt,omitempty"`
+	BroadcastAt     *time.Time `json:"broadcastAt,omitempty"`
 }
 
+func init() { orm.Register[Transaction]("transaction") }
+
+// Policy is a signing policy rule.
 type Policy struct {
-	ID                string    `json:"id" db:"id"`
-	OrgID             string    `json:"org_id" db:"org_id"`
-	VaultID           *string   `json:"vault_id,omitempty" db:"vault_id"`
-	Name              string    `json:"name" db:"name"`
-	Priority          int       `json:"priority" db:"priority"`
-	Action            string    `json:"action" db:"action"`
-	Conditions        []byte    `json:"conditions" db:"conditions"`
-	RequiredApprovers int       `json:"required_approvers" db:"required_approvers"`
-	ApproverRoles     []string  `json:"approver_roles" db:"approver_roles"`
-	Enabled           bool      `json:"enabled" db:"enabled"`
-	CreatedAt         time.Time `json:"created_at" db:"created_at"`
+	orm.Model[Policy]
+	OrgID             string  `json:"orgId"`
+	VaultID           *string `json:"vaultId,omitempty"`
+	Name              string  `json:"name"`
+	Priority          int     `json:"priority"`
+	Action            string  `json:"action"`
+	Conditions        []byte  `json:"conditions"`
+	RequiredApprovers int     `json:"requiredApprovers"`
+	ApproverRoles     []string `json:"approverRoles"`
+	Enabled           bool    `json:"enabled"`
 }
 
+func init() { orm.Register[Policy]("policy") }
+
+// AddressWhitelist is an approved destination address.
 type AddressWhitelist struct {
-	ID        string    `json:"id" db:"id"`
-	OrgID     string    `json:"org_id" db:"org_id"`
-	VaultID   *string   `json:"vault_id,omitempty" db:"vault_id"`
-	Address   string    `json:"address" db:"address"`
-	Chain     string    `json:"chain" db:"chain"`
-	Label     *string   `json:"label,omitempty" db:"label"`
-	CreatedBy *string   `json:"created_by,omitempty" db:"created_by"`
-	CreatedAt time.Time `json:"created_at" db:"created_at"`
+	orm.Model[AddressWhitelist]
+	OrgID     string  `json:"orgId"`
+	VaultID   *string `json:"vaultId,omitempty"`
+	Address   string  `json:"address"`
+	Chain     string  `json:"chain"`
+	Label     *string `json:"label,omitempty"`
+	CreatedBy *string `json:"createdBy,omitempty"`
 }
 
+func init() { orm.Register[AddressWhitelist]("address-whitelist") }
+
+// AuditEntry is an immutable audit log record.
 type AuditEntry struct {
-	ID           int64     `json:"id" db:"id"`
-	OrgID        string    `json:"org_id" db:"org_id"`
-	UserID       *string   `json:"user_id,omitempty" db:"user_id"`
-	Action       string    `json:"action" db:"action"`
-	ResourceType *string   `json:"resource_type,omitempty" db:"resource_type"`
-	ResourceID   *string   `json:"resource_id,omitempty" db:"resource_id"`
-	Details      []byte    `json:"details,omitempty" db:"details"`
-	IPAddress    *string   `json:"ip_address,omitempty" db:"ip_address"`
-	CreatedAt    time.Time `json:"created_at" db:"created_at"`
+	orm.Model[AuditEntry]
+	OrgID        string  `json:"orgId"`
+	UserID       *string `json:"userId,omitempty"`
+	Action       string  `json:"action"`
+	ResourceType *string `json:"resourceType,omitempty"`
+	ResourceID   *string `json:"resourceId,omitempty"`
+	Details      []byte  `json:"details,omitempty"`
+	IPAddress    *string `json:"ipAddress,omitempty"`
 }
 
+func init() { orm.Register[AuditEntry]("audit-entry") }
+
+// Webhook is an outbound event delivery endpoint.
 type Webhook struct {
-	ID        string    `json:"id" db:"id"`
-	OrgID     string    `json:"org_id" db:"org_id"`
-	URL       string    `json:"url" db:"url"`
-	Secret    string    `json:"-" db:"secret"`
-	Events    []string  `json:"events" db:"events"`
-	Enabled   bool      `json:"enabled" db:"enabled"`
-	CreatedAt time.Time `json:"created_at" db:"created_at"`
+	orm.Model[Webhook]
+	OrgID   string   `json:"orgId"`
+	URL     string   `json:"url"`
+	Secret  string   `json:"secret"`
+	Events  []string `json:"events"`
+	Enabled bool     `json:"enabled"`
 }
 
+func init() { orm.Register[Webhook]("webhook") }
+
+// Subscription is a recurring payment schedule.
 type Subscription struct {
-	ID               string     `json:"id" db:"id"`
-	OrgID            string     `json:"org_id" db:"org_id"`
-	WalletID         *string    `json:"wallet_id,omitempty" db:"wallet_id"`
-	Name             string     `json:"name" db:"name"`
-	ProviderName     *string    `json:"provider_name,omitempty" db:"provider_name"`
-	RecipientAddress string     `json:"recipient_address" db:"recipient_address"`
-	Chain            string     `json:"chain" db:"chain"`
-	Token            *string    `json:"token,omitempty" db:"token"`
-	Amount           string     `json:"amount" db:"amount"`
-	Currency         string     `json:"currency" db:"currency"`
-	Interval         string     `json:"interval" db:"interval"`
-	NextPaymentAt    time.Time  `json:"next_payment_at" db:"next_payment_at"`
-	LastPaymentAt    *time.Time `json:"last_payment_at,omitempty" db:"last_payment_at"`
-	LastTxID         *string    `json:"last_tx_id,omitempty" db:"last_tx_id"`
-	Status           string     `json:"status" db:"status"`
-	MaxRetries       int        `json:"max_retries" db:"max_retries"`
-	RetryCount       int        `json:"retry_count" db:"retry_count"`
-	RequireBalance   bool       `json:"require_balance" db:"require_balance"`
-	CreatedBy        *string    `json:"created_by,omitempty" db:"created_by"`
-	CancelledBy      *string    `json:"cancelled_by,omitempty" db:"cancelled_by"`
-	CreatedAt        time.Time  `json:"created_at" db:"created_at"`
-	CancelledAt      *time.Time `json:"cancelled_at,omitempty" db:"cancelled_at"`
+	orm.Model[Subscription]
+	OrgID            string     `json:"orgId"`
+	WalletID         *string    `json:"walletId,omitempty"`
+	Name             string     `json:"name"`
+	ProviderName     *string    `json:"providerName,omitempty"`
+	RecipientAddress string     `json:"recipientAddress"`
+	Chain            string     `json:"chain"`
+	Token            *string    `json:"token,omitempty"`
+	Amount           string     `json:"amount"`
+	Currency         string     `json:"currency"`
+	Interval         string     `json:"interval"`
+	NextPaymentAt    time.Time  `json:"nextPaymentAt"`
+	LastPaymentAt    *time.Time `json:"lastPaymentAt,omitempty"`
+	LastTxID         *string    `json:"lastTxId,omitempty"`
+	Status           string     `json:"status"`
+	MaxRetries       int        `json:"maxRetries"`
+	RetryCount       int        `json:"retryCount"`
+	RequireBalance   bool       `json:"requireBalance"`
+	CreatedBy        *string    `json:"createdBy,omitempty"`
+	CancelledBy      *string    `json:"cancelledBy,omitempty"`
+	CancelledAt      *time.Time `json:"cancelledAt,omitempty"`
 }
 
+func init() { orm.Register[Subscription]("subscription") }
+
+// PaymentRequest is a one-time payment link.
 type PaymentRequest struct {
-	ID               string     `json:"id" db:"id"`
-	OrgID            string     `json:"org_id" db:"org_id"`
-	WalletID         *string    `json:"wallet_id,omitempty" db:"wallet_id"`
-	RequestToken     string     `json:"request_token" db:"request_token"`
-	MerchantName     *string    `json:"merchant_name,omitempty" db:"merchant_name"`
-	RecipientAddress string     `json:"recipient_address" db:"recipient_address"`
-	Chain            string     `json:"chain" db:"chain"`
-	Token            *string    `json:"token,omitempty" db:"token"`
-	Amount           string     `json:"amount" db:"amount"`
-	Memo             *string    `json:"memo,omitempty" db:"memo"`
-	Status           string     `json:"status" db:"status"`
-	ExpiresAt        *time.Time `json:"expires_at,omitempty" db:"expires_at"`
-	PaidTxID         *string    `json:"paid_tx_id,omitempty" db:"paid_tx_id"`
-	CreatedAt        time.Time  `json:"created_at" db:"created_at"`
+	orm.Model[PaymentRequest]
+	OrgID            string     `json:"orgId"`
+	WalletID         *string    `json:"walletId,omitempty"`
+	RequestToken     string     `json:"requestToken"`
+	MerchantName     *string    `json:"merchantName,omitempty"`
+	RecipientAddress string     `json:"recipientAddress"`
+	Chain            string     `json:"chain"`
+	Token            *string    `json:"token,omitempty"`
+	Amount           string     `json:"amount"`
+	Memo             *string    `json:"memo,omitempty"`
+	Status           string     `json:"status"`
+	ExpiresAt        *time.Time `json:"expiresAt,omitempty"`
+	PaidTxID         *string    `json:"paidTxId,omitempty"`
 }
 
+func init() { orm.Register[PaymentRequest]("payment-request") }
+
+// SmartWallet is an on-chain smart contract wallet (Safe/ERC-4337).
 type SmartWallet struct {
-	ID                string     `json:"id" db:"id"`
-	WalletID          string     `json:"wallet_id" db:"wallet_id"`
-	OrgID             string     `json:"org_id" db:"org_id"`
-	Chain             string     `json:"chain" db:"chain"`
-	ContractAddress   string     `json:"contract_address" db:"contract_address"`
-	WalletType        string     `json:"wallet_type" db:"wallet_type"`
-	FactoryAddress    *string    `json:"factory_address,omitempty" db:"factory_address"`
-	EntrypointAddress *string    `json:"entrypoint_address,omitempty" db:"entrypoint_address"`
-	Salt              *string    `json:"salt,omitempty" db:"salt"`
-	Owners            []string   `json:"owners" db:"owners"`
-	Threshold         int        `json:"threshold" db:"threshold"`
-	Status            string     `json:"status" db:"status"`
-	DeployedAt        *time.Time `json:"deployed_at,omitempty" db:"deployed_at"`
-	CreatedAt         time.Time  `json:"created_at" db:"created_at"`
+	orm.Model[SmartWallet]
+	WalletID          string     `json:"walletId"`
+	OrgID             string     `json:"orgId"`
+	Chain             string     `json:"chain"`
+	ContractAddress   string     `json:"contractAddress"`
+	WalletType        string     `json:"walletType"`
+	FactoryAddress    *string    `json:"factoryAddress,omitempty"`
+	EntrypointAddress *string    `json:"entrypointAddress,omitempty"`
+	Salt              *string    `json:"salt,omitempty"`
+	Owners            []string   `json:"owners"`
+	Threshold         int        `json:"threshold"`
+	Status            string     `json:"status"`
+	DeployedAt        *time.Time `json:"deployedAt,omitempty"`
 }
+
+func init() { orm.Register[SmartWallet]("smart-wallet") }

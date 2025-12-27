@@ -1,0 +1,76 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mpc-valkey
+  namespace: lux-mpc
+  labels:
+    app: mpc-valkey
+    app.kubernetes.io/part-of: lux-mpc
+spec:
+  type: ClusterIP
+  ports:
+    - port: 6379
+      targetPort: 6379
+      protocol: TCP
+      name: valkey
+  selector:
+    app: mpc-valkey
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mpc-valkey
+  namespace: lux-mpc
+  labels:
+    app: mpc-valkey
+    app.kubernetes.io/part-of: lux-mpc
+spec:
+  serviceName: mpc-valkey
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mpc-valkey
+  template:
+    metadata:
+      labels:
+        app: mpc-valkey
+        app.kubernetes.io/part-of: lux-mpc
+    spec:
+      containers:
+        - name: valkey
+          image: valkey/valkey:8-alpine
+          ports:
+            - containerPort: 6379
+              name: valkey
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          readinessProbe:
+            exec:
+              command: ["valkey-cli", "ping"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command: ["valkey-cli", "ping"]
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          volumeMounts:
+            - name: valkey-data
+              mountPath: /data
+  volumeClaimTemplates:
+    - metadata:
+        name: valkey-data
+        labels:
+          app: mpc-valkey
+          app.kubernetes.io/part-of: lux-mpc
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 2Gi
