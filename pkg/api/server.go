@@ -88,9 +88,10 @@ func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, l
 		// Public payment page
 		r.Get("/pay/{token}", s.handlePublicPay)
 
-		// Bridge signing endpoints (API key or JWT auth)
+		// Bridge signing endpoints (API key or JWT auth; API key needs "sign" permission)
 		r.Group(func(r chi.Router) {
 			r.Use(s.authMiddleware)
+			r.Use(requirePermission("sign"))
 			r.Post("/generate_mpc_sig", s.handleBridgeSign)
 			r.Post("/complete", s.handleBridgeComplete)
 		})
@@ -100,87 +101,126 @@ func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, l
 			r.Use(s.authMiddleware)
 			r.Use(s.auditMiddleware)
 
-			// MFA
+			// MFA (any authenticated user)
 			r.Post("/auth/mfa/setup", s.handleMFASetup)
 			r.Post("/auth/mfa/verify", s.handleMFAVerify)
 
-			// Users & Teams
-			r.Get("/users", s.handleListUsers)
-			r.Post("/users", s.handleInviteUser)
-			r.Patch("/users/{id}", s.handleUpdateUser)
-			r.Delete("/users/{id}", s.handleDeleteUser)
+			// Users & Teams — owner/admin only
+			r.Group(func(r chi.Router) {
+				r.Use(requireRole("owner", "admin"))
+				r.Get("/users", s.handleListUsers)
+				r.Post("/users", s.handleInviteUser)
+				r.Patch("/users/{id}", s.handleUpdateUser)
+				r.Delete("/users/{id}", s.handleDeleteUser)
+			})
 
-			// API Keys
-			r.Get("/api-keys", s.handleListAPIKeys)
-			r.Post("/api-keys", s.handleCreateAPIKey)
-			r.Delete("/api-keys/{id}", s.handleDeleteAPIKey)
+			// API Keys — owner/admin only
+			r.Group(func(r chi.Router) {
+				r.Use(requireRole("owner", "admin"))
+				r.Get("/api-keys", s.handleListAPIKeys)
+				r.Post("/api-keys", s.handleCreateAPIKey)
+				r.Delete("/api-keys/{id}", s.handleDeleteAPIKey)
+			})
 
-			// Vaults
+			// Vaults — all authenticated; mutations require admin+
 			r.Get("/vaults", s.handleListVaults)
-			r.Post("/vaults", s.handleCreateVault)
 			r.Get("/vaults/{id}", s.handleGetVault)
-			r.Patch("/vaults/{id}", s.handleUpdateVault)
-			r.Delete("/vaults/{id}", s.handleDeleteVault)
+			r.Group(func(r chi.Router) {
+				r.Use(requireRole("owner", "admin"))
+				r.Post("/vaults", s.handleCreateVault)
+				r.Patch("/vaults/{id}", s.handleUpdateVault)
+				r.Delete("/vaults/{id}", s.handleDeleteVault)
+			})
 
-			// Wallets
+			// Wallets — keygen/reshare require admin+; sign requires signer+
 			r.Get("/vaults/{id}/wallets", s.handleListWallets)
-			r.Post("/vaults/{id}/wallets", s.handleCreateWallet)
 			r.Get("/wallets/{id}", s.handleGetWallet)
 			r.Get("/wallets/{id}/addresses", s.handleGetWalletAddresses)
-			r.Post("/wallets/{id}/reshare", s.handleReshareWallet)
 			r.Get("/wallets/{id}/history", s.handleWalletHistory)
+			r.Group(func(r chi.Router) {
+				r.Use(requireRole("owner", "admin"))
+				r.Post("/vaults/{id}/wallets", s.handleCreateWallet)
+				r.Post("/wallets/{id}/reshare", s.handleReshareWallet)
+			})
 
-			// Transactions
-			r.Post("/transactions", s.handleCreateTransaction)
+			// Transactions — signers+ can create/approve; viewers can read
 			r.Get("/transactions", s.handleListTransactions)
 			r.Get("/transactions/{id}", s.handleGetTransaction)
-			r.Post("/transactions/{id}/approve", s.handleApproveTransaction)
-			r.Post("/transactions/{id}/reject", s.handleRejectTransaction)
+			r.Group(func(r chi.Router) {
+				r.Use(requireRole("owner", "admin", "signer", "api"))
+				r.Post("/transactions", s.handleCreateTransaction)
+				r.Post("/transactions/{id}/approve", s.handleApproveTransaction)
+				r.Post("/transactions/{id}/reject", s.handleRejectTransaction)
+			})
 
-			// Policies
-			r.Get("/policies", s.handleListPolicies)
-			r.Post("/policies", s.handleCreatePolicy)
-			r.Patch("/policies/{id}", s.handleUpdatePolicy)
-			r.Delete("/policies/{id}", s.handleDeletePolicy)
+			// Policies — owner/admin only
+			r.Group(func(r chi.Router) {
+				r.Use(requireRole("owner", "admin"))
+				r.Get("/policies", s.handleListPolicies)
+				r.Post("/policies", s.handleCreatePolicy)
+				r.Patch("/policies/{id}", s.handleUpdatePolicy)
+				r.Delete("/policies/{id}", s.handleDeletePolicy)
+			})
 
-			// Whitelist
-			r.Get("/whitelist", s.handleListWhitelist)
-			r.Post("/whitelist", s.handleAddWhitelist)
-			r.Delete("/whitelist/{id}", s.handleDeleteWhitelist)
+			// Whitelist — owner/admin only
+			r.Group(func(r chi.Router) {
+				r.Use(requireRole("owner", "admin"))
+				r.Get("/whitelist", s.handleListWhitelist)
+				r.Post("/whitelist", s.handleAddWhitelist)
+				r.Delete("/whitelist/{id}", s.handleDeleteWhitelist)
+			})
 
-			// Webhooks
-			r.Get("/webhooks", s.handleListWebhooks)
-			r.Post("/webhooks", s.handleCreateWebhook)
-			r.Patch("/webhooks/{id}", s.handleUpdateWebhook)
-			r.Delete("/webhooks/{id}", s.handleDeleteWebhook)
-			r.Post("/webhooks/{id}/test", s.handleTestWebhook)
+			// Webhooks — owner/admin only
+			r.Group(func(r chi.Router) {
+				r.Use(requireRole("owner", "admin"))
+				r.Get("/webhooks", s.handleListWebhooks)
+				r.Post("/webhooks", s.handleCreateWebhook)
+				r.Patch("/webhooks/{id}", s.handleUpdateWebhook)
+				r.Delete("/webhooks/{id}", s.handleDeleteWebhook)
+				r.Post("/webhooks/{id}/test", s.handleTestWebhook)
+			})
 
-			// Subscriptions
+			// Subscriptions — signer+ to create/pay; viewers can read
 			r.Get("/subscriptions", s.handleListSubscriptions)
-			r.Post("/subscriptions", s.handleCreateSubscription)
 			r.Get("/subscriptions/{id}", s.handleGetSubscription)
-			r.Patch("/subscriptions/{id}", s.handleUpdateSubscription)
-			r.Delete("/subscriptions/{id}", s.handleDeleteSubscription)
-			r.Post("/subscriptions/{id}/pay-now", s.handlePayNow)
+			r.Group(func(r chi.Router) {
+				r.Use(requireRole("owner", "admin", "signer", "api"))
+				r.Post("/subscriptions", s.handleCreateSubscription)
+				r.Patch("/subscriptions/{id}", s.handleUpdateSubscription)
+				r.Delete("/subscriptions/{id}", s.handleDeleteSubscription)
+				r.Post("/subscriptions/{id}/pay-now", s.handlePayNow)
+			})
 
-			// Payment Requests
-			r.Post("/payment-requests", s.handleCreatePaymentRequest)
+			// Payment Requests — signer+ to create/pay
 			r.Get("/payment-requests", s.handleListPaymentRequests)
 			r.Get("/payment-requests/{id}", s.handleGetPaymentRequest)
-			r.Post("/payment-requests/{id}/pay", s.handlePayPaymentRequest)
+			r.Group(func(r chi.Router) {
+				r.Use(requireRole("owner", "admin", "signer", "api"))
+				r.Post("/payment-requests", s.handleCreatePaymentRequest)
+				r.Post("/payment-requests/{id}/pay", s.handlePayPaymentRequest)
+			})
 
-			// Smart Wallets
-			r.Post("/wallets/{id}/smart-wallet", s.handleDeploySmartWallet)
+			// Smart Wallets — admin+ to deploy; signer+ to propose/execute
 			r.Get("/wallets/{id}/smart-wallets", s.handleListSmartWallets)
 			r.Get("/smart-wallets/{id}", s.handleGetSmartWallet)
-			r.Post("/smart-wallets/{id}/propose", s.handleProposeSafeTx)
-			r.Post("/smart-wallets/{id}/execute", s.handleExecuteSafeTx)
-			r.Post("/smart-wallets/{id}/user-operation", s.handleUserOperation)
+			r.Group(func(r chi.Router) {
+				r.Use(requireRole("owner", "admin"))
+				r.Post("/wallets/{id}/smart-wallet", s.handleDeploySmartWallet)
+			})
+			r.Group(func(r chi.Router) {
+				r.Use(requireRole("owner", "admin", "signer", "api"))
+				r.Post("/smart-wallets/{id}/propose", s.handleProposeSafeTx)
+				r.Post("/smart-wallets/{id}/execute", s.handleExecuteSafeTx)
+				r.Post("/smart-wallets/{id}/user-operation", s.handleUserOperation)
+			})
 
-			// Audit
-			r.Get("/audit", s.handleListAudit)
+			// Audit — owner/admin only
+			r.Group(func(r chi.Router) {
+				r.Use(requireRole("owner", "admin"))
+				r.Get("/audit", s.handleListAudit)
+			})
 
-			// Status
+			// Status — any authenticated (including API keys)
 			r.Get("/status", s.handleStatus)
 			r.Get("/info", s.handleInfo)
 		})

@@ -9,6 +9,19 @@ import (
 	"github.com/luxfi/mpc/pkg/db"
 )
 
+// userView is the safe API representation — never exposes passwordHash or mfaSecret.
+type userView struct {
+	ID        string `json:"id"`
+	CreatedAt any    `json:"createdAt"`
+	OrgID     string `json:"orgId"`
+	Email     string `json:"email"`
+	Role      string `json:"role"`
+}
+
+func safeUser(u *db.User) userView {
+	return userView{ID: u.Id(), CreatedAt: u.CreatedAt, OrgID: u.OrgID, Email: u.Email, Role: u.Role}
+}
+
 func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
 	orgID := getOrgID(r.Context())
 	users, err := orm.TypedQuery[db.User](s.db.ORM).
@@ -19,10 +32,11 @@ func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "database error")
 		return
 	}
-	if users == nil {
-		users = []*db.User{}
+	views := make([]userView, 0, len(users))
+	for _, u := range users {
+		views = append(views, safeUser(u))
 	}
-	writeJSON(w, http.StatusOK, users)
+	writeJSON(w, http.StatusOK, views)
 }
 
 func (s *Server) handleInviteUser(w http.ResponseWriter, r *http.Request) {
@@ -66,7 +80,7 @@ func (s *Server) handleInviteUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, user)
+	writeJSON(w, http.StatusCreated, safeUser(user))
 }
 
 func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
@@ -95,7 +109,7 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, user)
+	writeJSON(w, http.StatusOK, safeUser(user))
 }
 
 func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
@@ -121,6 +135,16 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 
 // API Key handlers
 
+type apiKeyView struct {
+	ID          string    `json:"id"`
+	Name        string    `json:"name"`
+	KeyPrefix   string    `json:"keyPrefix"`
+	Permissions []string  `json:"permissions"`
+	ExpiresAt   any       `json:"expiresAt,omitempty"`
+	LastUsedAt  any       `json:"lastUsedAt,omitempty"`
+	CreatedAt   any       `json:"createdAt"`
+}
+
 func (s *Server) handleListAPIKeys(w http.ResponseWriter, r *http.Request) {
 	orgID := getOrgID(r.Context())
 	keys, err := orm.TypedQuery[db.APIKey](s.db.ORM).
@@ -131,10 +155,15 @@ func (s *Server) handleListAPIKeys(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "database error")
 		return
 	}
-	if keys == nil {
-		keys = []*db.APIKey{}
+	views := make([]apiKeyView, 0, len(keys))
+	for _, k := range keys {
+		views = append(views, apiKeyView{
+			ID: k.Id(), Name: k.Name, KeyPrefix: k.KeyPrefix,
+			Permissions: k.Permissions, ExpiresAt: k.ExpiresAt,
+			LastUsedAt: k.LastUsedAt, CreatedAt: k.CreatedAt,
+		})
 	}
-	writeJSON(w, http.StatusOK, keys)
+	writeJSON(w, http.StatusOK, views)
 }
 
 func (s *Server) handleCreateAPIKey(w http.ResponseWriter, r *http.Request) {
