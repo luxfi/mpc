@@ -142,6 +142,7 @@ jobs:
       - name: Apply MPC nodes and API
         run: |
           kubectl apply -f k8s/api-service.yaml
+          kubectl apply -f k8s/api-deployment.yaml
           kubectl apply -f k8s/mpc-statefulset.yaml
 
       - name: Apply dashboard
@@ -162,4 +163,5 @@ jobs:
       - name: Wait for rollout
         run: |
           kubectl rollout status statefulset/mpc-node -n lux-mpc --timeout=300s
+          kubectl rollout status deployment/mpc-api -n lux-mpc --timeout=180s
           kubectl rollout status deployment/mpc-dashboard -n lux-mpc --timeout=180s

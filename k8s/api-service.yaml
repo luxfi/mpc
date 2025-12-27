@@ -14,5 +14,4 @@ spec:
       protocol: TCP
       name: api
   selector:
-    app: mpc-node
-    statefulset.kubernetes.io/pod-name: mpc-node-0
+    app: mpc-api
