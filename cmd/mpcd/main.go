@@ -1058,11 +1058,18 @@ func (b *ConsensusMPCBackend) TriggerSign(walletID string, payload []byte) (*mpc
 	defer unsub.Unsubscribe()
 
 	// Look up key type from key info store
-	keyType := types.KeyType("secp256k1") // default for ECDSA
+	keyType := types.KeyTypeSecp256k1 // default for ECDSA
 	if b.keyInfoStore != nil {
 		if info, err := b.keyInfoStore.Get(walletID); err == nil && info.KeyType != "" {
 			keyType = types.KeyType(info.KeyType)
 		}
+	}
+	// Normalize legacy key type names
+	switch keyType {
+	case "ecdsa", "ECDSA":
+		keyType = types.KeyTypeSecp256k1
+	case "eddsa", "EDDSA":
+		keyType = types.KeyTypeEd25519
 	}
 
 	msg := types.SignTxMessage{
