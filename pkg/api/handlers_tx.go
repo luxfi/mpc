@@ -140,7 +140,20 @@ func (s *Server) handleApproveTransaction(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Append approver
+	// Deduplicate: don't count the same approver twice
+	for _, id := range tx.ApprovedBy {
+		if id == userID {
+			writeError(w, http.StatusConflict, "already approved")
+			return
+		}
+	}
+
+	// Reject self-approval: initiator cannot be the sole approver
+	if tx.InitiatedBy != nil && *tx.InitiatedBy == userID && len(tx.ApprovedBy) == 0 {
+		writeError(w, http.StatusForbidden, "initiator cannot self-approve")
+		return
+	}
+
 	tx.ApprovedBy = append(tx.ApprovedBy, userID)
 	if err := tx.Update(); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to approve transaction")

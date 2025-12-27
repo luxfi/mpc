@@ -87,7 +87,7 @@ func generateAPIKeyToken() (string, string, error) {
 	return key, hex.EncodeToString(hash[:]), nil
 }
 
-func (s *Server) validateAPIKey(ctx context.Context, key string) (string, error) {
+func (s *Server) validateAPIKey(ctx context.Context, key string) (*db.APIKey, error) {
 	hash := sha256.Sum256([]byte(key))
 	keyHash := hex.EncodeToString(hash[:])
 	prefix := key
@@ -100,12 +100,12 @@ func (s *Server) validateAPIKey(ctx context.Context, key string) (string, error)
 		Filter("keyPrefix=", prefix).
 		First()
 	if err != nil {
-		return "", fmt.Errorf("invalid api key")
+		return nil, fmt.Errorf("invalid api key")
 	}
 
 	// Check expiry
 	if apiKey.ExpiresAt != nil && apiKey.ExpiresAt.Before(time.Now()) {
-		return "", fmt.Errorf("api key expired")
+		return nil, fmt.Errorf("api key expired")
 	}
 
 	// Update last used
@@ -113,5 +113,5 @@ func (s *Server) validateAPIKey(ctx context.Context, key string) (string, error)
 	apiKey.LastUsedAt = &now
 	apiKey.Update()
 
-	return apiKey.OrgID, nil
+	return apiKey, nil
 }
