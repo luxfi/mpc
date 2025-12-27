@@ -42,7 +42,8 @@ type BadgerBackupVersionInfo struct {
 	UpdatedAt string `json:"updated_at"` // RFC3339
 }
 
-type badgerBackupExecutor struct {
+// BadgerBackupExecutor handles encrypted BadgerDB backups
+type BadgerBackupExecutor struct {
 	NodeID              string
 	DB                  *badger.DB
 	BackupEncryptionKey []byte
@@ -55,14 +56,14 @@ func NewBadgerBackupExecutor(
 	db *badger.DB,
 	backupEncryptionKey []byte,
 	backupDir string,
-) *badgerBackupExecutor {
+) *BadgerBackupExecutor {
 	if backupDir == "" {
 		backupDir = defaultBackupDir
 	}
 	if err := os.MkdirAll(backupDir, 0700); err != nil {
 		panic(fmt.Errorf("failed to create backup directory: %w", err))
 	}
-	return &badgerBackupExecutor{
+	return &BadgerBackupExecutor{
 		NodeID:              nodeID,
 		DB:                  db,
 		BackupEncryptionKey: backupEncryptionKey,
@@ -70,7 +71,7 @@ func NewBadgerBackupExecutor(
 	}
 }
 
-func (b *badgerBackupExecutor) Execute() error {
+func (b *BadgerBackupExecutor) Execute() error {
 	info, err := b.LoadVersionInfo()
 	if err != nil {
 		return fmt.Errorf("failed to load version info: %w", err)
@@ -142,7 +143,7 @@ func (b *badgerBackupExecutor) Execute() error {
 	return nil
 }
 
-func (b *badgerBackupExecutor) SaveVersionInfo(counter, since uint64) error {
+func (b *BadgerBackupExecutor) SaveVersionInfo(counter, since uint64) error {
 	info := BadgerBackupVersionInfo{
 		Version:   counter,
 		Since:     since,
@@ -156,7 +157,7 @@ func (b *badgerBackupExecutor) SaveVersionInfo(counter, since uint64) error {
 	return os.WriteFile(versionFile, data, 0600)
 }
 
-func (b *badgerBackupExecutor) LoadVersionInfo() (BadgerBackupVersionInfo, error) {
+func (b *BadgerBackupExecutor) LoadVersionInfo() (BadgerBackupVersionInfo, error) {
 	var info BadgerBackupVersionInfo
 	versionFile := filepath.Join(b.BackupDir, "latest.version")
 	data, err := os.ReadFile(versionFile)
@@ -175,13 +176,13 @@ func (b *badgerBackupExecutor) LoadVersionInfo() (BadgerBackupVersionInfo, error
 	return info, err
 }
 
-func (b *badgerBackupExecutor) SortedEncryptedBackups() []string {
+func (b *BadgerBackupExecutor) SortedEncryptedBackups() []string {
 	files, _ := filepath.Glob(filepath.Join(b.BackupDir, "backup-*.enc"))
 	sort.Strings(files)
 	return files
 }
 
-func (b *badgerBackupExecutor) RestoreAllBackupsEncrypted(restorePath string, encryptionKey []byte) error {
+func (b *BadgerBackupExecutor) RestoreAllBackupsEncrypted(restorePath string, encryptionKey []byte) error {
 	err := os.MkdirAll(restorePath, 0700)
 	if err != nil {
 		return fmt.Errorf("failed to create restore directory: %w", err)
@@ -214,7 +215,7 @@ func (b *badgerBackupExecutor) RestoreAllBackupsEncrypted(restorePath string, en
 	return nil
 }
 
-func (b *badgerBackupExecutor) loadEncryptedBackup(db *badger.DB, path string) error {
+func (b *BadgerBackupExecutor) loadEncryptedBackup(db *badger.DB, path string) error {
 	f, err := os.Open(path)
 	if err != nil {
 		return err
