@@ -1215,11 +1215,12 @@ func loadOrGenerateIdentity(keysDir, nodeID string) (ed25519.PrivateKey, ed25519
 
 // ConsensusIdentityStore implements identity.Store for consensus mode
 type ConsensusIdentityStore struct {
-	nodeID     string
-	privateKey ed25519.PrivateKey
-	publicKey  ed25519.PublicKey
-	publicKeys map[string][]byte
-	mu         sync.RWMutex
+	nodeID          string
+	privateKey      ed25519.PrivateKey
+	publicKey       ed25519.PublicKey
+	initiatorPubKey ed25519.PublicKey
+	publicKeys      map[string][]byte
+	mu              sync.RWMutex
 }
 
 func NewConsensusIdentityStore(nodeID string, privKey ed25519.PrivateKey, pubKey ed25519.PublicKey) *ConsensusIdentityStore {
@@ -1230,6 +1231,17 @@ func NewConsensusIdentityStore(nodeID string, privKey ed25519.PrivateKey, pubKey
 		publicKeys: make(map[string][]byte),
 	}
 	s.publicKeys[nodeID] = pubKey
+
+	// Load the event initiator public key from viper config.
+	// This Ed25519 public key is used to verify that inbound event
+	// messages (keygen, signing, reshare) originated from the authorized
+	// initiator and have not been tampered with.
+	if initiatorHex := viper.GetString("event_initiator_pubkey"); initiatorHex != "" {
+		if decoded, err := hex.DecodeString(initiatorHex); err == nil && len(decoded) == ed25519.PublicKeySize {
+			s.initiatorPubKey = ed25519.PublicKey(decoded)
+		}
+	}
+
 	return s
 }
 
@@ -1243,8 +1255,26 @@ func (s *ConsensusIdentityStore) GetPublicKey(nodeID string) ([]byte, error) {
 }
 
 func (s *ConsensusIdentityStore) VerifyInitiatorMessage(msg types.InitiatorMessage) error {
-	// In consensus mode, verify using the message's embedded signature
-	// For now, accept all messages (TODO: implement proper verification)
+	if s.initiatorPubKey == nil {
+		return fmt.Errorf("no initiator public key configured; cannot verify message")
+	}
+
+	// Reconstruct the canonical payload that was signed (excludes the
+	// signature field itself).
+	raw, err := msg.Raw()
+	if err != nil {
+		return fmt.Errorf("failed to get raw message data: %w", err)
+	}
+
+	sig := msg.Sig()
+	if len(sig) == 0 {
+		return fmt.Errorf("message has no signature")
+	}
+
+	if !ed25519.Verify(s.initiatorPubKey, raw, sig) {
+		return fmt.Errorf("invalid Ed25519 signature from initiator")
+	}
+
 	return nil
 }
 
