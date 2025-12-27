@@ -1310,7 +1310,7 @@ func (s *ConsensusKeyInfoStore) Get(walletID string) (*keyinfo.KeyInfo, error) {
 }
 
 func (s *ConsensusKeyInfoStore) Save(walletID string, info *keyinfo.KeyInfo) error {
-	return s.store.RegisterKey(walletID, "ecdsa", info.Threshold, "", "", nil)
+	return s.store.RegisterKey(walletID, "secp256k1", info.Threshold, "", "", nil)
 }
 
 // ConsensusMessageQueue adapts transport for messaging.MessageQueue
