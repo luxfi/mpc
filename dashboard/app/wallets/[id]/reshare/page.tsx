@@ -1,16 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import { api, APIError } from '@/lib/api'
 import { ReshareWizard } from '@/components/wallets/reshare-wizard'
-
-interface WalletInfo {
-  id: string
-  name: string
-  threshold: number
-  participants: string[]
-  ecdsaPubkey: string
-}
+import type { Wallet } from '@/lib/types'
 
 type ReshareStatus = 'idle' | 'confirming' | 'running' | 'success' | 'error'
 
@@ -18,21 +12,30 @@ export default function ResharePage() {
   const params = useParams<{ id: string }>()
   const router = useRouter()
 
-  // TODO: fetch wallet info from API
-  const [wallet] = useState<WalletInfo>({
-    id: params.id,
-    name: 'Vault Wallet 1',
-    threshold: 2,
-    participants: ['node0', 'node1', 'node2'],
-    ecdsaPubkey: '0x04abc...def',
-  })
+  const [wallet, setWallet] = useState<Wallet | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [fetchError, setFetchError] = useState('')
 
-  const [newThreshold, setNewThreshold] = useState(wallet.threshold)
-  const [newParticipants, setNewParticipants] = useState(
-    wallet.participants.join('\n')
-  )
+  const [newThreshold, setNewThreshold] = useState(2)
+  const [newParticipants, setNewParticipants] = useState('')
   const [status, setStatus] = useState<ReshareStatus>('idle')
   const [error, setError] = useState('')
+
+  useEffect(() => {
+    async function fetchWallet() {
+      try {
+        const w = await api.getWallet(params.id)
+        setWallet(w)
+        setNewThreshold(w.threshold)
+        setNewParticipants(w.participants.join('\n'))
+      } catch (err) {
+        setFetchError(err instanceof APIError ? err.message : 'Failed to load wallet')
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchWallet()
+  }, [params.id])
 
   const participantList = newParticipants
     .split('\n')
@@ -47,13 +50,33 @@ export default function ResharePage() {
     setStatus('running')
     setError('')
     try {
-      // TODO: call MPC reshare API
-      await new Promise((resolve) => setTimeout(resolve, 3000))
+      await api.reshareWallet(params.id, {
+        new_threshold: newThreshold,
+        new_participants: participantList,
+      })
       setStatus('success')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Reshare failed')
+      setError(err instanceof APIError ? err.message : 'Reshare failed')
       setStatus('error')
     }
+  }
+
+  if (loading) {
+    return (
+      <div className="mx-auto max-w-2xl px-4 py-8">
+        <p className="text-sm text-muted-foreground">Loading wallet...</p>
+      </div>
+    )
+  }
+
+  if (fetchError || !wallet) {
+    return (
+      <div className="mx-auto max-w-2xl px-4 py-8">
+        <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
+          {fetchError || 'Wallet not found'}
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -64,7 +87,7 @@ export default function ResharePage() {
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Rotate key shares for wallet{' '}
-          <span className="font-mono">{wallet.name}</span> without changing the
+          <span className="font-mono">{wallet.name ?? wallet.id}</span> without changing the
           public key or on-chain addresses.
         </p>
       </div>
@@ -90,7 +113,7 @@ export default function ResharePage() {
           <div className="col-span-2">
             <dt className="text-muted-foreground">ECDSA Public Key</dt>
             <dd className="mt-1 truncate font-mono text-xs">
-              {wallet.ecdsaPubkey}
+              {wallet.ecdsa_pubkey ?? 'N/A'}
             </dd>
           </div>
         </dl>

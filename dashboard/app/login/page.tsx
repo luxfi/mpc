@@ -4,7 +4,7 @@ import { useState, type FormEvent } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { api, APIError } from '@/lib/api'
-import { setTokens } from '@/lib/auth'
+import { setTokens, setUserEmail } from '@/lib/auth'
 import type { AuthResponse } from '@/lib/types'
 
 export default function LoginPage() {
@@ -32,6 +32,7 @@ export default function LoginPage() {
 
       const auth = data as AuthResponse
       setTokens(auth.access_token, auth.refresh_token)
+      setUserEmail(email)
       router.push('/')
     } catch (err) {
       setError(err instanceof APIError ? err.message : 'Login failed')
