@@ -10,7 +10,7 @@ spec:
     - websecure
   routes:
     # API routes - both domains
-    - match: (Host(`mpc.lux.network`) || Host(`cloud.lux.network`)) && PathPrefix(`/api/v1`)
+    - match: (Host(`mpc.lux.network`) || Host(`cloud.lux.network`)) && (PathPrefix(`/api/v1`) || Path(`/healthz`))
       kind: Rule
       services:
         - name: mpc-api-svc
