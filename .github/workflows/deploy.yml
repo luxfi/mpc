@@ -126,7 +126,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Configure kubectl
-        run: doctl kubernetes cluster kubeconfig save hanzo-k8s
+        run: doctl kubernetes cluster kubeconfig save lux-k8s
 
       - name: Apply namespace and secrets first
         run: |
@@ -156,6 +156,7 @@ jobs:
       - name: Restart deployments to pick up new images
         run: |
           kubectl rollout restart statefulset/mpc-node -n lux-mpc
+          kubectl rollout restart deployment/mpc-api -n lux-mpc || true
           kubectl rollout restart deployment/mpc-dashboard -n lux-mpc
 
       - name: Wait for rollout
