@@ -24,9 +24,11 @@ import (
 	"github.com/urfave/cli/v3"
 	"golang.org/x/term"
 
+	mpcapi "github.com/luxfi/mpc/pkg/api"
 	"github.com/luxfi/mpc/pkg/backup"
 	"github.com/luxfi/mpc/pkg/config"
 	"github.com/luxfi/mpc/pkg/constant"
+	"github.com/luxfi/mpc/pkg/db"
 	"github.com/luxfi/mpc/pkg/event"
 	"github.com/luxfi/mpc/pkg/eventconsumer"
 	"github.com/luxfi/mpc/pkg/identity"
@@ -104,6 +106,20 @@ func main() {
 						Name:  "log-level",
 						Usage: "Log level (debug, info, warn, error)",
 						Value: "info",
+					},
+					// Dashboard API flags
+					&cli.StringFlag{
+						Name:  "api-db",
+						Usage: "PostgreSQL connection URL for dashboard API",
+					},
+					&cli.StringFlag{
+						Name:  "api-listen",
+						Usage: "Dashboard API listen address",
+						Value: ":8081",
+					},
+					&cli.StringFlag{
+						Name:  "jwt-secret",
+						Usage: "JWT signing secret for dashboard auth",
 					},
 					// Legacy mode flags
 					&cli.BoolFlag{
@@ -878,6 +894,56 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 		}
 	}
 
+	// Start Dashboard API server if PostgreSQL URL is provided
+	apiDBURL := c.String("api-db")
+	if apiDBURL == "" {
+		apiDBURL = os.Getenv("MPC_API_DB")
+	}
+	if apiDBURL != "" {
+		apiListenAddr := c.String("api-listen")
+		jwtSecret := c.String("jwt-secret")
+		if jwtSecret == "" {
+			jwtSecret = os.Getenv("MPC_JWT_SECRET")
+		}
+		if jwtSecret == "" {
+			jwtSecret = "change-me-in-production"
+			logger.Warn("Using default JWT secret - NOT for production!")
+		}
+
+		database, err := db.New(ctx, apiDBURL)
+		if err != nil {
+			logger.Error("Failed to connect to dashboard database", err)
+		} else {
+			defer database.Close()
+
+			if err := database.Migrate(ctx); err != nil {
+				logger.Error("Failed to run database migrations", err)
+			} else {
+				mpcBackend := &ConsensusMPCBackend{
+					pubSub:       pubSub,
+					peerRegistry: peerRegistry,
+					factory:      factory,
+					nodeID:       nodeID,
+					threshold:    int(threshold),
+				}
+
+				apiServer := mpcapi.NewServer(database, mpcBackend, jwtSecret, apiListenAddr)
+				apiServer.StartScheduler(ctx)
+
+				logger.Info("Dashboard API server starting", "addr", apiListenAddr)
+				_, apiErrCh := apiServer.Start()
+				go func() {
+					if err := <-apiErrCh; err != nil {
+						logger.Error("Dashboard API server failed", err)
+					}
+				}()
+				defer apiServer.Shutdown(context.Background())
+
+				logger.Info("Dashboard API ready", "addr", apiListenAddr)
+			}
+		}
+	}
+
 	// Wait for shutdown signal
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
@@ -885,6 +951,126 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 
 	logger.Warn("Shutdown signal received, stopping...")
 	return nil
+}
+
+// ConsensusMPCBackend implements api.MPCBackend using the consensus transport.
+type ConsensusMPCBackend struct {
+	pubSub       *ConsensusPubSubAdapter
+	peerRegistry *ConsensusPeerRegistry
+	factory      *transport.Factory
+	nodeID       string
+	threshold    int
+}
+
+func (b *ConsensusMPCBackend) TriggerKeygen(walletID string) (*mpcapi.KeygenResult, error) {
+	if walletID == "" {
+		h := sha256.Sum256([]byte(fmt.Sprintf("%s-%d", b.nodeID, time.Now().UnixNano())))
+		walletID = hex.EncodeToString(h[:16])
+	}
+
+	resultTopic := fmt.Sprintf("mpc.mpc_keygen_result.%s", walletID)
+	resultCh := make(chan *event.KeygenResultEvent, 1)
+	unsub, err := b.pubSub.Subscribe(resultTopic, func(natMsg *nats.Msg) {
+		var result event.KeygenResultEvent
+		if err := json.Unmarshal(natMsg.Data, &result); err == nil {
+			select {
+			case resultCh <- &result:
+			default:
+			}
+		}
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to subscribe to result topic: %w", err)
+	}
+	defer unsub.Unsubscribe()
+
+	msg := types.GenerateKeyMessage{WalletID: walletID}
+	msgData, _ := json.Marshal(msg)
+	if err := b.pubSub.Publish("mpc:generate", msgData); err != nil {
+		return nil, fmt.Errorf("failed to publish keygen: %w", err)
+	}
+
+	select {
+	case result := <-resultCh:
+		if result.ResultType != event.ResultTypeSuccess {
+			return nil, fmt.Errorf("keygen failed: %s", result.ErrorReason)
+		}
+		ethAddr := ""
+		if len(result.ECDSAPubKey) >= 33 {
+			ethAddr = pubKeyToEthAddress(result.ECDSAPubKey)
+		}
+		return &mpcapi.KeygenResult{
+			WalletID:    result.WalletID,
+			ECDSAPubKey: hex.EncodeToString(result.ECDSAPubKey),
+			EDDSAPubKey: hex.EncodeToString(result.EDDSAPubKey),
+			EthAddress:  ethAddr,
+		}, nil
+	case <-time.After(120 * time.Second):
+		return nil, fmt.Errorf("keygen timed out after 120s")
+	}
+}
+
+func (b *ConsensusMPCBackend) TriggerSign(walletID string, payload []byte) (*mpcapi.SignResult, error) {
+	txID := fmt.Sprintf("sign-%d", time.Now().UnixNano())
+	resultTopic := fmt.Sprintf("mpc.mpc_signing_result.%s", txID)
+	resultCh := make(chan json.RawMessage, 1)
+	unsub, err := b.pubSub.Subscribe(resultTopic, func(natMsg *nats.Msg) {
+		select {
+		case resultCh <- natMsg.Data:
+		default:
+		}
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to subscribe to signing result: %w", err)
+	}
+	defer unsub.Unsubscribe()
+
+	msg := types.SignTxMessage{
+		WalletID: walletID,
+		TxID:     txID,
+		Tx:       payload,
+	}
+	msgData, _ := json.Marshal(msg)
+	if err := b.pubSub.Publish("mpc:sign", msgData); err != nil {
+		return nil, fmt.Errorf("failed to publish sign request: %w", err)
+	}
+
+	select {
+	case data := <-resultCh:
+		var result struct {
+			R         string `json:"r"`
+			S         string `json:"s"`
+			Signature string `json:"signature"`
+		}
+		json.Unmarshal(data, &result)
+		return &mpcapi.SignResult{R: result.R, S: result.S, Signature: result.Signature}, nil
+	case <-time.After(60 * time.Second):
+		return nil, fmt.Errorf("signing timed out after 60s")
+	}
+}
+
+func (b *ConsensusMPCBackend) TriggerReshare(walletID string, newThreshold int, newParticipants []string) error {
+	msg := map[string]interface{}{
+		"wallet_id":        walletID,
+		"new_threshold":    newThreshold,
+		"new_participants": newParticipants,
+	}
+	msgData, _ := json.Marshal(msg)
+	return b.pubSub.Publish("mpc:reshare", msgData)
+}
+
+func (b *ConsensusMPCBackend) GetClusterStatus() *mpcapi.ClusterStatus {
+	ready := b.peerRegistry.ArePeersReady()
+	connected := b.factory.Transport().GetPeers()
+	return &mpcapi.ClusterStatus{
+		NodeID:         b.nodeID,
+		Mode:           "consensus",
+		ExpectedPeers:  len(b.peerRegistry.peerIDs),
+		ConnectedPeers: len(connected),
+		Ready:          ready,
+		Threshold:      b.threshold,
+		Version:        Version,
+	}
 }
 
 // loadOrGenerateIdentity loads or generates Ed25519 identity
