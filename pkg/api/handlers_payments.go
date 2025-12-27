@@ -66,7 +66,7 @@ func (s *Server) handleCreatePaymentRequest(w http.ResponseWriter, r *http.Reque
 func (s *Server) handleListPaymentRequests(w http.ResponseWriter, r *http.Request) {
 	orgID := getOrgID(r.Context())
 	requests, err := orm.TypedQuery[db.PaymentRequest](s.db.ORM).
-		Filter("orgId =", orgID).
+		Filter("orgId=", orgID).
 		Order("-createdAt").
 		GetAll(r.Context())
 	if err != nil {
@@ -153,7 +153,7 @@ func (s *Server) handlePublicPay(w http.ResponseWriter, r *http.Request) {
 	token := urlParam(r, "token")
 
 	pr, err := orm.TypedQuery[db.PaymentRequest](s.db.ORM).
-		Filter("requestToken =", token).
+		Filter("requestToken=", token).
 		First()
 	if err != nil {
 		writeError(w, http.StatusNotFound, "payment request not found")

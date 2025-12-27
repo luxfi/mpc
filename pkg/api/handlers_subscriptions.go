@@ -12,7 +12,7 @@ import (
 func (s *Server) handleListSubscriptions(w http.ResponseWriter, r *http.Request) {
 	orgID := getOrgID(r.Context())
 	subs, err := orm.TypedQuery[db.Subscription](s.db.ORM).
-		Filter("orgId =", orgID).
+		Filter("orgId=", orgID).
 		Order("-createdAt").
 		GetAll(r.Context())
 	if err != nil {

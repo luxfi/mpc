@@ -94,15 +94,15 @@ func (s *Server) handleListTransactions(w http.ResponseWriter, r *http.Request) 
 	chain := r.URL.Query().Get("chain")
 
 	q := orm.TypedQuery[db.Transaction](s.db.ORM).
-		Filter("orgId =", orgID).
+		Filter("orgId=", orgID).
 		Order("-createdAt").
 		Limit(100)
 
 	if statusFilter != "" {
-		q = q.Filter("status =", statusFilter)
+		q = q.Filter("status=", statusFilter)
 	}
 	if chain != "" {
-		q = q.Filter("chain =", chain)
+		q = q.Filter("chain=", chain)
 	}
 
 	txs, err := q.GetAll(r.Context())

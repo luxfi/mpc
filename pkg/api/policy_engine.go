@@ -104,8 +104,8 @@ func matchesConditions(amount, chain, toAddress string, cond PolicyConditions) b
 
 func (s *Server) loadPolicies(ctx context.Context, orgID string, vaultID *string) ([]*db.Policy, error) {
 	q := orm.TypedQuery[db.Policy](s.db.ORM).
-		Filter("orgId =", orgID).
-		Filter("enabled =", true).
+		Filter("orgId=", orgID).
+		Filter("enabled=", true).
 		Order("-priority")
 
 	policies, err := q.GetAll(ctx)

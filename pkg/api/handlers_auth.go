@@ -99,7 +99,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	user, err := orm.TypedQuery[db.User](s.db.ORM).
-		Filter("email =", req.Email).
+		Filter("email=", req.Email).
 		First()
 	if err != nil {
 		writeError(w, http.StatusUnauthorized, "invalid credentials")
