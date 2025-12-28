@@ -77,10 +77,7 @@ func (s *Server) handleKMSGenerate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	orgID := r.Header.Get("X-Org-ID")
-	if orgID == "" {
-		orgID = "default"
-	}
+	orgID := getOrgID(r.Context())
 
 	// Check duplicate.
 	if s.db != nil {
@@ -179,10 +176,7 @@ func (s *Server) handleKMSSign(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	orgID := r.Header.Get("X-Org-ID")
-	if orgID == "" {
-		orgID = "default"
-	}
+	orgID := getOrgID(r.Context())
 
 	ks, err := s.kmsGetValidator(r.Context(), id)
 	if err != nil {
@@ -227,10 +221,7 @@ func (s *Server) handleKMSRotate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	orgID := r.Header.Get("X-Org-ID")
-	if orgID == "" {
-		orgID = "default"
-	}
+	orgID := getOrgID(r.Context())
 
 	ks, err := s.kmsGetValidator(r.Context(), id)
 	if err != nil {
