@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"github.com/hashicorp/consul/api"
-	badger "github.com/luxfi/zapdb/v4"
-	"github.com/luxfi/zapdb/v4/options"
+	badger "github.com/luxfi/zapdb"
+	"github.com/luxfi/zapdb/options"
 	"github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v2"
