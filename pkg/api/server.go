@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/cors"
 
 	"github.com/luxfi/mpc/pkg/db"
+	"github.com/luxfi/mpc/pkg/txtracker"
 )
 
 // MPCBackend is the interface the API layer uses to trigger MPC operations.
@@ -48,6 +49,7 @@ type ClusterStatus struct {
 type Server struct {
 	db          *db.Database
 	mpc         MPCBackend
+	txTracker   *txtracker.Tracker
 	jwtSecret   []byte
 	oidcIssuers []string
 	router      chi.Router
@@ -64,9 +66,16 @@ func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, l
 			"https://id.zoo.network",
 		}
 	}
+
+	// Transaction lifecycle tracker (RPC clients added via SetTxTrackerRPC)
+	tracker := txtracker.New(txtracker.Config{
+		Database: database,
+	})
+
 	s := &Server{
 		db:          database,
 		mpc:         mpcBackend,
+		txTracker:   tracker,
 		jwtSecret:   []byte(jwtSecret),
 		oidcIssuers: oidcIssuers,
 	}
@@ -248,6 +257,25 @@ func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, l
 			r.Post("/webauthn/verify", s.handleVerifyWebAuthn) // Biometric approval of transactions
 			r.Get("/webauthn/credentials", s.handleListWebAuthnCredentials)
 			r.Delete("/webauthn/credentials/{id}", s.handleDeleteWebAuthnCredential)
+
+			// Intents & Settlements — signer+ can create; viewers can read
+			r.Get("/intents", s.handleListIntents)
+			r.Get("/intents/{id}", s.handleGetIntent)
+			r.Get("/settlements", s.handleListSettlements)
+			r.Get("/settlements/{id}", s.handleGetSettlement)
+			r.Group(func(r chi.Router) {
+				r.Use(requireRole("owner", "admin", "signer", "api"))
+				r.Post("/intents", s.handleCreateIntent)
+				r.Post("/intents/{id}/sign", s.handleSignIntent)
+				r.Post("/intents/{id}/co-sign", s.handleCoSignIntent)
+			})
+
+			// Wallet Backup — admin+ to create; signer+ to recover
+			r.Group(func(r chi.Router) {
+				r.Use(requireRole("owner", "admin"))
+				r.Post("/wallets/{id}/backup", s.handleCreateWalletBackup)
+				r.Get("/wallets/{id}/backup", s.handleGetWalletBackup)
+			})
 
 			// Audit — owner/admin only
 			r.Group(func(r chi.Router) {

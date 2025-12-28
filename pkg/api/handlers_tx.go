@@ -75,6 +75,14 @@ func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request)
 	tx.RawTx = rawTx
 	tx.Status = status
 	tx.InitiatedBy = nilIfEmpty(userID)
+	tx.TargetConfirms = 12 // default
+	// Record initial state transition
+	now := time.Now()
+	actor := userID
+	tx.StatusHistory = []db.StatusTransition{{
+		From: "", To: status, Timestamp: now,
+		Detail: "transaction created", Actor: nilIfEmpty(actor),
+	}}
 	if err := tx.Create(); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create transaction: "+err.Error())
 		return
@@ -249,26 +257,41 @@ func (s *Server) signAndBroadcast(txID, orgID string) {
 		return
 	}
 
-	tx.Status = "signing"
+	sys := "system"
+	tx.RecordTransition("signing", "MPC threshold signing initiated", &sys)
 	tx.Update()
 
 	result, err := s.mpc.TriggerSign(wallet.WalletID, tx.RawTx)
 	if err != nil {
-		tx.Status = "failed"
+		tx.RecordTransition("failed", "signing failed: "+err.Error(), &sys)
 		tx.Update()
 		s.fireWebhook(ctx, orgID, "tx.failed", map[string]string{"tx_id": txID, "error": err.Error()})
 		return
 	}
 
 	now := time.Now()
-	tx.Status = "signed"
 	tx.SignatureR = nilIfEmpty(result.R)
 	tx.SignatureS = nilIfEmpty(result.S)
 	tx.SignatureEdDSA = nilIfEmpty(result.Signature)
 	tx.SignedAt = &now
+	tx.RecordTransition("signed", "threshold signature complete", &sys)
+	if tx.TargetConfirms == 0 {
+		tx.TargetConfirms = 12 // default confirmation target
+	}
 	tx.Update()
 
 	s.fireWebhook(ctx, orgID, "tx.signed", map[string]string{"tx_id": txID})
+
+	// If we have a tx hash, start tracking for on-chain confirmation.
+	// The tx hash is set by the caller (bridge handler, etc.) after broadcast.
+	// For direct MPC-signed txs, the caller should call Track() explicitly.
+	if tx.TxHash != nil && *tx.TxHash != "" {
+		if err := s.txTracker.Track(txID, orgID, *tx.TxHash, tx.Chain); err != nil {
+			s.fireWebhook(ctx, orgID, "tx.track_error", map[string]string{
+				"tx_id": txID, "error": err.Error(),
+			})
+		}
+	}
 }
 
 func strFromPtr(s *string) string {
