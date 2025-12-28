@@ -1,136 +1,46 @@
-name: Release
+name: Release MPC
 
 on:
   push:
-    tags:
-      - 'v*'
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: 'Release tag (e.g., v1.0.0)'
-        required: true
-        type: string
-
-env:
-  GO_VERSION: '1.26.0'
+    tags: ['v*']
 
 permissions:
   contents: write
-  packages: write
-  id-token: write
 
 jobs:
-  goreleaser:
-    name: GoReleaser
-    runs-on: ubuntu-latest
+  build:
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+    runs-on: ${{ matrix.arch == 'arm64' && 'lux-arm64' || 'lux-amd64' }}
+    env:
+      GONOSUMCHECK: '*'
+      GONOSUMDB: '*'
+      GOPRIVATE: 'github.com/luxfi/*'
+      GOPROXY: direct
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
-          fetch-depth: 0
-
-      - name: Fetch all tags
-        run: git fetch --force --tags
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: true
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v6
-        with:
-          distribution: goreleaser
-          version: latest
-          args: release --clean
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload artifacts
+          go-version: '1.26'
+      - name: Build
+        run: |
+          GOWORK=off CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o mpcd ./cmd/mpcd/
+      - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: release-artifacts
-          path: dist/
+          name: mpcd-linux-${{ matrix.arch }}
+          path: mpcd
 
-  create-release-notes:
-    name: Create Release Notes
-    runs-on: ubuntu-latest
-    needs: goreleaser
+  release:
+    needs: build
+    runs-on: lux-amd64
+    permissions:
+      contents: write
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
         with:
-          fetch-depth: 0
-
-      - name: Generate changelog
-        id: changelog
-        uses: mikepenz/release-changelog-builder-action@v4
+          path: dist/
+      - uses: softprops/action-gh-release@v2
         with:
-          configuration: ".github/changelog-config.json"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Update release
-        uses: softprops/action-gh-release@v1
-        with:
-          body: |
-            ## 🎉 Lux MPC Release
-
-            ### ✨ What's New
-            ${{ steps.changelog.outputs.changelog }}
-
-            ### 🔧 Threshold Signing Integration
-            - **CMP/CGGMP21 Protocol**: Full ECDSA threshold signing support for Bitcoin, Ethereum, and other ECDSA chains
-            - **FROST Protocol**: EdDSA and Schnorr signature support for Solana, Cardano, and Bitcoin Taproot
-            - **Unified API**: Single interface for all threshold signature schemes
-            - **Production Ready**: All tests passing, security scanned, and optimized
-
-            ### 📦 Installation
-
-            #### Binary
-            Download the appropriate binary for your platform from the assets below.
-
-            #### Docker
-            ```bash
-            docker pull luxfi/mpc:${{ github.ref_name }}
-            docker pull ghcr.io/${{ github.repository }}:${{ github.ref_name }}
-            ```
-
-            #### Go Install
-            ```bash
-            go install github.com/luxfi/mpc/cmd/mpcd@${{ github.ref_name }}
-            go install github.com/luxfi/mpc/cmd/lux-mpc-cli@${{ github.ref_name }}
-            ```
-
-            ### 🔐 Security
-            - All dependencies updated
-            - Security scans passed
-            - SBOM included in release artifacts
-
-            ### 📝 Documentation
-            See the [README](https://github.com/${{ github.repository }}/blob/${{ github.ref_name }}/README.md) for detailed usage instructions.
-
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          files: dist/**/*
