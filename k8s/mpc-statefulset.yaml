@@ -63,7 +63,7 @@ spec:
               mountPath: /config
       containers:
         - name: mpc-node
-          image: ghcr.io/luxfi/mpc-api:latest
+          image: ghcr.io/luxfi/mpc:v1.10.0
           imagePullPolicy: Always
           securityContext:
             allowPrivilegeEscalation: false
