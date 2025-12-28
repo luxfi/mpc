@@ -176,6 +176,91 @@ func (p *Node) CreateLSSKeyGenSession(
 	return session, nil
 }
 
+// CreateSR25519KeyGenSession creates a FROST keygen session for SR25519 (Ristretto255)
+func (p *Node) CreateSR25519KeyGenSession(
+	walletID string,
+	threshold int,
+	resultQueue messaging.MessageQueue,
+) (SR25519KeygenSession, error) {
+	if !p.peerRegistry.ArePeersReady() {
+		return nil, fmt.Errorf(
+			"peers are not ready yet. ready: %d, expected: %d",
+			p.peerRegistry.GetReadyPeersCount(),
+			len(p.peerIDs)+1,
+		)
+	}
+
+	readyPeerIDs := p.peerRegistry.GetReadyPeersIncludeSelf()
+	// Use version 0 for raw party IDs without suffixes (same as FROST)
+	selfPartyID, allPartyIDs := p.generatePartyIDs(PurposeKeygen, readyPeerIDs, 0)
+
+	session := newSR25519KeygenSession(
+		walletID,
+		p.pubSub,
+		selfPartyID,
+		allPartyIDs,
+		threshold,
+		p.kvstore,
+		p.keyinfoStore,
+		resultQueue,
+		p.identityStore,
+	)
+
+	// Note: Init() is called by the caller (keygen handler)
+	return session, nil
+}
+
+// CreateSR25519SignSession creates a FROST signing session for SR25519 (Ristretto255)
+func (p *Node) CreateSR25519SignSession(
+	sessionID string,
+	walletID string,
+	messageHash []byte,
+	signingContext string,
+	signerPeerIDs []string,
+	resultQueue messaging.MessageQueue,
+	useBroadcast bool,
+) (SR25519SignSession, error) {
+	// Check if we have enough signers
+	keyInfo, err := p.keyinfoStore.Get(walletID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get key info: %w", err)
+	}
+
+	if len(signerPeerIDs) < keyInfo.Threshold+1 {
+		return nil, ErrNotEnoughParticipants
+	}
+
+	// Check if this node is in the signer list
+	if !contains(signerPeerIDs, p.nodeID) {
+		return nil, ErrNotInParticipantList
+	}
+
+	// Generate party IDs for signers
+	// SR25519 uses version 0 for raw party IDs without suffixes (same as FROST)
+	selfPartyID, signerPartyIDs := p.generatePartyIDs(PurposeKeygen, signerPeerIDs, 0)
+
+	session, err := newSR25519SigningSession(
+		sessionID,
+		walletID,
+		messageHash,
+		signingContext,
+		p.pubSub,
+		selfPartyID,
+		signerPartyIDs,
+		p.kvstore,
+		p.keyinfoStore,
+		resultQueue,
+		p.identityStore,
+		useBroadcast,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// Note: Init() is called by the caller (sign handler)
+	return session, nil
+}
+
 func (p *Node) CreateSignSession(
 	sessionID string,
 	walletID string,
