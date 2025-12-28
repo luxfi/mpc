@@ -747,13 +747,19 @@ func (s *Server) handleBiometricEnroll(w http.ResponseWriter, r *http.Request) {
 // WebAuthn challenge as used. Returns (chalBytes, true, nil) iff the challenge
 // exists, belongs to the user, is pending, and transitions to consumed.
 // Prevents replay of the same challenge (R2-1).
+//
+// R3-9: uses READ COMMITTED + GetForUpdate, matching consumeSessionForSign
+// and tryApproveOperation. For row-local CAS the FOR UPDATE row lock
+// provides the atomicity we need; SERIALIZABLE would abort concurrent
+// waiters with 40001 rather than let them block, costing us a retry.
+// One pattern, one way.
 func (s *Server) consumeBiometricChallenge(ctx context.Context, orgID, userID, credentialID string) ([]byte, bool, error) {
 	var out []byte
 	err := s.db.ORM.RunInTransactionWith(ctx, &orm.TxOptions{
-		Isolation:   orm.IsolationSerializable,
-		MaxAttempts: 5,
+		Isolation:   orm.IsolationReadCommitted,
+		MaxAttempts: 3,
 	}, func(tx orm.DB) error {
-		cred, gerr := orm.Get[db.WebAuthnCredential](tx, credentialID)
+		cred, gerr := orm.GetForUpdate[db.WebAuthnCredential](tx, credentialID)
 		if gerr != nil {
 			return gerr
 		}
