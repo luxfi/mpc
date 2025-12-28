@@ -85,12 +85,12 @@ spec:
                 fi
               done
 
-              # Build command
-              CMD="mpcd start --mode consensus --node-id ${NODE_ID} --listen :9999 --api :9800 --data /data/mpc --threshold 3 ${PEERS}"
+              # Build command (v1.10.0: consensus is the only mode; flag dropped)
+              CMD="mpcd start --node-id ${NODE_ID} --listen :9999 --api :9800 --data /data/mpc --threshold 3 ${PEERS}"
 
               # Node 0 also serves the Dashboard API
               if [ "$INDEX" = "0" ]; then
-                CMD="${CMD} --api-db ${DATABASE_URL} --api-kv ${KV_URL} --api-listen :8081 --jwt-secret ${JWT_SECRET}"
+                CMD="${CMD} --api-listen :8081 --jwt-secret ${JWT_SECRET}"
               fi
 
               echo "Starting: ${CMD}"
