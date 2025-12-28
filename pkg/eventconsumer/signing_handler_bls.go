@@ -16,7 +16,7 @@ import (
 // handleSigningEventBLS handles signing events for BLS protocol (BLS12-381 threshold)
 func (ec *eventConsumer) handleSigningEventBLS(msg *types.SignTxMessage, natMsg *nats.Msg) {
 	// Check for duplicate session and track if new
-	if ec.checkDuplicateSession(msg.WalletID, msg.TxID) {
+	if ec.checkDuplicateSession(msg.OrgID, msg.WalletID, msg.TxID) {
 		duplicateErr := fmt.Errorf("duplicate signing request detected for walletID=%s txID=%s", msg.WalletID, msg.TxID)
 		ec.handleSigningSessionError(
 			msg.WalletID,
@@ -50,6 +50,7 @@ func (ec *eventConsumer) handleSigningEventBLS(msg *types.SignTxMessage, natMsg 
 		msg.Tx,                     // Use transaction bytes as message hash
 		keyInfo.ParticipantPeerIDs, // Use all participants as signers
 		ec.signingResultQueue,
+		msg.OrgID,
 	)
 	if err != nil {
 		// Check if the error is due to node not being in participant list
@@ -75,7 +76,7 @@ func (ec *eventConsumer) handleSigningEventBLS(msg *types.SignTxMessage, natMsg 
 	}
 
 	// Mark session as already processed
-	ec.addSession(msg.WalletID, msg.TxID)
+	ec.addSession(msg.OrgID, msg.WalletID, msg.TxID)
 
 	// Initialize the session
 	session.Init()
