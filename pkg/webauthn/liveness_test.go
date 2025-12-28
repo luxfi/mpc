@@ -175,9 +175,34 @@ func TestLiveness_R38_RejectsMissingBindingStrict(t *testing.T) {
 	}
 }
 
-// LAX: server expected binding, envelope missing — accept with warning.
-// Used during  extended-envelope rollout.
-func TestLiveness_R38_LaxWarnsOnMissing(t *testing.T) {
+// F4 (2026-04-18): LAX + server expects credentialHash + envelope carries
+// NEITHER binding field → now rejects. Pre-F4 this was accept-with-warn;
+// Red round 4 flagged that as a cross-ceremony replay window. The
+// tightening makes credentialHash a hard floor in LAX.
+func TestLiveness_R38_LaxRejectsMissingBindingWhenCredentialHashExpected(t *testing.T) {
+	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
+	att := LivenessAttestation{
+		ProviderID: "",
+		UserID:     "u-1",
+		Score:      0.9,
+		Timestamp:  time.Now().Unix(),
+		// intentionally empty — pre-R3-8 envelope shape
+	}
+	env := signEnvelope(t, priv, att)
+	_, err := VerifyLiveness(env, &LivenessOpts{
+		PubKey: pub, UserID: "u-1", MinScore: 0.8, MaxAge: time.Minute,
+		ExpectedCredentialHash: "VICTIM==",
+		BindingMode:            BindingLax,
+	})
+	if err == nil || !strings.Contains(err.Error(), "credentialHash required in LAX mode") {
+		t.Fatalf("F4: LAX + expected credentialHash + envelope empty must reject: got %v", err)
+	}
+}
+
+// F4: the LAX warn path survives ONLY when the server does NOT expect a
+// credentialHash (e.g. a pure challengeId-binding call site). Envelope
+// missing is then accepted with a warning, as before.
+func TestLiveness_R38_LaxWarnsOnMissing_ChallengeIDOnly(t *testing.T) {
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
 	att := LivenessAttestation{
 		ProviderID: "",
@@ -189,12 +214,14 @@ func TestLiveness_R38_LaxWarnsOnMissing(t *testing.T) {
 	var warned string
 	_, err := VerifyLiveness(env, &LivenessOpts{
 		PubKey: pub, UserID: "u-1", MinScore: 0.8, MaxAge: time.Minute,
-		ExpectedCredentialHash: "VICTIM==",
-		BindingMode:            BindingLax,
-		WarnFn:                 func(m string) { warned = m },
+		// NOTE: only ExpectedChallengeID is set — the LAX warn path is
+		// reserved for call sites that never commit credentialHash.
+		ExpectedChallengeID: "chal-xyz",
+		BindingMode:         BindingLax,
+		WarnFn:              func(m string) { warned = m },
 	})
 	if err != nil {
-		t.Fatalf("LAX should accept missing binding: %v", err)
+		t.Fatalf("LAX + challengeId-only expectation + missing binding must warn-accept: %v", err)
 	}
 	if warned == "" {
 		t.Fatalf("LAX must emit a warn message on missing binding")
@@ -240,5 +267,137 @@ func TestLiveness_R38_RejectsMismatchedChallengeID(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "challengeId mismatch") {
 		t.Fatalf("mismatched challengeId must reject: got %v", err)
+	}
+}
+
+// F4 (2026-04-18): LAX tightening — credentialHash is mandatory floor.
+//
+// Previous LAX behavior accepted an envelope that had ONLY challengeId and
+// no credentialHash, so long as the challengeId matched. An attacker
+// observing a fresh challenge could persuade  to sign an
+// envelope binding to the challenge alone and replay it against any
+// enrollment for the same userId. The challengeId binds the ceremony;
+// the credentialHash binds the specific pubkey being enrolled. Without
+// the credentialHash floor there is no binding to the pubkey — that is
+// the cross-ceremony replay Red flagged in round 4.
+
+// LAX + envelope omits credentialHash (only challengeId) → reject.
+// This is the primary F4 gate.
+func TestLiveness_R38_LaxRejectsMissingCredentialHash(t *testing.T) {
+	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
+	att := LivenessAttestation{
+		ProviderID:  "",
+		UserID:      "u-1",
+		Score:       0.9,
+		Timestamp:   time.Now().Unix(),
+		ChallengeID: "chal-xyz", // challengeId alone is NOT enough in LAX
+	}
+	env := signEnvelope(t, priv, att)
+	_, err := VerifyLiveness(env, &LivenessOpts{
+		PubKey: pub, UserID: "u-1", MinScore: 0.8, MaxAge: time.Minute,
+		ExpectedCredentialHash: "VICTIM-HASH",
+		ExpectedChallengeID:    "chal-xyz",
+		BindingMode:            BindingLax,
+	})
+	if err == nil || !strings.Contains(err.Error(), "credentialHash required in LAX mode") {
+		t.Fatalf("LAX + missing credentialHash must reject: got %v", err)
+	}
+}
+
+// LAX + both fields present + both match → accept (happy path for the
+// extended envelope post--rollout).
+func TestLiveness_R38_LaxAcceptsBothMatch(t *testing.T) {
+	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
+	att := LivenessAttestation{
+		ProviderID:     "",
+		UserID:         "u-1",
+		Score:          0.9,
+		Timestamp:      time.Now().Unix(),
+		CredentialHash: "HASH-OK",
+		ChallengeID:    "chal-ok",
+	}
+	env := signEnvelope(t, priv, att)
+	_, err := VerifyLiveness(env, &LivenessOpts{
+		PubKey: pub, UserID: "u-1", MinScore: 0.8, MaxAge: time.Minute,
+		ExpectedCredentialHash: "HASH-OK",
+		ExpectedChallengeID:    "chal-ok",
+		BindingMode:            BindingLax,
+	})
+	if err != nil {
+		t.Fatalf("LAX + both present + both match must accept: %v", err)
+	}
+}
+
+// LAX + both fields present + credentialHash mismatch → reject. This is
+// the existing "mismatch always rejects" rule; the test makes it explicit
+// for LAX to prove the tightening didn't regress.
+func TestLiveness_R38_LaxRejectsMismatchedCredentialHashBothPresent(t *testing.T) {
+	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
+	att := LivenessAttestation{
+		ProviderID:     "",
+		UserID:         "u-1",
+		Score:          0.9,
+		Timestamp:      time.Now().Unix(),
+		CredentialHash: "HASH-ATTACKER",
+		ChallengeID:    "chal-ok",
+	}
+	env := signEnvelope(t, priv, att)
+	_, err := VerifyLiveness(env, &LivenessOpts{
+		PubKey: pub, UserID: "u-1", MinScore: 0.8, MaxAge: time.Minute,
+		ExpectedCredentialHash: "HASH-VICTIM",
+		ExpectedChallengeID:    "chal-ok",
+		BindingMode:            BindingLax,
+	})
+	if err == nil || !strings.Contains(err.Error(), "credentialHash mismatch") {
+		t.Fatalf("LAX + mismatched credentialHash must reject: got %v", err)
+	}
+}
+
+// LAX + both fields present + challengeId mismatch → reject.
+func TestLiveness_R38_LaxRejectsMismatchedChallengeIDBothPresent(t *testing.T) {
+	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
+	att := LivenessAttestation{
+		ProviderID:     "",
+		UserID:         "u-1",
+		Score:          0.9,
+		Timestamp:      time.Now().Unix(),
+		CredentialHash: "HASH-OK",
+		ChallengeID:    "chal-ATTACKER",
+	}
+	env := signEnvelope(t, priv, att)
+	_, err := VerifyLiveness(env, &LivenessOpts{
+		PubKey: pub, UserID: "u-1", MinScore: 0.8, MaxAge: time.Minute,
+		ExpectedCredentialHash: "HASH-OK",
+		ExpectedChallengeID:    "chal-VICTIM",
+		BindingMode:            BindingLax,
+	})
+	if err == nil || !strings.Contains(err.Error(), "challengeId mismatch") {
+		t.Fatalf("LAX + mismatched challengeId must reject: got %v", err)
+	}
+}
+
+// LAX + credentialHash only (no challengeId) + match → accept.
+// This is the " not yet rolled out challengeId" case. The
+// mandatory credentialHash floor is satisfied, so the envelope carries
+// enough binding to be safe.
+func TestLiveness_R38_LaxAcceptsCredentialHashOnly(t *testing.T) {
+	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
+	att := LivenessAttestation{
+		ProviderID:     "",
+		UserID:         "u-1",
+		Score:          0.9,
+		Timestamp:      time.Now().Unix(),
+		CredentialHash: "HASH-OK",
+		// no ChallengeID — simulates the current  envelope
+	}
+	env := signEnvelope(t, priv, att)
+	_, err := VerifyLiveness(env, &LivenessOpts{
+		PubKey: pub, UserID: "u-1", MinScore: 0.8, MaxAge: time.Minute,
+		ExpectedCredentialHash: "HASH-OK",
+		ExpectedChallengeID:    "chal-xyz",
+		BindingMode:            BindingLax,
+	})
+	if err != nil {
+		t.Fatalf("LAX + credentialHash-only + match must accept: %v", err)
 	}
 }
