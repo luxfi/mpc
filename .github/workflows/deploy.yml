@@ -201,7 +201,8 @@ jobs:
         run: |
           kubectl apply -f k8s/api-service.yaml
           kubectl apply -f k8s/api-deployment.yaml
-          kubectl apply -f k8s/mpc-statefulset.yaml
+          kubectl apply -f k8s/mpc-statefulset.yaml --server-side --force-conflicts || \
+            kubectl apply -f k8s/mpc-statefulset.yaml --force
 
       - name: Apply dashboard
         run: |
