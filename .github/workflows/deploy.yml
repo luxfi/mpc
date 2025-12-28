@@ -67,7 +67,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: Dockerfile.prebuilt
+          file: Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -76,6 +76,8 @@ jobs:
           sbom: false
           cache-from: type=gha,scope=api
           cache-to: type=gha,mode=max,scope=api
+          build-args: |
+            GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
 
   build-dashboard:
     runs-on: lux-build-linux-amd64
