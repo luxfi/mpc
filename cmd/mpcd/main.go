@@ -29,8 +29,11 @@ import (
 	"github.com/urfave/cli/v3"
 
 	"github.com/hanzoai/base"
+	"github.com/hanzoai/base/apis"
 	"github.com/hanzoai/base/core"
 	"github.com/luxfi/hsm"
+
+	uimpc "github.com/luxfi/mpc/ui"
 
 	mpcapi "github.com/luxfi/mpc/pkg/api"
 	"github.com/luxfi/mpc/pkg/backup"
@@ -712,6 +715,9 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 			os.Args = []string{"mpcd", "serve", "--http", apiListenAddr}
 			baseApp := base.New()
 			baseApp.OnServe().BindFunc(func(e *core.ServeEvent) error {
+				// Embedded admin UI at /_/mpc/
+				e.Router.GET("/_/mpc/{path...}", apis.Static(uimpc.DistDirFS(), true))
+
 				e.Router.Any("/{path...}", func(re *core.RequestEvent) error {
 					apiServer.Handler().ServeHTTP(re.Response, re.Request)
 					return nil
