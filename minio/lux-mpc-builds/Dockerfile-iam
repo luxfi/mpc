@@ -1,0 +1,6 @@
+FROM alpine:3.20
+RUN apk add --no-cache ca-certificates tzdata
+COPY mpcd /usr/local/bin/mpcd
+RUN chmod +x /usr/local/bin/mpcd
+EXPOSE 8080 8081 9651
+ENTRYPOINT ["mpcd"]
