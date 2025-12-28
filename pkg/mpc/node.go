@@ -219,6 +219,7 @@ func (p *Node) CreateSR25519SignSession(
 	signerPeerIDs []string,
 	resultQueue messaging.MessageQueue,
 	useBroadcast bool,
+	orgID ...string,
 ) (SR25519SignSession, error) {
 	// Check if we have enough signers
 	keyInfo, err := p.keyinfoStore.Get(walletID)
@@ -239,6 +240,7 @@ func (p *Node) CreateSR25519SignSession(
 	// SR25519 uses version 0 for raw party IDs without suffixes (same as FROST)
 	selfPartyID, signerPartyIDs := p.generatePartyIDs(PurposeKeygen, signerPeerIDs, 0)
 
+	oid := firstOrEmpty(orgID)
 	session, err := newSR25519SigningSession(
 		sessionID,
 		walletID,
@@ -252,6 +254,7 @@ func (p *Node) CreateSR25519SignSession(
 		resultQueue,
 		p.identityStore,
 		useBroadcast,
+		oid,
 	)
 	if err != nil {
 		return nil, err
@@ -302,6 +305,7 @@ func (p *Node) CreateBLSSignSession(
 	messageHash []byte,
 	signerPeerIDs []string,
 	resultQueue messaging.MessageQueue,
+	orgID ...string,
 ) (BLSSignSession, error) {
 	// Check if we have enough signers
 	keyInfo, err := p.keyinfoStore.Get(walletID)
@@ -322,6 +326,7 @@ func (p *Node) CreateBLSSignSession(
 	// BLS uses version 0 for raw party IDs without suffixes
 	selfPartyID, signerPartyIDs := p.generatePartyIDs(PurposeKeygen, signerPeerIDs, 0)
 
+	oid := firstOrEmpty(orgID)
 	session, err := newBLSSigningSession(
 		sessionID,
 		walletID,
@@ -333,6 +338,7 @@ func (p *Node) CreateBLSSignSession(
 		p.keyinfoStore,
 		resultQueue,
 		p.identityStore,
+		oid,
 	)
 	if err != nil {
 		return nil, err
@@ -349,6 +355,7 @@ func (p *Node) CreateSignSession(
 	signerPeerIDs []string,
 	resultQueue messaging.MessageQueue,
 	useBroadcast bool,
+	orgID ...string,
 ) (SignSession, error) {
 	// Check if we have enough signers
 	keyInfo, err := p.keyinfoStore.Get(walletID)
@@ -370,6 +377,7 @@ func (p *Node) CreateSignSession(
 	// were created during keygen with "UUID:keygen:1" format
 	selfPartyID, signerPartyIDs := p.generatePartyIDs(PurposeKeygen, signerPeerIDs, DefaultVersion)
 
+	oid := firstOrEmpty(orgID)
 	session, err := newCGGMP21SigningSession(
 		sessionID,
 		walletID,
@@ -382,6 +390,7 @@ func (p *Node) CreateSignSession(
 		resultQueue,
 		p.identityStore,
 		useBroadcast,
+		oid,
 	)
 	if err != nil {
 		return nil, err
@@ -399,6 +408,7 @@ func (p *Node) CreateEdDSASignSession(
 	signerPeerIDs []string,
 	resultQueue messaging.MessageQueue,
 	useBroadcast bool,
+	orgID ...string,
 ) (FROSTSignSession, error) {
 	// Check if we have enough signers
 	keyInfo, err := p.keyinfoStore.Get(walletID)
@@ -419,6 +429,7 @@ func (p *Node) CreateEdDSASignSession(
 	// FROST uses version 0 for raw party IDs without suffixes
 	selfPartyID, signerPartyIDs := p.generatePartyIDs(PurposeKeygen, signerPeerIDs, 0)
 
+	oid := firstOrEmpty(orgID)
 	session, err := newFROSTSigningSession(
 		sessionID,
 		walletID,
@@ -431,6 +442,7 @@ func (p *Node) CreateEdDSASignSession(
 		resultQueue,
 		p.identityStore,
 		useBroadcast,
+		oid,
 	)
 	if err != nil {
 		return nil, err
@@ -605,6 +617,14 @@ func (p *Node) CreateTFHEComputeSession(
 	}
 
 	return session, nil
+}
+
+// firstOrEmpty returns the first element of a variadic string slice, or empty string.
+func firstOrEmpty(s []string) string {
+	if len(s) > 0 {
+		return s[0]
+	}
+	return ""
 }
 
 func contains(slice []string, item string) bool {

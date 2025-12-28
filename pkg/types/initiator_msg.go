@@ -22,11 +22,13 @@ type InitiatorMessage interface {
 }
 
 type GenerateKeyMessage struct {
+	OrgID     string `json:"org_id,omitempty"`
 	WalletID  string `json:"wallet_id"`
 	Signature []byte `json:"signature"`
 }
 
 type SignTxMessage struct {
+	OrgID               string  `json:"org_id,omitempty"`
 	KeyType             KeyType `json:"key_type"`
 	WalletID            string  `json:"wallet_id"`
 	NetworkInternalCode string  `json:"network_internal_code"`
@@ -36,6 +38,7 @@ type SignTxMessage struct {
 }
 
 type ResharingMessage struct {
+	OrgID        string   `json:"org_id,omitempty"`
 	SessionID    string   `json:"session_id"`
 	NodeIDs      []string `json:"node_ids"` // new peer IDs
 	NewThreshold int      `json:"new_threshold"`
@@ -47,12 +50,14 @@ type ResharingMessage struct {
 func (m *SignTxMessage) Raw() ([]byte, error) {
 	// omit the Signature field itself when computing the signed‐over data
 	payload := struct {
+		OrgID               string  `json:"org_id,omitempty"`
 		KeyType             KeyType `json:"key_type"`
 		WalletID            string  `json:"wallet_id"`
 		NetworkInternalCode string  `json:"network_internal_code"`
 		TxID                string  `json:"tx_id"`
 		Tx                  []byte  `json:"tx"`
 	}{
+		OrgID:               m.OrgID,
 		KeyType:             m.KeyType,
 		WalletID:            m.WalletID,
 		NetworkInternalCode: m.NetworkInternalCode,
@@ -71,6 +76,9 @@ func (m *SignTxMessage) InitiatorID() string {
 }
 
 func (m *GenerateKeyMessage) Raw() ([]byte, error) {
+	if m.OrgID != "" {
+		return []byte(m.OrgID + ":" + m.WalletID), nil
+	}
 	return []byte(m.WalletID), nil
 }
 
