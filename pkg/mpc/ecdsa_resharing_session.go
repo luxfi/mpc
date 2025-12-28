@@ -32,6 +32,7 @@ type cggmp21ReshareSession struct {
 	config       protocol.KeyGenConfig
 	newThreshold int
 	newNodeIDs   []string
+	orgID        string
 }
 
 // newCGGMP21ReshareSession creates a new CGGMP21 reshare session
@@ -46,6 +47,7 @@ func newCGGMP21ReshareSession(
 	keyinfoStore keyinfo.Store,
 	resultQueue messaging.MessageQueue,
 	selfNodeID string,
+	orgID string,
 ) (*cggmp21ReshareSession, error) {
 	// Generate session ID for resharing
 	sessionID := fmt.Sprintf("reshare-%s", walletID)
@@ -111,6 +113,7 @@ func newCGGMP21ReshareSession(
 		protocol:     protocol,
 		newThreshold: newThreshold,
 		newNodeIDs:   newNodeIDs,
+		orgID:        orgID,
 	}
 
 	// Load existing config for old peers
@@ -324,8 +327,8 @@ func (s *cggmp21ReshareSession) loadConfig(walletID string) (protocol.KeyGenConf
 		return nil, err
 	}
 
-	// Load the key share data
-	keyShareData, err := s.kvstore.Get(walletID)
+	// Load the key share data using org-scoped key
+	keyShareData, err := GetKeyShareWithFallback(s.kvstore, s.orgID, walletID)
 	if err != nil {
 		return nil, err
 	}
@@ -346,8 +349,9 @@ func (s *cggmp21ReshareSession) saveConfig(config protocol.KeyGenConfig) error {
 		return fmt.Errorf("failed to serialize config: %w", err)
 	}
 
-	// Save to kvstore
-	if err := s.kvstore.Put(s.walletID, configData); err != nil {
+	// Save to kvstore using org-scoped key
+	storeKey := OrgScopedKey(s.orgID, s.walletID)
+	if err := s.kvstore.Put(storeKey, configData); err != nil {
 		return fmt.Errorf("failed to save share data: %w", err)
 	}
 
