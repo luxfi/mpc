@@ -39,7 +39,7 @@ spec:
     - protocol: TCP
       port: 9800
 ---
-# MPC node egress: unrestricted (needs S3, postgres, peers)
+# MPC node egress: restricted to peers, data stores, S3, DNS
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -52,7 +52,44 @@ spec:
   policyTypes:
   - Egress
   egress:
-  - {}
+  # mpc-node <-> mpc-node: consensus p2p
+  - to:
+    - podSelector:
+        matchLabels:
+          app: mpc-node
+    ports:
+    - protocol: TCP
+      port: 9651
+    - protocol: TCP
+      port: 9800
+  # mpc-node -> postgres
+  - to:
+    - podSelector:
+        matchLabels:
+          app: mpc-postgres
+    ports:
+    - protocol: TCP
+      port: 5432
+  # mpc-node -> valkey
+  - to:
+    - podSelector:
+        matchLabels:
+          app: mpc-valkey
+    ports:
+    - protocol: TCP
+      port: 6379
+  # DNS resolution (kube-dns / CoreDNS)
+  - to:
+    - namespaceSelector: {}
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+  # S3 backup (MinIO or external S3 — HTTPS only)
+  - ports:
+    - protocol: TCP
+      port: 443
 ---
 # MPC API ingress: only from ingress controller and dashboard
 apiVersion: networking.k8s.io/v1

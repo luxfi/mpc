@@ -396,6 +396,22 @@ make e2e-test
 
 19. **Protocol timeouts**: No timeout enforcement on protocol handlers. Recommend adding context with timeout to prevent indefinite hangs from stalling parties.
 
+### Security Hardening (Apr 2026)
+
+23. **Internal API auth (port 9800)**: All mutating endpoints (/keygen, /keys, /backup) now require `Authorization: Bearer <token>`. Token sourced from `MPC_INTERNAL_API_KEY` env var (KMS-synced). Falls back to deterministic derivation from Ed25519 node identity for dev. /health remains unauthenticated for K8s probes.
+
+24. **TLS-only transport**: `DualModeListener` replaced by `TLSOnlyListener`. Plaintext connections are rejected. TLS 1.3 with PQ key exchange (X25519MLKEM768) is mandatory for all peer-to-peer communication.
+
+25. **Sign rate limiting**: Bridge signing and intent signing endpoints have a dedicated 20 RPM per-IP rate limiter, separate from the global 100 RPM limit.
+
+26. **Internal API hardening**: Port 9800 now has body size limits (1 MB), read/write timeouts, and 10 RPM rate limiting on mutating endpoints.
+
+27. **Network egress restriction**: K8s NetworkPolicy for MPC nodes now restricts egress to peer nodes, postgres, valkey, DNS, and HTTPS (S3 backup) only. No unrestricted egress.
+
+28. **Compose.yml secrets**: JWT_SECRET now uses `${JWT_SECRET:?}` (required) instead of a hardcoded dev default.
+
+29. **Cluster API key forwarding**: api-deployment now passes `--cluster-api-key $(MPC_CLUSTER_API_KEY)` when proxying to internal MPC API. The `apiOnlyMPCBackend.doRequest` sends it as `Authorization: Bearer` header.
+
 ### Consensus-Embedded Transport (Jan 2026)
 
 20. **ZAP Message Types**: MPC uses ZAP wire protocol message types 60-79:
