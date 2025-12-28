@@ -59,10 +59,11 @@ func newBLSSigningSession(
 	keyinfoStore keyinfo.Store,
 	resultQueue messaging.MessageQueue,
 	identityStore identity.Store,
+	orgID string,
 ) (*blsSigningSession, error) {
 	// Load config from kvstore - BLS keys are stored with bls: prefix
 	blsKey := fmt.Sprintf("bls:%s", walletID)
-	shareBytes, err := kvstore.Get(blsKey)
+	shareBytes, err := GetKeyShareWithFallback(kvstore, orgID, blsKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get BLS key share: %w", err)
 	}
