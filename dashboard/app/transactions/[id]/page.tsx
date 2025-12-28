@@ -7,11 +7,11 @@ import { Nav } from '@/components/layout/nav'
 import { StatusBadge } from '@/components/common/status-badge'
 import { api } from '@/lib/api'
 import { isWebAuthnSupported, startAuthentication } from '@/lib/webauthn'
-import type { Transaction } from '@/lib/types'
+import type { TransactionDetail as TxDetail } from '@/lib/types'
 
 export default function TransactionDetailPage() {
   const { id } = useParams<{ id: string }>()
-  const [tx, setTx] = useState<Transaction | null>(null)
+  const [tx, setTx] = useState<TxDetail | null>(null)
   const [error, setError] = useState('')
   const [acting, setActing] = useState(false)
   const [rejectReason, setRejectReason] = useState('')
@@ -21,7 +21,7 @@ export default function TransactionDetailPage() {
 
   useEffect(() => {
     if (!id) return
-    api.getTransaction(id).then(setTx).catch((e) => setError(e.message))
+    api.getTransaction(id).then((t) => setTx(t as TxDetail)).catch((e) => setError(e.message))
   }, [id])
 
   async function handleApprove() {
@@ -29,7 +29,7 @@ export default function TransactionDetailPage() {
     setError('')
     try {
       await api.approveTransaction(id)
-      const updated = await api.getTransaction(id)
+      const updated = await api.getTransaction(id) as TxDetail
       setTx(updated)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Approval failed')
@@ -44,7 +44,7 @@ export default function TransactionDetailPage() {
     try {
       const assertion = await startAuthentication(id)
       await api.webauthnVerify(id, assertion)
-      const updated = await api.getTransaction(id)
+      const updated = await api.getTransaction(id) as TxDetail
       setTx(updated)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Biometric approval failed')
@@ -58,7 +58,7 @@ export default function TransactionDetailPage() {
     setError('')
     try {
       await api.rejectTransaction(id, { reason: rejectReason || undefined })
-      const updated = await api.getTransaction(id)
+      const updated = await api.getTransaction(id) as TxDetail
       setTx(updated)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Rejection failed')
@@ -183,6 +183,125 @@ export default function TransactionDetailPage() {
                     </div>
                   )}
                 </dl>
+              </div>
+            )}
+
+            {/* On-Chain Confirmation */}
+            {(tx.block_number != null || (tx.confirmations ?? 0) > 0 || tx.revert_reason) && (
+              <div className="mb-8 rounded-lg border border-border bg-card p-6">
+                <h2 className="mb-4 text-sm font-medium uppercase tracking-wider text-muted-foreground">On-Chain Status</h2>
+                <dl className="grid grid-cols-2 gap-4 text-sm sm:grid-cols-3">
+                  {tx.block_number != null && (
+                    <div>
+                      <dt className="text-muted-foreground">Block Number</dt>
+                      <dd className="mt-1 font-mono">{tx.block_number}</dd>
+                    </div>
+                  )}
+                  {tx.block_hash && (
+                    <div className="col-span-2">
+                      <dt className="text-muted-foreground">Block Hash</dt>
+                      <dd className="mt-1 font-mono text-xs break-all">{tx.block_hash}</dd>
+                    </div>
+                  )}
+                  <div>
+                    <dt className="text-muted-foreground">Confirmations</dt>
+                    <dd className="mt-1">
+                      <span className="font-mono">{tx.confirmations ?? 0}</span>
+                      <span className="text-muted-foreground"> / {tx.target_confirmations ?? 12}</span>
+                      {(tx.confirmations ?? 0) >= (tx.target_confirmations ?? 12) && (
+                        <span className="ml-2 text-xs text-emerald-400">Finalized</span>
+                      )}
+                    </dd>
+                  </div>
+                  {tx.gas_used && (
+                    <div>
+                      <dt className="text-muted-foreground">Gas Used</dt>
+                      <dd className="mt-1 font-mono">{tx.gas_used}</dd>
+                    </div>
+                  )}
+                  {tx.receipt_status != null && (
+                    <div>
+                      <dt className="text-muted-foreground">Receipt Status</dt>
+                      <dd className="mt-1">
+                        {tx.receipt_status === 1 ? (
+                          <span className="text-emerald-400">Success</span>
+                        ) : (
+                          <span className="text-red-400">Reverted</span>
+                        )}
+                      </dd>
+                    </div>
+                  )}
+                  {tx.nonce != null && (
+                    <div>
+                      <dt className="text-muted-foreground">Nonce</dt>
+                      <dd className="mt-1 font-mono">{tx.nonce}</dd>
+                    </div>
+                  )}
+                  {tx.finalized_at && (
+                    <div>
+                      <dt className="text-muted-foreground">Finalized At</dt>
+                      <dd className="mt-1">{new Date(tx.finalized_at).toLocaleString()}</dd>
+                    </div>
+                  )}
+                </dl>
+                {tx.revert_reason && (
+                  <div className="mt-4 rounded-md border border-destructive/30 bg-destructive/5 p-3">
+                    <p className="text-xs font-medium text-destructive">Revert Reason</p>
+                    <p className="mt-1 font-mono text-xs text-destructive/80">{tx.revert_reason}</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Settlement Link */}
+            {(tx.intent_id || tx.settlement_tx_hash) && (
+              <div className="mb-8 rounded-lg border border-border bg-card p-6">
+                <h2 className="mb-4 text-sm font-medium uppercase tracking-wider text-muted-foreground">Settlement</h2>
+                <dl className="grid grid-cols-2 gap-4 text-sm">
+                  {tx.intent_id && (
+                    <div>
+                      <dt className="text-muted-foreground">Intent</dt>
+                      <dd className="mt-1">
+                        <Link href={`/intents/${tx.intent_id}`} className="font-mono text-xs hover:underline">
+                          {tx.intent_id.slice(0, 12)}...
+                        </Link>
+                      </dd>
+                    </div>
+                  )}
+                  {tx.settlement_tx_hash && (
+                    <div className="col-span-2">
+                      <dt className="text-muted-foreground">Settlement TX Hash</dt>
+                      <dd className="mt-1 font-mono text-xs break-all">{tx.settlement_tx_hash}</dd>
+                    </div>
+                  )}
+                  {tx.settled_at && (
+                    <div>
+                      <dt className="text-muted-foreground">Settled At</dt>
+                      <dd className="mt-1">{new Date(tx.settled_at).toLocaleString()}</dd>
+                    </div>
+                  )}
+                </dl>
+              </div>
+            )}
+
+            {/* Status History */}
+            {tx.status_history && tx.status_history.length > 0 && (
+              <div className="mb-8 rounded-lg border border-border bg-card p-6">
+                <h2 className="mb-4 text-sm font-medium uppercase tracking-wider text-muted-foreground">Status History</h2>
+                <div className="space-y-3">
+                  {tx.status_history.map((t, i) => (
+                    <div key={i} className="flex items-start gap-3 text-sm">
+                      <div className="flex items-center gap-2">
+                        <StatusBadge status={t.from || 'new'} />
+                        <span className="text-muted-foreground">-&gt;</span>
+                        <StatusBadge status={t.to} />
+                      </div>
+                      <span className="text-xs text-muted-foreground">{new Date(t.timestamp).toLocaleString()}</span>
+                      {t.detail && <span className="text-xs text-muted-foreground">- {t.detail}</span>}
+                      {t.actor && <span className="text-xs font-mono text-muted-foreground">({t.actor})</span>}
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 
