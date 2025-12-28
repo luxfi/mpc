@@ -11,6 +11,28 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GOEXPERIMENT: runtimesecret
+      # R3-1 / R2-2 / R3-1: Postgres-backed CAS + audit-chain tests live in
+      # pkg/api/cas_postgres_test.go and internal/store/audit_concurrency_test.go.
+      # Without TEST_PG_DSN the Postgres variants silently SKIP, which means
+      # regressions in the FOR UPDATE / advisory-lock paths would ship. This
+      # env variable forces the tests to actually run against the sidecar
+      # below.
+      TEST_PG_DSN: postgres://mpc:mpc@localhost:5432/mpc_test?sslmode=disable
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: mpc
+          POSTGRES_PASSWORD: mpc
+          POSTGRES_DB: mpc_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U mpc"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=10
 
     steps:
       - name: Checkout code
@@ -33,6 +55,14 @@ jobs:
 
       - name: Download dependencies
         run: GOWORK=off go mod download
+
+      - name: Verify TEST_PG_DSN is live (R3-1 / R2-2 coverage gate)
+        run: |
+          set -euo pipefail
+          # Install psql to fail fast if the sidecar isn't reachable.
+          sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends postgresql-client
+          PGPASSWORD=mpc psql -h localhost -U mpc -d mpc_test -c 'SELECT 1;'
+          echo "TEST_PG_DSN=${TEST_PG_DSN}"
 
       - name: Run unit tests
         run: GOWORK=off CGO_ENABLED=1 go test -v -race -coverprofile=coverage.out ./...
