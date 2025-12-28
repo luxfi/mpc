@@ -1,0 +1,12 @@
+.git
+go.work
+go.work.sum
+e2e/
+bin/
+brokerd
+mpcd
+*.exe
+*.test
+backups/
+data/
+.idea/
