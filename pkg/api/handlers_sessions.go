@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"math/big"
 	"net/http"
 	"time"
@@ -11,6 +12,10 @@ import (
 
 	"github.com/luxfi/mpc/pkg/db"
 )
+
+// errSessionConflict is the sentinel for concurrent session mutation. Callers
+// (consumeSessionForSign) map it to 409 retry logic.
+var errSessionConflict = errors.New("session modified concurrently")
 
 // --- Sessions: /v1/mpc/wallets/{id}/sessions ---
 //
@@ -147,6 +152,31 @@ func (s *Server) handleCreateWalletSession(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
+	// F24: Session grant creation policy gate. If the requested grant's
+	// valueLimit exceeds what wallet-scoped policies would allow without
+	// approval, the session starts in pending_approval state; otherwise
+	// active. This prevents "roll your own unbounded signing grant" bypass
+	// of the approval workflow.
+	status := "active"
+	if req.ValueLimit != nil {
+		policies, _ := s.loadPolicies(r.Context(), orgID, nil)
+		// Evaluate the hypothetical max-spend transaction. If policy would
+		// require approval for this amount, the grant itself must be approved.
+		decision := evaluateTransaction(*req.ValueLimit, "evm", "", policies)
+		if decision.Action == "deny" {
+			writeError(w, http.StatusForbidden, "requested session grant exceeds wallet policy: "+decision.Reason)
+			return
+		}
+		if decision.Action == "require_approval" && decision.RequiredApprovers > 0 {
+			status = "pending_approval"
+		}
+	}
+	// Operation-count-only sessions with no ValueLimit must also require
+	// approval if the count exceeds a per-wallet safety ceiling.
+	if req.OperationLimit != nil && *req.OperationLimit > 1000 {
+		status = "pending_approval"
+	}
+
 	sess := orm.New[db.Session](s.db.ORM)
 	sess.OrgID = orgID
 	sess.WalletID = walletID
@@ -159,7 +189,7 @@ func (s *Server) handleCreateWalletSession(w http.ResponseWriter, r *http.Reques
 	sess.ValueAccum = "0"
 	sess.OperationLimit = req.OperationLimit
 	sess.OperationsUsed = 0
-	sess.Status = "active"
+	sess.Status = status
 	sess.ExpiresAt = req.ExpiresAt
 	sess.CreatedBy = nilIfEmpty(userID)
 	if err := sess.Create(); err != nil {
@@ -209,53 +239,72 @@ func (s *Server) handleRevokeWalletSession(w http.ResponseWriter, r *http.Reques
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// consumeSessionForSign enforces session validity + limits for a signing
-// attempt. Returns the session used (for audit) or nil if no session was
-// presented — no-session sign is allowed only when the caller's role is
-// owner/admin/signer/api and no active session exists for that principal.
+// consumeSessionForSign atomically validates and consumes a signing session:
+//   - OperationsUsed++ and ValueAccum += value, under CAS (F3).
 //
-// If `sessionID` is non-empty it is required to match; otherwise the most
-// recently created active session for (orgID, walletID, principal) is used.
+// Uses serializable isolation to force PG to detect read-write conflicts and
+// raise SQLSTATE 40001; the outer retry loop re-reads and retries up to
+// maxCASRetries times. On terminal conflict surfaces 409. On policy failure
+// (expired/revoked/limit) surfaces 403 directly without retry.
 //
-// On success the session is updated transactionally: OperationsUsed++ and
-// ValueAccum += value. On failure returns an *httpError suitable to surface
-// as 403.
+// If `sessionID` is empty callers get a 403 — the handler requires an explicit
+// session (F1), so this function no longer auto-selects.
 func (s *Server) consumeSessionForSign(
 	ctx context.Context,
 	orgID, walletID, principal, sessionID, value string,
 ) (*db.Session, error) {
 	if sessionID == "" {
-		// Look up the most recent active session for this principal+wallet.
-		q := orm.TypedQuery[db.Session](s.db.ORM).
-			Filter("orgId=", orgID).
-			Filter("walletId=", walletID).
-			Filter("grantedTo=", principal).
-			Filter("status=", "active").
-			Order("-createdAt").
-			Limit(1)
-		sessions, err := q.GetAll(ctx)
-		if err != nil || len(sessions) == 0 {
-			return nil, nil // no session — caller decides whether to allow
-		}
-		sessionID = sessions[0].Id()
+		return nil, &httpError{code: http.StatusForbidden, msg: "sessionId is required"}
 	}
 
+	const maxCASRetries = 5
+	var result *db.Session
+	for attempt := 0; attempt < maxCASRetries; attempt++ {
+		sess, terminal, err := s.tryConsumeSession(ctx, orgID, walletID, principal, sessionID, value)
+		if terminal {
+			return nil, err
+		}
+		if err == nil {
+			result = sess
+			break
+		}
+		if !errors.Is(err, errSessionConflict) {
+			return nil, &httpError{code: http.StatusInternalServerError, msg: err.Error()}
+		}
+		// Backoff briefly before retry.
+		time.Sleep(time.Duration(10*(attempt+1)) * time.Millisecond)
+	}
+	if result == nil {
+		return nil, &httpError{code: http.StatusConflict, msg: "session busy, retry"}
+	}
+	return result, nil
+}
+
+// tryConsumeSession runs a single CAS attempt. Returns (session, terminal,
+// err). When terminal is true the caller must NOT retry — the err is an
+// *httpError describing the permanent policy reason (expired, revoked, etc.).
+// When terminal is false and err is errSessionConflict, the caller retries.
+func (s *Server) tryConsumeSession(
+	ctx context.Context,
+	orgID, walletID, principal, sessionID, value string,
+) (*db.Session, bool, error) {
 	sess, err := orm.Get[db.Session](s.db.ORM, sessionID)
 	if err != nil {
-		return nil, &httpError{code: http.StatusForbidden, msg: "session not found"}
+		return nil, true, &httpError{code: http.StatusForbidden, msg: "session not found"}
 	}
 	if sess.OrgID != orgID || sess.WalletID != walletID {
-		return nil, &httpError{code: http.StatusForbidden, msg: "session mismatch"}
+		return nil, true, &httpError{code: http.StatusForbidden, msg: "session mismatch"}
 	}
 	if sess.Status == "revoked" {
-		return nil, &httpError{code: http.StatusForbidden, msg: "session revoked"}
+		return nil, true, &httpError{code: http.StatusForbidden, msg: "session revoked"}
 	}
 	if time.Now().After(sess.ExpiresAt) {
-		return nil, &httpError{code: http.StatusForbidden, msg: "session expired"}
+		return nil, true, &httpError{code: http.StatusForbidden, msg: "session expired"}
 	}
 	if sess.GrantedTo != "" && sess.GrantedTo != principal {
-		return nil, &httpError{code: http.StatusForbidden, msg: "session granted to different principal"}
+		return nil, true, &httpError{code: http.StatusForbidden, msg: "session granted to different principal"}
 	}
+	// F25 — enforce scope strictly. sign scope required for sign/settlement.
 	scopeOK := false
 	for _, scope := range sess.Scopes {
 		if scope == "sign" {
@@ -264,33 +313,64 @@ func (s *Server) consumeSessionForSign(
 		}
 	}
 	if !scopeOK {
-		return nil, &httpError{code: http.StatusForbidden, msg: "session does not grant sign scope"}
+		return nil, true, &httpError{code: http.StatusForbidden, msg: "session does not grant sign scope"}
 	}
-	if sess.OperationLimit != nil && sess.OperationsUsed >= *sess.OperationLimit {
-		return nil, &httpError{code: http.StatusForbidden, msg: "session operation limit reached"}
+
+	// Snapshot the CAS-guard values read from the DB.
+	prevUsed := sess.OperationsUsed
+	prevAccum := sess.ValueAccum
+
+	if sess.OperationLimit != nil && prevUsed >= *sess.OperationLimit {
+		return nil, true, &httpError{code: http.StatusForbidden, msg: "session operation limit reached"}
 	}
-	// Value accumulation
+
+	newAccum := prevAccum
 	if sess.ValueLimit != nil && value != "" {
 		limit, ok := new(big.Int).SetString(*sess.ValueLimit, 10)
-		used, _ := new(big.Int).SetString(sess.ValueAccum, 10)
+		used, _ := new(big.Int).SetString(prevAccum, 10)
 		if used == nil {
 			used = new(big.Int)
 		}
 		amt, aok := new(big.Int).SetString(value, 10)
 		if !ok || !aok {
-			return nil, &httpError{code: http.StatusForbidden, msg: "session value accounting error"}
+			return nil, true, &httpError{code: http.StatusForbidden, msg: "session value accounting error"}
 		}
 		next := new(big.Int).Add(used, amt)
 		if next.Cmp(limit) > 0 {
-			return nil, &httpError{code: http.StatusForbidden, msg: "session value limit exceeded"}
+			return nil, true, &httpError{code: http.StatusForbidden, msg: "session value limit exceeded"}
 		}
-		sess.ValueAccum = next.String()
+		newAccum = next.String()
 	}
-	sess.OperationsUsed++
-	if err := sess.Update(); err != nil {
-		return nil, &httpError{code: http.StatusInternalServerError, msg: "failed to update session"}
+
+	// Re-read inside the write transaction + CAS guard. If the persisted
+	// OperationsUsed or ValueAccum has shifted since our initial read, the
+	// current Put would overwrite concurrent work — reject and retry.
+	err = s.db.ORM.RunInTransaction(ctx, func(tx orm.DB) error {
+		fresh, gerr := orm.Get[db.Session](tx, sessionID)
+		if gerr != nil {
+			return &httpError{code: http.StatusForbidden, msg: "session not found"}
+		}
+		if fresh.OperationsUsed != prevUsed || fresh.ValueAccum != prevAccum {
+			return errSessionConflict
+		}
+		fresh.OperationsUsed = prevUsed + 1
+		fresh.ValueAccum = newAccum
+		if uerr := fresh.Update(); uerr != nil {
+			return uerr
+		}
+		sess = fresh
+		return nil
+	})
+	if err != nil {
+		if herr, ok := err.(*httpError); ok {
+			return nil, true, herr
+		}
+		if errors.Is(err, errSessionConflict) {
+			return nil, false, errSessionConflict
+		}
+		return nil, false, err
 	}
-	return sess, nil
+	return sess, false, nil
 }
 
 type httpError struct {
@@ -311,7 +391,10 @@ func writeHTTPError(w http.ResponseWriter, err error) {
 }
 
 // startSessionReaper periodically marks expired sessions as expired.
-// This is the background sweep mandated by the MPC spec.
+// This is the background sweep mandated by the MPC spec. F21 — loop
+// pagination until no more results come back; surface Update errors via
+// log so silent failures do not accumulate expired-but-still-active
+// sessions in the DB.
 func (s *Server) startSessionReaper(ctx context.Context, interval time.Duration) {
 	go func() {
 		t := time.NewTicker(interval)
@@ -321,21 +404,63 @@ func (s *Server) startSessionReaper(ctx context.Context, interval time.Duration)
 			case <-ctx.Done():
 				return
 			case <-t.C:
-				sessions, err := orm.TypedQuery[db.Session](s.db.ORM).
-					Filter("status=", "active").
-					Limit(500).
-					GetAll(ctx)
-				if err != nil || len(sessions) == 0 {
-					continue
-				}
-				now := time.Now()
-				for _, sess := range sessions {
-					if now.After(sess.ExpiresAt) {
-						sess.Status = "expired"
-						sess.Update()
-					}
-				}
+				s.reapExpiredSessions(ctx)
 			}
 		}
 	}()
+}
+
+// reapExpiredSessions is exported-shaped (lowercase only for package-private
+// tests) so the test harness can drive a single pass without waiting for the
+// ticker.
+func (s *Server) reapExpiredSessions(ctx context.Context) int {
+	const pageSize = 500
+	now := time.Now()
+	reaped := 0
+	for {
+		sessions, err := orm.TypedQuery[db.Session](s.db.ORM).
+			Filter("status=", "active").
+			Limit(pageSize).
+			GetAll(ctx)
+		if err != nil || len(sessions) == 0 {
+			return reaped
+		}
+		pageReaped := 0
+		for _, sess := range sessions {
+			if now.After(sess.ExpiresAt) {
+				sess.Status = "expired"
+				if uerr := sess.Update(); uerr != nil {
+					// Log-and-continue: one bad row must not block the sweep.
+					s.logSessionReapError(sess.Id(), uerr)
+					continue
+				}
+				pageReaped++
+				reaped++
+			}
+		}
+		// If this page produced no reaped sessions, stop — the remaining
+		// active sessions are all in the future. Prevents infinite loop when
+		// pageSize sessions are all still valid.
+		if pageReaped == 0 {
+			return reaped
+		}
+	}
+}
+
+func (s *Server) logSessionReapError(id string, err error) {
+	// Best-effort audit of reap failures; do not block the sweep.
+	e := orm.New[db.AuditEntry](s.db.ORM)
+	e.Action = "session.reap.error"
+	resType := "session"
+	e.ResourceType = &resType
+	e.ResourceID = &id
+	msg := err.Error()
+	e.Details = []byte(`{"error":` + jsonString(msg) + `}`)
+	_ = e.Create()
+}
+
+// jsonString escapes a string for embedding in a JSON document.
+func jsonString(s string) string {
+	b, _ := json.Marshal(s)
+	return string(b)
 }
