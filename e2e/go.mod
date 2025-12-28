@@ -5,7 +5,7 @@ go 1.26.0
 require (
 	github.com/google/uuid v1.6.0
 	github.com/hashicorp/consul/api v1.33.2
-	github.com/luxfi/mpc v0.0.0
+	github.com/luxfi/mpc v1.0.5
 	github.com/luxfi/zapdb/v4 v4.9.2
 	github.com/nats-io/nats.go v1.48.0
 	github.com/stretchr/testify v1.11.1
@@ -106,7 +106,5 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/luxfi/mpc => ../ // workspace sibling
-
-// agl/ed25519 has no packages at upstream path; redirect required (see root go.mod).
+// agl/ed25519 has no packages at upstream path; redirect required by decred/dcrd/dcrec/edwards/v2.
 replace github.com/agl/ed25519 => github.com/luxfi/edwards25519 v0.0.0-20200305024217-f36fc4b53d43
