@@ -157,6 +157,12 @@ spec:
                   name: mpc-secrets
                   key: kms-master-key
                   optional: true
+            - name: MPC_INTERNAL_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: mpc-secrets
+                  key: internal-api-key
+                  optional: true
           livenessProbe:
             httpGet:
               path: /health
