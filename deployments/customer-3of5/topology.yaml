@@ -70,15 +70,65 @@ topology:
     ecdsa:
       curve: "secp256k1"
       protocol: "CGGMP21"
-      chains: ["bitcoin", "ethereum", "lux", "xrpl"]
+      chains:
+        - { network: "BTC",          name: "Bitcoin (Legacy/SegWit)" }
+        - { network: "ETH",          name: "Ethereum + all EVM chains" }
+        - { network: "LUX",          name: "Lux C/X/P chains" }
+        - { network: "XRPL",         name: "XRP Ledger" }
+      notes: "Also supports LSS protocol for dynamic resharing"
 
     eddsa:
       curve: "ed25519"
       protocol: "FROST"
-      chains: ["solana", "ton", "polkadot"]
+      chains:
+        - { network: "SOL",          name: "Solana" }
+        - { network: "TON",          name: "TON" }
+      notes: "FROST Taproot mode produces BIP-340 compatible signatures"
+
+    sr25519:
+      curve: "ristretto255"
+      protocol: "FROST"
+      chains:
+        - { network: "DOT",          name: "Polkadot" }
+        - { network: "KSM",          name: "Kusama" }
+      notes: "Schnorrkel/Ristretto255 via generic FROST over ristretto255 group"
+
+    bls:
+      curve: "bls12-381"
+      protocol: "BLS-Threshold"
+      chains:
+        - { network: "LUX",          name: "Lux consensus (validator signing)" }
+        - { network: "ETH",          name: "Ethereum beacon chain" }
+      notes: "Aggregatable threshold signatures for consensus"
 
     frost_taproot:
       curve: "secp256k1"
       protocol: "FROST"
-      chains: ["bitcoin-taproot"]
-      safe_verifiable: true  # on-chain FROST.sol verification
+      chains:
+        - { network: "BTC",          name: "Bitcoin Taproot (BIP-340/341)" }
+      safe_verifiable: true
+      notes: "On-chain FROST.sol verification via ecrecover trick"
+
+    lss:
+      curve: "secp256k1"
+      protocol: "LSS"
+      chains:
+        - { network: "BTC",          name: "Bitcoin (dynamic resharing)" }
+        - { network: "ETH",          name: "Ethereum (dynamic resharing)" }
+      notes: "Supports t/n changes without key regeneration"
+
+  # DKG generates keys for ALL protocols in a single ceremony.
+  # Each wallet gets: ECDSA + EdDSA + SR25519 + BLS key shares.
+  # Protocol selection is automatic based on target chain (see GetNetworkKeyType).
+  #
+  # Chain → Protocol mapping:
+  #   BTC (legacy/segwit) → CGGMP21 (secp256k1)
+  #   BTC (taproot)       → FROST (secp256k1, BIP-340)
+  #   ETH / all EVM       → CGGMP21 (secp256k1)
+  #   LUX C/X/P           → CGGMP21 (secp256k1)
+  #   LUX consensus       → BLS-Threshold (bls12-381)
+  #   SOL                 → FROST (ed25519)
+  #   TON                 → FROST (ed25519)
+  #   XRPL                → CGGMP21 (secp256k1)
+  #   DOT / KSM           → FROST (ristretto255/sr25519)
+  #   Any + resharing     → LSS (secp256k1)
