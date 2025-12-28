@@ -924,7 +924,6 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 			}
 			json.NewEncoder(w).Encode(resp)
 		}
-		mux.HandleFunc("/health", healthHandler)
 		mux.HandleFunc("/healthz", healthHandler)
 		mux.HandleFunc("/keys", internalAuth(func(w http.ResponseWriter, r *http.Request) {
 			keys, err := factory.KeyInfoStore().ListKeys()
@@ -2008,7 +2007,6 @@ func (a *apiOnlyMPCBackend) ExportKeyShare(orgID, walletID string) ([]byte, erro
 func (a *apiOnlyMPCBackend) GetClusterStatus() *mpcapi.ClusterStatus {
 	var status mpcapi.ClusterStatus
 	// Internal MPC API on port 9800 uses /health (not /v1/status)
-	if err := a.doRequest("GET", "/health", nil, &status); err != nil {
 		logger.Warn("Failed to get cluster status", "err", err, "url", a.clusterURL)
 		return &mpcapi.ClusterStatus{
 			NodeID:  "api-only",
