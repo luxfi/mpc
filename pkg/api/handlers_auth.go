@@ -159,7 +159,7 @@ func (s *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	claims, err := s.validateJWT(req.RefreshToken)
+	claims, err := s.validateRefreshToken(req.RefreshToken)
 	if err != nil {
 		writeError(w, http.StatusUnauthorized, "invalid refresh token")
 		return
