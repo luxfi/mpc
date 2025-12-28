@@ -10,7 +10,7 @@ spec:
     - websecure
   routes:
     - kind: Rule
-      match: (Host(`mpc.lux.network`) || Host(`mpc.pars.network`) || Host(`mpc.zoo.network`)) && PathPrefix(`/api/v1`)
+      match: (Host(`mpc.lux.network`) || Host(`mpc.pars.network`) || Host(`mpc.zoo.network`)) && PathPrefix(`/v1`)
       priority: 20
       services:
         - name: mpc-api-svc
