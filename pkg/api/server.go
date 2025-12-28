@@ -252,23 +252,14 @@ func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, o
 				r.Post("/wallets/{id}/reshare", s.handleReshareWallet)
 			})
 
-			// Transactions — signers+ can create/approve; viewers can read
-			r.Get("/transactions", s.handleListTransactions)
-			r.Get("/transactions/{id}", s.handleGetTransaction)
+			// Transactions (legacy create/approve/reject plumbing kept as
+			// it is the substrate for the unified /v1/mpc/operations view).
+			// The read surface for operations moves to /v1/mpc/operations
+			// below; direct POST /v1/transactions retained as internal entry
+			// point for intents/payments which wire their own flows.
 			r.Group(func(r chi.Router) {
 				r.Use(requireRole("owner", "admin", "signer", "api"))
 				r.Post("/transactions", s.handleCreateTransaction)
-				r.Post("/transactions/{id}/approve", s.handleApproveTransaction)
-				r.Post("/transactions/{id}/reject", s.handleRejectTransaction)
-			})
-
-			// Policies — owner/admin only
-			r.Group(func(r chi.Router) {
-				r.Use(requireRole("owner", "admin"))
-				r.Get("/policies", s.handleListPolicies)
-				r.Post("/policies", s.handleCreatePolicy)
-				r.Patch("/policies/{id}", s.handleUpdatePolicy)
-				r.Delete("/policies/{id}", s.handleDeletePolicy)
 			})
 
 			// Whitelist — owner/admin only
@@ -368,11 +359,7 @@ func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, o
 				r.Get("/wallets/{id}/backup", s.handleGetWalletBackup)
 			})
 
-			// Audit — owner/admin only
-			r.Group(func(r chi.Router) {
-				r.Use(requireRole("owner", "admin"))
-				r.Get("/audit", s.handleListAudit)
-			})
+			// Legacy audit route removed — moved to /v1/mpc/audit.
 
 			// Validator key management (KMS) — owner/admin only
 			r.Group(func(r chi.Router) {
@@ -383,6 +370,69 @@ func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, o
 			// Status — any authenticated (including API keys)
 			r.Get("/status", s.handleStatus)
 			r.Get("/info", s.handleInfo)
+
+			// ── /v1/mpc/* — Liquidity MPC spec surface
+			// Canonical routes defined in ~/work/liquidity/openapi/mpc.yaml.
+			// No alias paths, no backwards compatibility.
+			r.Route("/mpc", func(r chi.Router) {
+				// Wallets
+				r.Get("/wallets", s.handleMpcListWallets)
+				r.Post("/wallets", s.handleMpcCreateWallet)
+				r.Get("/wallets/balances", s.handleMpcWalletBalances)
+				r.Post("/wallets/sweep", s.handleMpcSweepWallet)
+				r.Get("/wallets/{id}", s.handleMpcGetWallet)
+				r.Patch("/wallets/{id}/default", s.handleMpcSetDefaultWallet)
+
+				// Default wallet
+				r.Get("/wallet", s.handleMpcGetDefaultWallet)
+				r.Post("/wallet", s.handleMpcCreateDefaultWallet)
+
+				// Balances + crypto
+				r.Get("/balances/{address}", s.handleMpcBalancesByAddress)
+				r.Get("/crypto/wallet/{asset}", s.handleMpcCryptoWallet)
+
+				// Signing
+				r.With(RateLimitMiddleware(20)).Post("/sign", s.handleMpcSignDefault)
+				r.With(requireRole("owner", "admin", "signer", "api"), RateLimitMiddleware(20)).
+					Post("/settlement/sign", s.handleMpcSignSettlement)
+
+				// WebAuthn (spec-named aliases to the existing handlers)
+				r.Post("/webauthn/challenge", s.handleRegisterWebAuthnBegin)
+				r.Post("/webauthn/verify", s.handleVerifyWebAuthn)
+
+				// Biometric
+				r.Post("/biometric/enroll", s.handleBiometricEnroll)
+				r.Get("/biometric/status", s.handleBiometricStatus)
+
+				// Sessions (wallet-scoped)
+				r.Route("/wallets/{id}/sessions", func(r chi.Router) {
+					r.Get("/", s.handleListWalletSessions)
+					r.Post("/", s.handleCreateWalletSession)
+					r.Get("/{sessionId}", s.handleGetWalletSession)
+					r.Delete("/{sessionId}", s.handleRevokeWalletSession)
+				})
+
+				// Operations (unified view over Transaction)
+				r.Get("/operations", s.handleListOperations)
+				r.Get("/operations/{operationId}", s.handleGetOperation)
+				r.With(requireRole("owner", "admin", "signer", "api")).
+					Post("/operations/{operationId}/approve", s.handleApproveOperation)
+				r.With(requireRole("owner", "admin", "signer", "api")).
+					Post("/operations/{operationId}/reject", s.handleRejectOperation)
+
+				// Policies — owner/admin
+				r.Group(func(r chi.Router) {
+					r.Use(requireRole("owner", "admin"))
+					r.Get("/policies", s.handleListPolicies)
+					r.Post("/policies", s.handleCreatePolicy)
+					r.Get("/policies/{policyId}", s.handleGetPolicy)
+					r.Patch("/policies/{policyId}", s.handleUpdatePolicy)
+					r.Delete("/policies/{policyId}", s.handleDeletePolicy)
+				})
+
+				// Audit — owner/admin
+				r.With(requireRole("owner", "admin")).Get("/audit", s.handleMpcListAudit)
+			})
 		})
 	})
 
