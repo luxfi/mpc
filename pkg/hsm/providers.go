@@ -641,15 +641,15 @@ func (p *EnvProvider) GetPassword(_ context.Context, _ string) (string, error) {
 // 5. File Provider
 // ---------------------------------------------------------------------------
 
-// FileProvider reads a password from a file on disk. This is useful for
+// FilePasswordProvider reads a password from a file on disk. This is useful for
 // Kubernetes secrets mounted as volumes, Docker secrets, or any system
 // where the password is provisioned as a file.
-type FileProvider struct {
+type FilePasswordProvider struct {
 	Path string // path to password file
 }
 
 // GetPassword reads the password from the configured file path.
-func (p *FileProvider) GetPassword(_ context.Context, keyID string) (string, error) {
+func (p *FilePasswordProvider) GetPassword(_ context.Context, keyID string) (string, error) {
 	path := p.Path
 	if path == "" && keyID != "" {
 		path = keyID

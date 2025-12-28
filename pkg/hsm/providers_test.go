@@ -71,7 +71,7 @@ func TestFileProvider(t *testing.T) {
 		t.Fatalf("failed to write password file: %v", err)
 	}
 
-	p := &FileProvider{Path: path}
+	p := &FilePasswordProvider{Path: path}
 	got, err := p.GetPassword(context.Background(), "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -90,7 +90,7 @@ func TestFileProviderViaKeyID(t *testing.T) {
 		t.Fatalf("failed to write password file: %v", err)
 	}
 
-	p := &FileProvider{}
+	p := &FilePasswordProvider{}
 	got, err := p.GetPassword(context.Background(), path)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -101,7 +101,7 @@ func TestFileProviderViaKeyID(t *testing.T) {
 }
 
 func TestFileProviderMissing(t *testing.T) {
-	p := &FileProvider{Path: "/nonexistent/path/to/password.txt"}
+	p := &FilePasswordProvider{Path: "/nonexistent/path/to/password.txt"}
 	_, err := p.GetPassword(context.Background(), "")
 	if err == nil {
 		t.Fatal("expected error for missing file")
@@ -115,7 +115,7 @@ func TestFileProviderEmpty(t *testing.T) {
 		t.Fatalf("failed to write file: %v", err)
 	}
 
-	p := &FileProvider{Path: path}
+	p := &FilePasswordProvider{Path: path}
 	_, err := p.GetPassword(context.Background(), "")
 	if err == nil {
 		t.Fatal("expected error for empty password file")
@@ -142,7 +142,7 @@ func TestNewPasswordProviderAllTypes(t *testing.T) {
 		{"gcp", "*hsm.GCPKMSProvider"},
 		{"azure", "*hsm.AzureKVProvider"},
 		{"env", "*hsm.EnvProvider"},
-		{"file", "*hsm.FileProvider"},
+		{"file", "*hsm.FilePasswordProvider"},
 	}
 
 	for _, tt := range tests {
