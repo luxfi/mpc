@@ -9,6 +9,7 @@ import (
 	chimw "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 
+	"github.com/luxfi/mpc/pkg/custody"
 	"github.com/luxfi/mpc/pkg/db"
 	"github.com/luxfi/mpc/pkg/txtracker"
 )
@@ -54,15 +55,16 @@ type HSMProvider interface {
 }
 
 type Server struct {
-	db          *db.Database
-	mpc         MPCBackend
-	hsm         HSMProvider // optional: server-side HSM co-signing
-	txTracker   *txtracker.Tracker
-	jwtSecret   []byte
-	oidcIssuers []string
-	router      chi.Router
-	server      *http.Server
-	replayGuard *replayGuard
+	db             *db.Database
+	mpc            MPCBackend
+	hsm            HSMProvider // optional: server-side HSM co-signing
+	tradeApproval  *custody.TradeApprovalService
+	txTracker      *txtracker.Tracker
+	jwtSecret      []byte
+	oidcIssuers    []string
+	router         chi.Router
+	server         *http.Server
+	replayGuard    *replayGuard
 }
 
 func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, listenAddr string, oidcIssuers ...string) *Server {
@@ -268,6 +270,16 @@ func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, l
 			r.Get("/webauthn/credentials", s.handleListWebAuthnCredentials)
 			r.Delete("/webauthn/credentials/{id}", s.handleDeleteWebAuthnCredential)
 
+			// Trade Approval — push notification + biometric signing flow
+			// Submit requires signer+ (ATS service account); approve/reject require the trade owner
+			r.Get("/trade/pending", s.handlePendingTrades)
+			r.Group(func(r chi.Router) {
+				r.Use(requireRole("owner", "admin", "signer", "api"))
+				r.Post("/trade/submit", s.handleTradeSubmit)
+				r.Post("/trade/approve", s.handleTradeApprove)
+				r.Post("/trade/reject", s.handleTradeReject)
+			})
+
 			// Intents & Settlements — signer+ can create; viewers can read
 			r.Get("/intents", s.handleListIntents)
 			r.Get("/intents/{id}", s.handleGetIntent)
@@ -302,6 +314,9 @@ func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, l
 	// Start background intent expiry reaper
 	s.StartIntentReaper(context.Background(), 5*time.Minute)
 
+	// Start background trade expiry reaper (60s interval — trades expire in 5 min)
+	s.StartTradeReaper(context.Background(), 60*time.Second)
+
 	s.router = r
 	s.server = &http.Server{
 		Addr:         listenAddr,
@@ -333,6 +348,12 @@ func (s *Server) Start() (*http.Server, <-chan error) {
 // accepting client-submitted signatures (prevents forged co-signatures).
 func (s *Server) SetHSM(hsm HSMProvider) {
 	s.hsm = hsm
+}
+
+// SetTradeApproval configures the trade approval service for push notification
+// and biometric approval flow. When set, the /api/v1/trade endpoints are active.
+func (s *Server) SetTradeApproval(notifier custody.PushNotifier) {
+	s.tradeApproval = custody.NewTradeApprovalService(s.db.ORM, notifier)
 }
 
 // Shutdown gracefully drains connections and stops the server.
