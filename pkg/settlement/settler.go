@@ -11,13 +11,13 @@ import (
 type SettlementStatus string
 
 const (
-	SettlementPending     SettlementStatus = "pending"
-	SettlementHSMSigning  SettlementStatus = "hsm_signing"
-	SettlementBroadcast   SettlementStatus = "broadcast"
-	SettlementConfirming  SettlementStatus = "confirming"
-	SettlementFinalized   SettlementStatus = "finalized"
-	SettlementVerified    SettlementStatus = "verified"
-	SettlementFailed      SettlementStatus = "failed"
+	SettlementPending    SettlementStatus = "pending"
+	SettlementHSMSigning SettlementStatus = "hsm_signing"
+	SettlementBroadcast  SettlementStatus = "broadcast"
+	SettlementConfirming SettlementStatus = "confirming"
+	SettlementFinalized  SettlementStatus = "finalized"
+	SettlementVerified   SettlementStatus = "verified"
+	SettlementFailed     SettlementStatus = "failed"
 )
 
 // HSMProvider abstracts hardware security module signing operations.
@@ -60,12 +60,12 @@ type Settlement struct {
 	TransferAgencyVerifiedAt *time.Time `json:"transferAgencyVerifiedAt,omitempty"`
 
 	// Timestamps for every stage
-	CreatedAt    time.Time  `json:"createdAt"`
-	MatchedAt    *time.Time `json:"matchedAt,omitempty"`
-	SignedAt     *time.Time `json:"signedAt,omitempty"` // when all HSM sigs collected
-	BroadcastAt  *time.Time `json:"broadcastAt,omitempty"`
-	FinalizedAt  *time.Time `json:"finalizedAt,omitempty"`
-	VerifiedAt   *time.Time `json:"verifiedAt,omitempty"`
+	CreatedAt   time.Time  `json:"createdAt"`
+	MatchedAt   *time.Time `json:"matchedAt,omitempty"`
+	SignedAt    *time.Time `json:"signedAt,omitempty"` // when all HSM sigs collected
+	BroadcastAt *time.Time `json:"broadcastAt,omitempty"`
+	FinalizedAt *time.Time `json:"finalizedAt,omitempty"`
+	VerifiedAt  *time.Time `json:"verifiedAt,omitempty"`
 
 	Status  SettlementStatus `json:"status"`
 	History []Transition     `json:"history,omitempty"`

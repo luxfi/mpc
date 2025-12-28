@@ -185,7 +185,7 @@ func TestSR25519SessionCreation(t *testing.T) {
 		nil, // pubSub - nil for unit test
 		selfPartyID,
 		partyIDs,
-		1, // threshold
+		1,   // threshold
 		nil, // kvstore
 		nil, // keyinfoStore
 		nil, // resultQueue

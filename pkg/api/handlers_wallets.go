@@ -131,8 +131,8 @@ func (s *Server) handleGetWalletAddresses(w http.ResponseWriter, r *http.Request
 	addresses := map[string]interface{}{}
 	if wallet.EthAddress != nil {
 		addresses["ethereum"] = *wallet.EthAddress
-		addresses["lux"] = *wallet.EthAddress   // EVM-compatible
-		addresses["xrp"] = *wallet.EthAddress    // secp256k1-derived (simplified)
+		addresses["lux"] = *wallet.EthAddress // EVM-compatible
+		addresses["xrp"] = *wallet.EthAddress // secp256k1-derived (simplified)
 	}
 	if wallet.BtcAddress != nil {
 		addresses["bitcoin"] = *wallet.BtcAddress
