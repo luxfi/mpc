@@ -10,25 +10,25 @@ spec:
     - websecure
   routes:
     - kind: Rule
-      match: (Host(`mpc.lux.network`) || Host(`mpc.pars.network`) || Host(`mpc.zoo.network`)) && PathPrefix(`/v1`)
+      match: Host(`mpc.lux.network`) && PathPrefix(`/v1`)
       priority: 20
       services:
         - name: mpc-api-svc
           port: 8081
     - kind: Rule
-      match: (Host(`mpc.lux.network`) || Host(`mpc.pars.network`) || Host(`mpc.zoo.network`)) && Path(`/healthz`)
+      match: Host(`mpc.lux.network`) && Path(`/healthz`)
       priority: 20
       services:
         - name: mpc-api-svc
           port: 8081
     - kind: Rule
-      match: Host(`mpc.lux.network`) || Host(`mpc.pars.network`) || Host(`mpc.zoo.network`)
+      match: Host(`mpc.lux.network`)
       priority: 1
       services:
         - name: mpc-dashboard-svc
           port: 3000
     - kind: Rule
-      match: Host(`mpc-api.lux.network`) || Host(`mpc-api.pars.network`) || Host(`mpc-api.zoo.network`)
+      match: Host(`mpc-api.lux.network`)
       services:
         - name: mpc-api-svc
           port: 8081
@@ -37,7 +37,3 @@ spec:
     domains:
       - main: mpc.lux.network
       - main: mpc-api.lux.network
-      - main: mpc.pars.network
-      - main: mpc-api.pars.network
-      - main: mpc.zoo.network
-      - main: mpc-api.zoo.network
