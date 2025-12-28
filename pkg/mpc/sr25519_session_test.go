@@ -190,6 +190,7 @@ func TestSR25519SessionCreation(t *testing.T) {
 		nil, // keyinfoStore
 		nil, // resultQueue
 		nil, // identityStore
+		"",  // orgID
 	)
 
 	require.NotNil(t, session)
