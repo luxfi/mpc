@@ -405,6 +405,11 @@ func (s *Server) SetTradeApproval(notifier custody.PushNotifier) {
 	s.tradeApproval = custody.NewTradeApprovalService(s.db.ORM, notifier)
 }
 
+// Handler returns the underlying http.Handler for mounting on external servers (e.g. Hanzo Base).
+func (s *Server) Handler() http.Handler {
+	return s.router
+}
+
 // Shutdown gracefully drains connections and stops the server.
 func (s *Server) Shutdown(ctx context.Context) error {
 	return s.server.Shutdown(ctx)
