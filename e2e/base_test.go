@@ -524,7 +524,7 @@ func (s *E2ETestSuite) CheckKeyInAllNodes(t *testing.T, walletID, keyType, keyNa
 			t.Logf("Successfully recovered database for %s", nodeName)
 		}
 
-		kvStore := &kvstore.BadgerKVStore{DB: db}
+		kvStore := &kvstore.Store{DB: db}
 
 		// Check if our specific key exists
 		data, err := kvStore.Get(key)
