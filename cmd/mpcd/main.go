@@ -24,11 +24,9 @@ import (
 
 	"github.com/mr-tron/base58"
 
-	"github.com/hashicorp/consul/api"
 	"github.com/nats-io/nats.go"
 	"github.com/spf13/viper"
 	"github.com/urfave/cli/v3"
-	"golang.org/x/term"
 
 	"github.com/hanzoai/base"
 	"github.com/hanzoai/base/core"
@@ -36,13 +34,9 @@ import (
 
 	mpcapi "github.com/luxfi/mpc/pkg/api"
 	"github.com/luxfi/mpc/pkg/backup"
-	"github.com/luxfi/mpc/pkg/config"
-	"github.com/luxfi/mpc/pkg/constant"
 	"github.com/luxfi/mpc/pkg/db"
 	"github.com/luxfi/mpc/pkg/event"
 	"github.com/luxfi/mpc/pkg/eventconsumer"
-	"github.com/luxfi/mpc/pkg/identity"
-	"github.com/luxfi/mpc/pkg/infra"
 	"github.com/luxfi/mpc/pkg/keyinfo"
 	"github.com/luxfi/mpc/pkg/kvstore"
 	"github.com/luxfi/mpc/pkg/logger"
@@ -68,39 +62,26 @@ func main() {
 				Usage: "Start a Lux MPC node",
 				Flags: []cli.Flag{
 					&cli.StringFlag{
-						Name:     "name",
-						Aliases:  []string{"n"},
-						Usage:    "Node name",
-						Required: false, // Not required in consensus mode
-					},
-					&cli.StringFlag{
-						Name:    "mode",
-						Aliases: []string{"m"},
-						Usage:   "Transport mode: 'consensus' (ZAP/PoA) or 'legacy' (NATS/Consul, deprecated)",
-						Value:   "consensus",
-					},
-					// Consensus mode flags
-					&cli.StringFlag{
 						Name:  "node-id",
-						Usage: "Node ID (consensus mode)",
+						Usage: "Node ID",
 					},
 					&cli.StringFlag{
 						Name:  "listen",
-						Usage: "P2P listen address (consensus mode)",
+						Usage: "P2P listen address",
 						Value: ":9651",
 					},
 					&cli.StringFlag{
 						Name:  "api",
-						Usage: "API listen address (consensus mode)",
+						Usage: "Internal API listen address",
 						Value: ":9800",
 					},
 					&cli.StringFlag{
 						Name:  "data",
-						Usage: "Data directory (consensus mode)",
+						Usage: "Data directory",
 					},
 					&cli.StringFlag{
 						Name:  "keys",
-						Usage: "Keys directory (consensus mode)",
+						Usage: "Keys directory",
 					},
 					&cli.IntFlag{
 						Name:    "threshold",
@@ -116,15 +97,6 @@ func main() {
 						Name:  "log-level",
 						Usage: "Log level (debug, info, warn, error)",
 						Value: "info",
-					},
-					// Dashboard API flags
-					&cli.StringFlag{
-						Name:  "api-db",
-						Usage: "PostgreSQL connection URL for dashboard API",
-					},
-					&cli.StringFlag{
-						Name:  "api-kv",
-						Usage: "Valkey/Redis address for KV cache (e.g. localhost:6379)",
 					},
 					&cli.StringFlag{
 						Name:  "api-listen",
@@ -165,18 +137,6 @@ func main() {
 						Sources: cli.EnvVars("MPC_HSM_ATTEST"),
 						Value:   false,
 					},
-					// Legacy mode flags
-					&cli.BoolFlag{
-						Name:    "decrypt-private-key",
-						Aliases: []string{"d"},
-						Value:   false,
-						Usage:   "Decrypt node private key (legacy mode)",
-					},
-					&cli.BoolFlag{
-						Name:    "prompt-credentials",
-						Aliases: []string{"p"},
-						Usage:   "Prompt for sensitive parameters (legacy mode)",
-					},
 					&cli.BoolFlag{
 						Name:  "debug",
 						Usage: "Enable debug logging",
@@ -184,50 +144,7 @@ func main() {
 					},
 				},
 				Action: func(ctx context.Context, c *cli.Command) error {
-					mode := c.String("mode")
-					if mode == "legacy" {
-						logger.Warn("Legacy mode (NATS/Consul) is deprecated and will be removed in a future release. Migrate to --mode=consensus.")
-						return runNode(ctx, c)
-					}
 					return runNodeConsensus(ctx, c)
-				},
-			},
-			{
-				Name:  "api",
-				Usage: "Start Dashboard API server only (no MPC transport)",
-				Flags: []cli.Flag{
-					&cli.StringFlag{
-						Name:    "db",
-						Usage:   "PostgreSQL connection URL",
-						Sources: cli.EnvVars("DATABASE_URL", "MPC_API_DB"),
-					},
-					&cli.StringFlag{
-						Name:  "listen",
-						Usage: "API listen address",
-						Value: ":8081",
-					},
-					&cli.StringFlag{
-						Name:    "jwt-secret",
-						Usage:   "JWT signing secret",
-						Sources: cli.EnvVars("JWT_SECRET", "MPC_JWT_SECRET"),
-					},
-					&cli.StringFlag{
-						Name:    "cluster-url",
-						Usage:   "MPC cluster URL for forwarding operations (e.g. http://mpc-node:9800)",
-						Sources: cli.EnvVars("MPC_CLUSTER_URL"),
-					},
-					&cli.StringFlag{
-						Name:    "cluster-api-key",
-						Usage:   "API key for authenticating with MPC cluster",
-						Sources: cli.EnvVars("MPC_CLUSTER_API_KEY"),
-					},
-					&cli.BoolFlag{
-						Name:  "debug",
-						Usage: "Enable debug logging",
-					},
-				},
-				Action: func(ctx context.Context, c *cli.Command) error {
-					return runAPIOnly(ctx, c)
 				},
 			},
 			{
@@ -247,282 +164,7 @@ func main() {
 	}
 }
 
-// Deprecated: runNode uses legacy NATS/Consul transport. Use runNodeConsensus (--mode=consensus) instead.
-func runNode(ctx context.Context, c *cli.Command) error {
-	nodeName := c.String("name")
-	decryptPrivateKey := c.Bool("decrypt-private-key")
-	usePrompts := c.Bool("prompt-credentials")
-	debug := c.Bool("debug")
-
-	viper.SetDefault("backup_enabled", true)
-	config.InitViperConfig()
-	environment := viper.GetString("environment")
-	logger.Init(environment, debug)
-
-	// Create environment-prefixed node ID
-	nodeID := fmt.Sprintf("lux-%s-%s", environment, nodeName)
-	logger.Info("Starting MPC node", "nodeID", nodeID, "environment", environment)
-
-	// Resolve ZapDB password via HSM provider (supports AWS KMS, GCP Cloud KMS, Azure Key Vault, env, file)
-	// This must happen before checkRequiredConfigValues so cloud KMS passwords work.
-	var zapDBPassword string
-	if usePrompts {
-		promptForSensitiveCredentials()
-		zapDBPassword = viper.GetString("zapdb_password")
-	} else {
-		// When using an HSM provider other than env (which reads from config anyway),
-		// skip the zapdb_password config check — the password comes from KMS.
-		hsmProvider := c.String("hsm-provider")
-		skipPasswordCheck := hsmProvider != "" && hsmProvider != "env"
-		checkRequiredConfigValues(skipPasswordCheck)
-		zapDBPassword = resolveZapDBPassword(ctx, c)
-	}
-
-	consulClient := infra.GetConsulClient(environment)
-	keyinfoStore := keyinfo.NewStore(consulClient.KV())
-	peers := LoadPeersFromConsul(consulClient)
-	// Use the environment-prefixed nodeID we created above
-	// nodeID is already set with environment prefix
-
-	zapKV := NewZapKV(nodeName, nodeID, zapDBPassword)
-	defer zapKV.Close()
-
-	// Wrap ZapDB store with KMS-enabled store if configured
-	var kvStore kvstore.KVStore = zapKV
-	kmsEnabledStore, err := mpc.NewKMSEnabledKVStore(zapKV, nodeID)
-	if err != nil {
-		logger.Warn("Failed to create KMS-enabled store, using regular ZapDB", "error", err)
-	} else {
-		kvStore = kmsEnabledStore
-		logger.Info("Using KMS-enabled storage for sensitive keys")
-	}
-
-	// Start background backup job
-	backupEnabled := viper.GetBool("backup_enabled")
-	if backupEnabled {
-		backupPeriodSeconds := viper.GetInt("backup_period_seconds")
-		stopBackup := StartPeriodicBackup(ctx, zapKV, backupPeriodSeconds)
-		defer stopBackup()
-	}
-
-	identityStore, err := identity.NewFileStore("identity", nodeName, decryptPrivateKey)
-	if err != nil {
-		logger.Fatal("Failed to create identity store", err)
-	}
-
-	natsConn, err := GetNATSConnection(environment)
-	if err != nil {
-		logger.Fatal("Failed to connect to NATS", err)
-	}
-	defer natsConn.Close()
-
-	pubsub := messaging.NewNATSPubSub(natsConn)
-	keygenBroker, err := messaging.NewJetStreamBroker(ctx, natsConn, event.KeygenBrokerStream, []string{
-		event.KeygenRequestTopic,
-	})
-	if err != nil {
-		logger.Fatal("Failed to create keygen jetstream broker", err)
-	}
-	signingBroker, err := messaging.NewJetStreamBroker(ctx, natsConn, event.SigningPublisherStream, []string{
-		event.SigningRequestTopic,
-	})
-	if err != nil {
-		logger.Fatal("Failed to create signing jetstream broker", err)
-	}
-
-	_ = messaging.NewNatsDirectMessaging(natsConn) // directMessaging available for future use
-	mqManager := messaging.NewNATsMessageQueueManager("mpc", []string{
-		"mpc.mpc_keygen_result.*",
-		event.SigningResultTopic,
-		"mpc.mpc_reshare_result.*",
-	}, natsConn)
-
-	genKeyResultQueue := mqManager.NewMessageQueue("mpc_keygen_result")
-	defer genKeyResultQueue.Close()
-	singingResultQueue := mqManager.NewMessageQueue("mpc_signing_result")
-	defer singingResultQueue.Close()
-	reshareResultQueue := mqManager.NewMessageQueue("mpc_reshare_result")
-	defer reshareResultQueue.Close()
-
-	logger.Info("Node is running", "peerID", nodeID, "name", nodeName)
-
-	peerNodeIDs := GetPeerIDs(peers)
-	peerRegistry := mpc.NewRegistry(nodeID, peerNodeIDs, consulClient.KV())
-
-	mpcNode := mpc.NewNode(
-		nodeID,
-		peerNodeIDs,
-		pubsub,
-		kvStore,
-		keyinfoStore,
-		peerRegistry,
-		identityStore,
-	)
-
-	eventConsumer := eventconsumer.NewEventConsumer(
-		mpcNode,
-		pubsub,
-		genKeyResultQueue,
-		singingResultQueue,
-		reshareResultQueue,
-		identityStore,
-	)
-	eventConsumer.Run()
-	defer eventConsumer.Close()
-
-	timeoutConsumer := eventconsumer.NewTimeOutConsumer(
-		natsConn,
-		singingResultQueue,
-	)
-
-	timeoutConsumer.Run()
-	defer timeoutConsumer.Close()
-	keygenConsumer := eventconsumer.NewKeygenConsumer(natsConn, keygenBroker, pubsub, peerRegistry)
-	signingConsumer := eventconsumer.NewSigningConsumer(natsConn, signingBroker, pubsub, peerRegistry)
-
-	// Make the node ready before starting the signing consumer
-	if err := peerRegistry.Ready(); err != nil {
-		logger.Error("Failed to mark peer registry as ready", err)
-	}
-	logger.Info("[READY] Node is ready", "nodeID", nodeID)
-	appContext, cancel := context.WithCancel(context.Background())
-	// Setup signal handling to cancel context on termination signals.
-	go func() {
-		sigChan := make(chan os.Signal, 1)
-		signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-		<-sigChan
-		logger.Warn("Shutdown signal received, canceling context...")
-		cancel()
-
-		// Gracefully close consumers
-		if err := keygenConsumer.Close(); err != nil {
-			logger.Error("Failed to close keygen consumer", err)
-		}
-		if err := signingConsumer.Close(); err != nil {
-			logger.Error("Failed to close signing consumer", err)
-		}
-	}()
-
-	var wg sync.WaitGroup
-	errChan := make(chan error, 2)
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		if err := keygenConsumer.Run(appContext); err != nil {
-			logger.Error("error running keygen consumer", err)
-			errChan <- fmt.Errorf("keygen consumer error: %w", err)
-			return
-		}
-		logger.Info("Keygen consumer finished successfully")
-	}()
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		if err := signingConsumer.Run(appContext); err != nil {
-			logger.Error("error running signing consumer", err)
-			errChan <- fmt.Errorf("signing consumer error: %w", err)
-			return
-		}
-		logger.Info("Signing consumer finished successfully")
-	}()
-
-	go func() {
-		wg.Wait()
-		logger.Info("All consumers have finished")
-		close(errChan)
-	}()
-
-	for err := range errChan {
-		if err != nil {
-			logger.Error("Consumer error received", err)
-			cancel()
-			return err
-		}
-	}
-	return nil
-}
-
-// Prompt user for sensitive configuration values
-func promptForSensitiveCredentials() {
-	fmt.Println("WARNING: Please back up your ZapDB password in a secure location.")
-	fmt.Println("If you lose this password, you will permanently lose access to your data!")
-
-	// Prompt for ZapDB password with confirmation
-	var zapPass []byte
-	var confirmPass []byte
-	var err error
-
-	for {
-		fmt.Print("Enter ZapDB password: ")
-		zapPass, err = term.ReadPassword(syscall.Stdin)
-		if err != nil {
-			logger.Fatal("Failed to read ZapDB password", err)
-		}
-		fmt.Println() // Add newline after password input
-
-		if len(zapPass) == 0 {
-			fmt.Println("Password cannot be empty. Please try again.")
-			continue
-		}
-
-		fmt.Print("Confirm ZapDB password: ")
-		confirmPass, err = term.ReadPassword(syscall.Stdin)
-		if err != nil {
-			logger.Fatal("Failed to read confirmation password", err)
-		}
-		fmt.Println() // Add newline after password input
-
-		if string(zapPass) != string(confirmPass) {
-			fmt.Println("Passwords do not match. Please try again.")
-			continue
-		}
-
-		break
-	}
-
-	// Show masked password for confirmation
-	maskedPassword := maskString(string(zapPass))
-	fmt.Printf("Password set: %s\n", maskedPassword)
-
-	viper.Set("zapdb_password", string(zapPass))
-
-	// Prompt for initiator public key (using regular input since it's not as sensitive)
-	var initiatorKey string
-	fmt.Print("Enter event initiator public key (hex): ")
-	if _, err := fmt.Scanln(&initiatorKey); err != nil {
-		logger.Fatal("Failed to read initiator key", err)
-	}
-
-	if initiatorKey == "" {
-		logger.Fatal("Initiator public key cannot be empty", nil)
-	}
-
-	// Show masked key for confirmation
-	maskedKey := maskString(initiatorKey)
-	fmt.Printf("Event initiator public key set: %s\n", maskedKey)
-
-	viper.Set("event_initiator_pubkey", initiatorKey)
-	fmt.Println("\n✓ Configuration complete!")
-}
-
-// maskString shows the first and last character of a string, replacing the middle with asterisks
-func maskString(s string) string {
-	if len(s) <= 2 {
-		return s // Too short to mask
-	}
-
-	masked := s[0:1]
-	for i := 0; i < len(s)-2; i++ {
-		masked += "*"
-	}
-	masked += s[len(s)-1:]
-
-	return masked
-}
-
-// Check required configuration values are present.
+// checkRequiredConfigValues verifies required viper config values are present.
 // skipPasswordCheck should be true when ZapDB password will be resolved via HSM provider.
 func checkRequiredConfigValues(skipPasswordCheck bool) {
 	// Show warning if we're using file-based config but no password is set
@@ -575,49 +217,6 @@ func resolveZapDBPassword(ctx context.Context, c *cli.Command) string {
 
 	logger.Info("ZapDB password loaded via HSM provider", "provider", hsmProviderType)
 	return password
-}
-
-func NewConsulClient(addr string) *api.Client {
-	// Create a new Consul client
-	consulConfig := api.DefaultConfig()
-	consulConfig.Address = addr
-	consulClient, err := api.NewClient(consulConfig)
-	if err != nil {
-		logger.Fatal("Failed to create consul client", err)
-	}
-	logger.Info("Connected to consul!")
-	return consulClient
-}
-
-// Deprecated: LoadPeersFromConsul is used by legacy mode only.
-func LoadPeersFromConsul(consulClient *api.Client) []config.Peer { // Create a Consul Key-Value store client
-	kv := consulClient.KV()
-	peers, err := config.LoadPeersFromConsul(kv, "mpc_peers/")
-	if err != nil {
-		logger.Fatal("Failed to load peers from Consul", err)
-	}
-	logger.Info("Loaded peers from consul", "peers", peers)
-
-	return peers
-}
-
-func GetPeerIDs(peers []config.Peer) []string {
-	var peersIDs []string
-	for _, peer := range peers {
-		peersIDs = append(peersIDs, peer.ID)
-	}
-	return peersIDs
-}
-
-// Given node name, loop through peers and find the matching ID
-func GetIDFromName(name string, peers []config.Peer) string {
-	// Get nodeID from node name
-	nodeID := config.GetNodeID(name, peers)
-	if nodeID == "" {
-		logger.Fatal("Empty Node ID", fmt.Errorf("node ID not found for name %s", name))
-	}
-
-	return nodeID
 }
 
 func NewZapKV(nodeName, nodeID, password string) *kvstore.Store {
@@ -678,39 +277,7 @@ func StartPeriodicBackup(ctx context.Context, zapKV *kvstore.Store, periodSecond
 	return backupCancel
 }
 
-// Deprecated: GetNATSConnection is used by legacy mode only.
-func GetNATSConnection(environment string) (*nats.Conn, error) {
-	url := viper.GetString("nats.url")
-	opts := []nats.Option{
-		nats.MaxReconnects(-1), // retry forever
-		nats.ReconnectWait(2 * time.Second),
-		nats.DisconnectHandler(func(nc *nats.Conn) {
-			logger.Warn("Disconnected from NATS")
-		}),
-		nats.ReconnectHandler(func(nc *nats.Conn) {
-			logger.Info("Reconnected to NATS", "url", nc.ConnectedUrl())
-		}),
-		nats.ClosedHandler(func(nc *nats.Conn) {
-			logger.Info("NATS connection closed!")
-		}),
-	}
-
-	if environment == constant.EnvProduction {
-		clientCert := filepath.Join(".", "certs", "client-cert.pem")
-		clientKey := filepath.Join(".", "certs", "client-key.pem")
-		caCert := filepath.Join(".", "certs", "rootCA.pem")
-
-		opts = append(opts,
-			nats.ClientCert(clientCert, clientKey),
-			nats.RootCAs(caCert),
-			nats.UserInfo(viper.GetString("nats.username"), viper.GetString("nats.password")),
-		)
-	}
-
-	return nats.Connect(url, opts...)
-}
-
-// runNodeConsensus runs the MPC node with consensus-embedded transport (no NATS/Consul)
+// runNodeConsensus runs the MPC node with consensus-embedded transport
 func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 	nodeID := c.String("node-id")
 	listenAddr := c.String("listen")
@@ -1093,85 +660,73 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 		}
 	}
 
-	// Start Dashboard API server if PostgreSQL URL is provided
-	apiDBURL := c.String("api-db")
-	if apiDBURL == "" {
-		apiDBURL = os.Getenv("MPC_API_DB")
+	// Start Dashboard API server (ZapDB-backed, no external dependencies)
+	apiListenAddr := c.String("api-listen")
+	jwtSecret := c.String("jwt-secret")
+	if jwtSecret == "" {
+		jwtSecret = os.Getenv("MPC_JWT_SECRET")
 	}
-	if apiDBURL != "" {
-		apiListenAddr := c.String("api-listen")
-		jwtSecret := c.String("jwt-secret")
-		if jwtSecret == "" {
-			jwtSecret = os.Getenv("MPC_JWT_SECRET")
-		}
-		if jwtSecret == "" {
-			return fmt.Errorf("--jwt-secret is required (set JWT_SECRET or MPC_JWT_SECRET env var, source from KMS)")
-		}
-
-		apiKVAddr := c.String("api-kv")
-		if apiKVAddr == "" {
-			apiKVAddr = os.Getenv("MPC_API_KV")
-		}
-		database, err := db.New(apiDBURL, apiKVAddr)
+	if jwtSecret != "" {
+		dbPath := filepath.Join(dataDir, "dashboard.db")
+		database, err := db.New(dbPath, "")
 		if err != nil {
-			logger.Error("Failed to connect to dashboard database", err)
+			logger.Error("Failed to open dashboard database", err)
 		} else {
 			defer database.Close()
-			{
-				mpcBackend := &ConsensusMPCBackend{
-					pubSub:       pubSub,
-					peerRegistry: peerRegistry,
-					factory:      factory,
-					keyInfoStore: factory.KeyInfoStore(),
-					identity:     consensusIdentity,
-					nodeID:       nodeID,
-					threshold:    threshold,
-				}
 
-				apiServer := mpcapi.NewServer(database, mpcBackend, jwtSecret)
-				apiServer.StartScheduler(ctx)
-
-				// Wire HSM signer for intent co-signing
-				signerType := c.String("hsm-signer")
-				if signerType != "" {
-					signer, signerErr := hsm.NewSigner(signerType, nil)
-					if signerErr != nil {
-						logger.Error("Failed to create HSM signer", signerErr, "provider", signerType)
-					} else {
-						apiServer.SetHSM(signer)
-						logger.Info("HSM signer configured for co-signing", "provider", signer.Provider())
-					}
-				}
-
-				// HSM threshold attestation (key share vault storage)
-				if c.Bool("hsm-attest") {
-					logger.Info("HSM threshold attestation enabled",
-						"signer", c.String("hsm-signer"),
-						"attest_key", c.String("hsm-signer-key-id"),
-						"vault_provider", c.String("hsm-provider"),
-					)
-				}
-
-				// Mount chi handler on Base
-				os.Args = []string{"mpcd", "serve", "--http", apiListenAddr}
-				baseApp := base.New()
-				baseApp.OnServe().BindFunc(func(e *core.ServeEvent) error {
-					e.Router.Any("/{path...}", func(re *core.RequestEvent) error {
-						apiServer.Handler().ServeHTTP(re.Response, re.Request)
-						return nil
-					})
-					return e.Next()
-				})
-
-				logger.Info("Dashboard API starting (Base)", "addr", apiListenAddr)
-				go func() {
-					if err := baseApp.Start(); err != nil {
-						logger.Error("Dashboard API server failed", err)
-					}
-				}()
-
-				logger.Info("Dashboard API ready", "addr", apiListenAddr)
+			mpcBackend := &ConsensusMPCBackend{
+				pubSub:       pubSub,
+				peerRegistry: peerRegistry,
+				factory:      factory,
+				keyInfoStore: factory.KeyInfoStore(),
+				identity:     consensusIdentity,
+				nodeID:       nodeID,
+				threshold:    threshold,
 			}
+
+			apiServer := mpcapi.NewServer(database, mpcBackend, jwtSecret)
+			apiServer.StartScheduler(ctx)
+
+			// Wire HSM signer for intent co-signing
+			signerType := c.String("hsm-signer")
+			if signerType != "" {
+				signer, signerErr := hsm.NewSigner(signerType, nil)
+				if signerErr != nil {
+					logger.Error("Failed to create HSM signer", signerErr, "provider", signerType)
+				} else {
+					apiServer.SetHSM(signer)
+					logger.Info("HSM signer configured for co-signing", "provider", signer.Provider())
+				}
+			}
+
+			// HSM threshold attestation (key share vault storage)
+			if c.Bool("hsm-attest") {
+				logger.Info("HSM threshold attestation enabled",
+					"signer", c.String("hsm-signer"),
+					"attest_key", c.String("hsm-signer-key-id"),
+					"vault_provider", c.String("hsm-provider"),
+				)
+			}
+
+			// Mount chi handler on Base
+			os.Args = []string{"mpcd", "serve", "--http", apiListenAddr}
+			baseApp := base.New()
+			baseApp.OnServe().BindFunc(func(e *core.ServeEvent) error {
+				e.Router.Any("/{path...}", func(re *core.RequestEvent) error {
+					apiServer.Handler().ServeHTTP(re.Response, re.Request)
+					return nil
+				})
+				return e.Next()
+			})
+
+			logger.Info("Dashboard API starting (Base+SQLite)", "addr", apiListenAddr)
+			go func() {
+				if err := baseApp.Start(); err != nil {
+					logger.Error("Dashboard API server failed", err)
+				}
+			}()
+
+			logger.Info("Dashboard API ready", "addr", apiListenAddr, "db", dbPath)
 		}
 	}
 
@@ -1792,228 +1347,3 @@ func eddsaPubKeyToSolAddress(pubKey []byte) string {
 	return base58.Encode(pubKey)
 }
 
-// runAPIOnly starts only the Dashboard API server without any MPC transport.
-// This is used for the cloud dashboard deployment where MPC operations are
-// forwarded to the MPC nodes separately.
-func runAPIOnly(ctx context.Context, c *cli.Command) error {
-	debug := c.Bool("debug")
-	logger.Init("api", debug)
-
-	dbURL := c.String("db")
-	if dbURL == "" {
-		return fmt.Errorf("--db (or DATABASE_URL env) is required")
-	}
-	listenAddr := c.String("listen")
-	jwtSecret := c.String("jwt-secret")
-	if jwtSecret == "" {
-		return fmt.Errorf("--jwt-secret (or JWT_SECRET env) is required")
-	}
-
-	logger.Info("Starting Dashboard API server (standalone)", "addr", listenAddr)
-
-	database, err := db.New(dbURL, "")
-	if err != nil {
-		return fmt.Errorf("failed to connect to database: %w", err)
-	}
-	defer database.Close()
-
-	logger.Info("Database connected")
-
-	// Determine MPC backend: if cluster-url is provided, forward to the cluster;
-	// otherwise use a stub that returns descriptive errors.
-	clusterURL := c.String("cluster-url")
-	clusterAPIKey := c.String("cluster-api-key")
-
-	var mpcBackend mpcapi.MPCBackend
-	if clusterURL != "" {
-		mpcBackend = newAPIOnlyMPCBackend(clusterURL, clusterAPIKey)
-		logger.Info("API-only mode: forwarding MPC operations to cluster", "url", clusterURL)
-	} else {
-		mpcBackend = &stubMPCBackend{}
-		logger.Warn("API-only mode: no MPC_CLUSTER_URL set, MPC operations will fail")
-	}
-
-	apiServer := mpcapi.NewServer(database, mpcBackend, jwtSecret)
-	apiServer.StartScheduler(ctx)
-
-	// Wire HSM signer for intent co-signing
-	signerType := os.Getenv("MPC_HSM_SIGNER")
-	if signerType == "" {
-		signerType = "local"
-	}
-	signer, signerErr := hsm.NewSigner(signerType, nil)
-	if signerErr != nil {
-		logger.Error("Failed to create HSM signer", signerErr, "provider", signerType)
-	} else {
-		apiServer.SetHSM(signer)
-		logger.Info("HSM signer configured for co-signing", "provider", signer.Provider())
-	}
-
-	// Mount chi handler on Base
-	os.Args = []string{"mpcd", "serve", "--http", listenAddr}
-	baseApp := base.New()
-	baseApp.OnServe().BindFunc(func(e *core.ServeEvent) error {
-		e.Router.Any("/{path...}", func(re *core.RequestEvent) error {
-			apiServer.Handler().ServeHTTP(re.Response, re.Request)
-			return nil
-		})
-		return e.Next()
-	})
-
-	logger.Info("Dashboard API starting (Base)", "addr", listenAddr)
-
-	// Base owns the process lifecycle (blocks until shutdown)
-	if err := baseApp.Start(); err != nil {
-		return fmt.Errorf("API server failed: %w", err)
-	}
-	return nil
-}
-
-// stubMPCBackend returns errors for MPC operations when no cluster URL is configured.
-type stubMPCBackend struct{}
-
-func (s *stubMPCBackend) TriggerKeygen(orgID, walletID string) (*mpcapi.KeygenResult, error) {
-	return nil, fmt.Errorf("MPC operations not available: set MPC_CLUSTER_URL to enable forwarding")
-}
-
-func (s *stubMPCBackend) TriggerSign(orgID, walletID string, payload []byte) (*mpcapi.SignResult, error) {
-	return nil, fmt.Errorf("MPC operations not available: set MPC_CLUSTER_URL to enable forwarding")
-}
-
-func (s *stubMPCBackend) TriggerReshare(orgID, walletID string, newThreshold int, newParticipants []string) error {
-	return fmt.Errorf("MPC operations not available: set MPC_CLUSTER_URL to enable forwarding")
-}
-
-func (s *stubMPCBackend) ExportKeyShare(orgID, walletID string) ([]byte, error) {
-	return nil, fmt.Errorf("MPC operations not available: set MPC_CLUSTER_URL to enable forwarding")
-}
-
-func (s *stubMPCBackend) GetClusterStatus() *mpcapi.ClusterStatus {
-	return &mpcapi.ClusterStatus{
-		NodeID:  "api-only",
-		Mode:    "api-only",
-		Ready:   false,
-		Version: Version,
-	}
-}
-
-// apiOnlyMPCBackend forwards MPC operations to the actual MPC cluster via HTTP.
-type apiOnlyMPCBackend struct {
-	clusterURL string
-	apiKey     string
-	httpClient *http.Client
-}
-
-func newAPIOnlyMPCBackend(clusterURL, apiKey string) *apiOnlyMPCBackend {
-	// Strip trailing slash from cluster URL
-	clusterURL = strings.TrimRight(clusterURL, "/")
-	return &apiOnlyMPCBackend{
-		clusterURL: clusterURL,
-		apiKey:     apiKey,
-		httpClient: &http.Client{
-			Timeout: 120 * time.Second, // MPC keygen can take ~30s; allow generous timeout
-		},
-	}
-}
-
-// doRequest sends an HTTP request to the MPC cluster and decodes the JSON response.
-func (a *apiOnlyMPCBackend) doRequest(method, path string, reqBody interface{}, respBody interface{}) error {
-	var bodyReader *strings.Reader
-	if reqBody != nil {
-		data, err := json.Marshal(reqBody)
-		if err != nil {
-			return fmt.Errorf("failed to marshal request: %w", err)
-		}
-		bodyReader = strings.NewReader(string(data))
-	} else {
-		bodyReader = strings.NewReader("")
-	}
-
-	url := a.clusterURL + path
-	req, err := http.NewRequest(method, url, bodyReader)
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	if a.apiKey != "" {
-		req.Header.Set("Authorization", "Bearer "+a.apiKey)
-	}
-
-	resp, err := a.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("cluster request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		var errBody struct {
-			Error string `json:"error"`
-		}
-		_ = json.NewDecoder(resp.Body).Decode(&errBody)
-		if errBody.Error != "" {
-			return fmt.Errorf("cluster returned %d: %s", resp.StatusCode, errBody.Error)
-		}
-		return fmt.Errorf("cluster returned status %d", resp.StatusCode)
-	}
-
-	if respBody != nil {
-		if err := json.NewDecoder(resp.Body).Decode(respBody); err != nil {
-			return fmt.Errorf("failed to decode cluster response: %w", err)
-		}
-	}
-	return nil
-}
-
-func (a *apiOnlyMPCBackend) TriggerKeygen(orgID, walletID string) (*mpcapi.KeygenResult, error) {
-	reqBody := map[string]string{"org_id": orgID, "wallet_id": walletID}
-	var result mpcapi.KeygenResult
-	// Internal MPC API on port 9800 uses /keygen (not /v1/keygen)
-	if err := a.doRequest("POST", "/keygen", reqBody, &result); err != nil {
-		return nil, fmt.Errorf("keygen forwarding failed: %w", err)
-	}
-	return &result, nil
-}
-
-func (a *apiOnlyMPCBackend) TriggerSign(orgID, walletID string, payload []byte) (*mpcapi.SignResult, error) {
-	reqBody := map[string]interface{}{
-		"org_id":    orgID,
-		"wallet_id": walletID,
-		"payload":   hex.EncodeToString(payload),
-	}
-	var result mpcapi.SignResult
-	if err := a.doRequest("POST", "/v1/sign", reqBody, &result); err != nil {
-		return nil, fmt.Errorf("sign forwarding failed: %w", err)
-	}
-	return &result, nil
-}
-
-func (a *apiOnlyMPCBackend) TriggerReshare(orgID, walletID string, newThreshold int, newParticipants []string) error {
-	reqBody := map[string]interface{}{
-		"org_id":           orgID,
-		"wallet_id":        walletID,
-		"new_threshold":    newThreshold,
-		"new_participants": newParticipants,
-	}
-	if err := a.doRequest("POST", "/v1/reshare", reqBody, nil); err != nil {
-		return fmt.Errorf("reshare forwarding failed: %w", err)
-	}
-	return nil
-}
-
-func (a *apiOnlyMPCBackend) ExportKeyShare(orgID, walletID string) ([]byte, error) {
-	return nil, fmt.Errorf("ExportKeyShare not available in api-only mode; use consensus mode for backup operations")
-}
-
-func (a *apiOnlyMPCBackend) GetClusterStatus() *mpcapi.ClusterStatus {
-	var status mpcapi.ClusterStatus
-	// Internal MPC API on port 9800 uses /health (not /v1/status)
-		logger.Warn("Failed to get cluster status", "err", err, "url", a.clusterURL)
-		return &mpcapi.ClusterStatus{
-			NodeID:  "api-only",
-			Mode:    "api-only-proxy",
-			Ready:   false,
-			Version: Version,
-		}
-	}
-	return &status
-}
