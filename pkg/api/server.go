@@ -72,6 +72,18 @@ type Server struct {
 	replayGuard    *replayGuard
 }
 
+// maxBodySize returns middleware that limits request body size to prevent OOM
+// from oversized payloads. Handlers that read beyond the limit get an error
+// from http.MaxBytesReader.
+func maxBodySize(maxBytes int64) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
 func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, listenAddr string, oidcIssuers ...string) *Server {
 	// Default allowed issuers if none provided
 	if len(oidcIssuers) == 0 {
@@ -145,6 +157,7 @@ func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, l
 	r.Use(chimw.RequestID)
 	r.Use(chimw.RealIP)
 	r.Use(chimw.Recoverer)
+	r.Use(maxBodySize(1 << 20)) // 1 MB
 	r.Use(chimw.Timeout(120 * time.Second))
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   corsOrigins,
