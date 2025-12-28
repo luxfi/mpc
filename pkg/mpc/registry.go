@@ -19,7 +19,16 @@ const (
 
 type PeerRegistry interface {
 	Ready() error
+	// ArePeersReady returns true only when ALL expected peers are ready.
+	// Required for keygen (fresh wallets need every peer's contribution).
 	ArePeersReady() bool
+	// HasSigningQuorum returns true when ready peers (including self) are
+	// sufficient to participate in a signing round for a key with the given
+	// polynomial-degree threshold. Stricter than "any peer reachable",
+	// weaker than ArePeersReady — survives partial node loss up to f = n-t-1
+	// failures without marking the node unhealthy. See pkg/transport/registry.go
+	// for the full rationale.
+	HasSigningQuorum(threshold int) bool
 	WatchPeersReady()
 	// Resign is called by the node when it is going to shutdown
 	Resign() error
@@ -196,6 +205,14 @@ func (r *registry) ArePeersReady() bool {
 	defer r.mu.RUnlock()
 
 	return r.ready
+}
+
+// HasSigningQuorum: see PeerRegistry interface comment. For the Consul-backed
+// legacy registry the readyCount is maintained the same way as the consensus
+// registry, so the check is identical.
+func (r *registry) HasSigningQuorum(threshold int) bool {
+	required := int64(threshold + 1)
+	return atomic.LoadInt64(&r.readyCount) >= required
 }
 
 func (r *registry) GetTotalPeersCount() int64 {
