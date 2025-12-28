@@ -14,7 +14,7 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
 	github.com/gtank/ristretto255 v0.2.0
-	github.com/hanzoai/base v0.28.0
+	github.com/hanzoai/base v0.39.1
 	github.com/hanzoai/kv-go/v9 v9.18.0
 	github.com/hanzoai/orm v0.3.2
 	github.com/hashicorp/consul/api v1.33.7
@@ -189,8 +189,6 @@ require (
 // agl/ed25519 has no packages at the upstream module path; redirect to our fork.
 // Required by decred/dcrd/dcrec/edwards/v2 (all versions). Cannot remove until upstream fixes.
 replace github.com/agl/ed25519 => github.com/luxfi/edwards25519 v0.0.0-20200305024217-f36fc4b53d43
-
-replace github.com/hanzoai/base => ../../hanzo/base
 
 // luxfi/log v1.3.0 declares module path as "luxfi/logger" — broken
 exclude github.com/luxfi/log v1.3.0
