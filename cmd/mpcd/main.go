@@ -471,15 +471,42 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 		mux := http.NewServeMux()
 		// Health probe handler — unauthenticated (K8s liveness/readiness probes).
 		// Served on both /health (legacy) and /healthz (platform standard).
+		//
+		// Red finding P0-1 (2026-04-20): the previous implementation returned
+		// 503 whenever ArePeersReady() was false — i.e. whenever ANY peer was
+		// unreachable. For a 3-node 2-of-3 ensemble that collapsed availability
+		// the moment one peer restarted, because the surviving two nodes
+		// reported themselves "unhealthy" even though they could still form a
+		// 2-of-3 signing quorum between them.
+		//
+		// Fixed behaviour: the node is healthy when it has enough ready peers
+		// (including self) to participate in a signing round for the
+		// configured CGGMP21/FROST threshold — i.e. `readyCount >= threshold+1`.
+		//
+		// Keygen of fresh wallets still requires all peers (checked separately
+		// on the /keygen endpoint via peerRegistry.ArePeersReady()). Signing
+		// with an existing key only needs threshold+1 parties, which is what
+		// /healthz now reports.
 		healthHandler := func(w http.ResponseWriter, r *http.Request) {
-			ready := peerRegistry.ArePeersReady()
+			// allReady: every expected peer connected. Used for observability.
+			allReady := peerRegistry.ArePeersReady()
+			// quorum: enough ready peers for signing. Gates 200 vs 503.
+			quorum := peerRegistry.HasSigningQuorum(threshold)
+			readyCount := peerRegistry.GetReadyPeersCount()
 			connected := factory.Transport().GetPeers()
+
 			status := "healthy"
 			httpCode := http.StatusOK
-			if !ready {
+			switch {
+			case !quorum:
 				status = "degraded"
 				httpCode = http.StatusServiceUnavailable
+			case !allReady:
+				// Signing quorum holds, but we're missing non-critical peers.
+				// Stay 200 — the node is usable — but report the nuance.
+				status = "healthy-reduced"
 			}
+
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(httpCode)
 			resp := map[string]interface{}{
@@ -488,8 +515,11 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 				"mode":            "consensus",
 				"expected_peers":  len(peerIDs),
 				"connected_peers": len(connected),
-				"ready":           ready,
+				"ready":           allReady,
+				"signing_quorum":  quorum,
+				"ready_count":     readyCount,
 				"threshold":       threshold,
+				"required_signers": threshold + 1,
 				"version":         Version,
 			}
 			json.NewEncoder(w).Encode(resp)
@@ -1144,6 +1174,12 @@ func (r *ConsensusPeerRegistry) WatchPeersReady() {
 
 func (r *ConsensusPeerRegistry) ArePeersReady() bool {
 	return r.registry.ArePeersReady()
+}
+
+// HasSigningQuorum delegates to the underlying transport registry. See
+// pkg/transport/registry.go for the rationale (ready peer count >= threshold+1).
+func (r *ConsensusPeerRegistry) HasSigningQuorum(threshold int) bool {
+	return r.registry.HasSigningQuorum(threshold)
 }
 
 func (r *ConsensusPeerRegistry) GetReadyPeersCount() int64 {
