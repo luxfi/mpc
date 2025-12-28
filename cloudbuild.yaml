@@ -1,10 +1,43 @@
 steps:
-  - name: 'gcr.io/kaniko-project/executor:latest'
+  - id: build-mpcd-mpc
+    name: golang:1.26-alpine
+    entrypoint: sh
     args:
-      - '--destination=us-docker.pkg.dev/$PROJECT_ID/backend/mpc:next'
-      - '--build-arg=GITHUB_TOKEN=${_GITHUB_TOKEN}'
-      - '--cache=true'
-      - '--cache-ttl=72h'
+      - -c
+      - |
+        apk add --no-cache gcc musl-dev git
+        git config --global url."https://${_GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
+        export GOPRIVATE=github.com/luxfi/*,github.com/hanzoai/*
+        CGO_ENABLED=0 go build -ldflags="-s -w" -o /workspace/mpcd ./cmd/mpcd
+        CGO_ENABLED=0 go build -ldflags="-s -w" -o /workspace/mpc  ./cmd/mpc
+
+  - id: image
+    name: gcr.io/cloud-builders/docker
+    entrypoint: sh
+    args:
+      - -c
+      - |
+        cat > /workspace/Dockerfile.slim <<'DOCKER'
+        FROM alpine:3.21
+        RUN apk add --no-cache ca-certificates tzdata
+        WORKDIR /app
+        COPY mpcd /usr/local/bin/mpcd
+        COPY mpc  /usr/local/bin/mpc
+        EXPOSE 8081 9651 9800
+        ENTRYPOINT ["mpcd"]
+        DOCKER
+        docker build -t us-docker.pkg.dev/-devnet/backend/mpc:v1.1.4 -f /workspace/Dockerfile.slim /workspace
+    waitFor: [build-mpcd-mpc]
+
+  - id: push
+    name: gcr.io/cloud-builders/docker
+    args: [push, us-docker.pkg.dev/-devnet/backend/mpc:v1.1.4]
+    waitFor: [image]
+
+substitutions:
+  _GITHUB_TOKEN: ''
+
 options:
-  machineType: 'E2_HIGHCPU_8'
-timeout: '600s'
+  machineType: E2_HIGHCPU_8
+  logging: CLOUD_LOGGING_ONLY
+timeout: 900s
