@@ -257,12 +257,19 @@ func runNode(ctx context.Context, c *cli.Command) error {
 	nodeID := fmt.Sprintf("lux-%s-%s", environment, nodeName)
 	logger.Info("Starting MPC node", "nodeID", nodeID, "environment", environment)
 
-	// Handle configuration based on prompt flag
+	// Resolve ZapDB password via HSM provider (supports AWS KMS, GCP Cloud KMS, Azure Key Vault, env, file)
+	// This must happen before checkRequiredConfigValues so cloud KMS passwords work.
+	var zapDBPassword string
 	if usePrompts {
 		promptForSensitiveCredentials()
+		zapDBPassword = viper.GetString("zapdb_password")
 	} else {
-		// Validate the config values
-		checkRequiredConfigValues()
+		// When using an HSM provider other than env (which reads from config anyway),
+		// skip the zapdb_password config check — the password comes from KMS.
+		hsmProvider := c.String("hsm-provider")
+		skipPasswordCheck := hsmProvider != "" && hsmProvider != "env"
+		checkRequiredConfigValues(skipPasswordCheck)
+		zapDBPassword = resolveZapDBPassword(ctx, c)
 	}
 
 	consulClient := infra.GetConsulClient(environment)
@@ -271,7 +278,7 @@ func runNode(ctx context.Context, c *cli.Command) error {
 	// Use the environment-prefixed nodeID we created above
 	// nodeID is already set with environment prefix
 
-	zapKV := NewZapKV(nodeName, nodeID)
+	zapKV := NewZapKV(nodeName, nodeID, zapDBPassword)
 	defer zapKV.Close()
 
 	// Wrap ZapDB store with KMS-enabled store if configured
@@ -509,16 +516,47 @@ func maskString(s string) string {
 	return masked
 }
 
-// Check required configuration values are present
-func checkRequiredConfigValues() {
+// Check required configuration values are present.
+// skipPasswordCheck should be true when ZapDB password will be resolved via HSM provider.
+func checkRequiredConfigValues(skipPasswordCheck bool) {
 	// Show warning if we're using file-based config but no password is set
-	if viper.GetString("zapdb_password") == "" {
+	if !skipPasswordCheck && viper.GetString("zapdb_password") == "" {
 		logger.Fatal("ZapDB password is required", nil)
 	}
 
 	if viper.GetString("event_initiator_pubkey") == "" {
 		logger.Fatal("Event initiator public key is required", nil)
 	}
+}
+
+// resolveZapDBPassword returns the ZapDB encryption password using the HSM
+// password provider infrastructure. Provider type comes from --hsm-provider
+// (or MPC_HSM_PROVIDER env var), defaulting to "env" for backward compat.
+// When a cloud provider (aws/gcp/azure) is configured, the password is
+// decrypted from ZAPDB_ENCRYPTED_PASSWORD via the cloud KMS at startup.
+func resolveZapDBPassword(ctx context.Context, c *cli.Command) string {
+	hsmProviderType := c.String("hsm-provider")
+	hsmKeyID := c.String("hsm-key-id")
+
+	provider, err := hsm.NewPasswordProvider(hsmProviderType, nil)
+	if err != nil {
+		logger.Fatal("Failed to create HSM password provider", fmt.Errorf("provider=%s: %w", hsmProviderType, err))
+	}
+
+	password, err := provider.GetPassword(ctx, hsmKeyID)
+	if err != nil {
+		// Fall back to viper config for backward compatibility
+		password = viper.GetString("zapdb_password")
+		if password == "" {
+			logger.Fatal("ZapDB password is required: HSM provider failed and no zapdb_password in config",
+				fmt.Errorf("provider=%s: %w", hsmProviderType, err))
+		}
+		logger.Info("ZapDB password loaded from config (consider using HSM provider for production)")
+		return password
+	}
+
+	logger.Info("ZapDB password loaded via HSM provider", "provider", hsmProviderType)
+	return password
 }
 
 func NewConsulClient(addr string) *api.Client {
@@ -563,7 +601,7 @@ func GetIDFromName(name string, peers []config.Peer) string {
 	return nodeID
 }
 
-func NewZapKV(nodeName, nodeID string) *kvstore.Store {
+func NewZapKV(nodeName, nodeID, password string) *kvstore.Store {
 	// ZapDB KV store
 	// Use configured db_path or default to current directory + "db"
 	basePath := viper.GetString("db_path")
@@ -581,8 +619,8 @@ func NewZapKV(nodeName, nodeID string) *kvstore.Store {
 	// Create ZapDB config
 	config := kvstore.Config{
 		NodeID:    nodeName,
-		Key:       []byte(viper.GetString("zapdb_password")),
-		BackupKey: []byte(viper.GetString("zapdb_password")), // Using same key for backup encryption
+		Key:       []byte(password),
+		BackupKey: []byte(password), // Using same key for backup encryption
 		Dir:       backupDir,
 		Path:      dbPath,
 	}
@@ -714,28 +752,7 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 	}
 
 	// Get ZapDB password via HSM provider (supports AWS KMS, GCP Cloud KMS, Azure Key Vault, env, file)
-	hsmProviderType := c.String("hsm-provider")
-	hsmKeyID := c.String("hsm-key-id")
-
-	provider, err := hsm.NewPasswordProvider(hsmProviderType, nil)
-	if err != nil {
-		return fmt.Errorf("failed to create HSM password provider (%s): %w", hsmProviderType, err)
-	}
-
-	zapDBPassword, err := provider.GetPassword(ctx, hsmKeyID)
-	if err != nil {
-		// Fall back to viper config for backward compatibility
-		zapDBPassword = viper.GetString("zapdb_password")
-		if zapDBPassword == "" {
-			logger.Warn("No ZapDB password set via HSM provider or config, using default (NOT for production!)",
-				"provider", hsmProviderType, "error", err)
-			zapDBPassword = "dev-password-change-me"
-		} else {
-			logger.Info("ZapDB password loaded from config file (consider using HSM provider for production)")
-		}
-	} else {
-		logger.Info("ZapDB password loaded via HSM provider", "provider", hsmProviderType)
-	}
+	zapDBPassword := resolveZapDBPassword(ctx, c)
 
 	// Create transport factory (uses ZapDB for embedded key-share storage)
 	factoryCfg := transport.FactoryConfig{
@@ -1041,17 +1058,13 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 					}
 				}
 
-				// Wire HSM key share vault for encrypted share storage
+				// HSM threshold attestation (key share vault storage)
 				if c.Bool("hsm-attest") {
-					attestKeyID := c.String("hsm-signer-key-id")
-					hsmVault := hsm.NewKeyShareVault(provider, hsmKeyID)
 					logger.Info("HSM threshold attestation enabled",
 						"signer", c.String("hsm-signer"),
-						"attest_key", attestKeyID,
-						"vault_provider", hsmProviderType,
+						"attest_key", c.String("hsm-signer-key-id"),
+						"vault_provider", c.String("hsm-provider"),
 					)
-					_ = hsmVault     // available for key share storage
-					_ = attestKeyID  // used when creating HSMAttestingSigner
 				}
 
 				logger.Info("Dashboard API server starting", "addr", apiListenAddr)
@@ -1374,6 +1387,28 @@ func (s *ConsensusIdentityStore) AddPeerPublicKey(nodeID string, pubKey []byte) 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.publicKeys[nodeID] = pubKey
+}
+
+// SignWireMessage signs a protocol wire message with this node's Ed25519 key.
+func (s *ConsensusIdentityStore) SignWireMessage(msg *types.Message) {
+	msg.Sign(s.privateKey)
+}
+
+// VerifyWireMessage verifies a protocol wire message's Ed25519 signature
+// using the sender's public key looked up by SenderNodeID.
+func (s *ConsensusIdentityStore) VerifyWireMessage(msg *types.Message) error {
+	if len(msg.Signature) == 0 {
+		return fmt.Errorf("message has no signature")
+	}
+	nodeID := msg.SenderNodeID
+	if nodeID == "" {
+		nodeID = msg.SenderID
+	}
+	pubKey, err := s.GetPublicKey(nodeID)
+	if err != nil {
+		return fmt.Errorf("failed to get sender's public key for node %s: %w", nodeID, err)
+	}
+	return msg.Verify(ed25519.PublicKey(pubKey))
 }
 
 // ConsensusPubSubAdapter adapts transport.PubSub to messaging.PubSub

@@ -54,6 +54,13 @@ func (s *Server) handleBridgeSign(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Replay protection: use txId as idempotency key (timestamp=0 skips age check
+	// since bridge requests don't carry a timestamp field)
+	if reason := s.replayGuard.check("bridge:"+req.TxID, 0); reason != "" {
+		json.NewEncoder(w).Encode(bridgeSignResponse{Status: false, Msg: reason})
+		return
+	}
+
 	// Check MPC cluster health
 	status := s.mpc.GetClusterStatus()
 	if status == nil || !status.Ready {
