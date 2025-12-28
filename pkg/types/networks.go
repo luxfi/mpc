@@ -27,6 +27,11 @@ const (
 	NetworkLUX        NetworkCode = "LUX"
 	NetworkLUXTestnet NetworkCode = "LUX-testnet"
 
+	// Substrate/Polkadot networks (sr25519)
+	NetworkDOT        NetworkCode = "DOT"
+	NetworkDOTTestnet NetworkCode = "DOT-testnet"
+	NetworkKSM        NetworkCode = "KSM"
+
 	// Other networks
 	NetworkTON        NetworkCode = "TON"
 	NetworkTONTestnet NetworkCode = "TON-testnet"
@@ -47,6 +52,9 @@ var SupportedNetworks = map[NetworkCode]bool{
 	NetworkXRPLDevnet:  true,
 	NetworkLUX:         true,
 	NetworkLUXTestnet:  true,
+	NetworkDOT:         true,
+	NetworkDOTTestnet:  true,
+	NetworkKSM:         true,
 	NetworkTON:         true,
 	NetworkTONTestnet:  true,
 }
@@ -65,6 +73,9 @@ func GetNetworkKeyType(network NetworkCode) KeyType {
 	case NetworkSOL, NetworkSOLDevnet, NetworkSOLTestnet:
 		// Solana uses Ed25519
 		return KeyTypeEd25519
+	case NetworkDOT, NetworkDOTTestnet, NetworkKSM:
+		// Polkadot/Kusama uses sr25519 (Ristretto255/Schnorrkel)
+		return KeyTypeSR25519
 	case NetworkTON, NetworkTONTestnet:
 		// TON uses Ed25519
 		return KeyTypeEd25519

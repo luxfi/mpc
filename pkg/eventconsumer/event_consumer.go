@@ -227,10 +227,16 @@ func (ec *eventConsumer) consumeTxSigningEvent() error {
 			ec.node.ID(),
 		)
 
-		// Use CGGMP21 handler for all signing events
-		// CGGMP21 only supports ECDSA (Secp256k1)
-		if msg.KeyType != types.KeyTypeSecp256k1 {
-			logger.Error("CGGMP21 only supports Secp256k1 key type", nil,
+		// Route signing to the correct handler based on key type
+		switch msg.KeyType {
+		case types.KeyTypeSecp256k1:
+			ec.handleSigningEventCGGMP21(&msg, natMsg)
+		case types.KeyTypeEd25519:
+			ec.handleSigningEventFROST(&msg, natMsg)
+		case types.KeyTypeSR25519:
+			ec.handleSigningEventSR25519(&msg, natMsg)
+		default:
+			logger.Error("Unsupported key type for signing", nil,
 				"walletID", msg.WalletID,
 				"txID", msg.TxID,
 				"keyType", msg.KeyType,
@@ -239,15 +245,11 @@ func (ec *eventConsumer) consumeTxSigningEvent() error {
 				msg.WalletID,
 				msg.TxID,
 				msg.NetworkInternalCode,
-				fmt.Errorf("unsupported key type for CGGMP21: %v", msg.KeyType),
+				fmt.Errorf("unsupported key type: %v", msg.KeyType),
 				"Unsupported key type",
 				natMsg,
 			)
-			return
 		}
-
-		// Delegate to CGGMP21 signing handler
-		ec.handleSigningEventCGGMP21(&msg, natMsg)
 	})
 
 	ec.signingSub = sub
@@ -628,6 +630,8 @@ func sessionTypeFromKeyType(keyType types.KeyType) (mpc.SessionType, error) {
 		return mpc.SessionTypeECDSA, nil
 	case types.KeyTypeEd25519:
 		return mpc.SessionTypeEDDSA, nil
+	case types.KeyTypeSR25519:
+		return mpc.SessionTypeSR25519, nil
 	default:
 		logger.Warn("Unsupported key type", "keyType", keyType)
 		return "", fmt.Errorf("unsupported key type: %v", keyType)
