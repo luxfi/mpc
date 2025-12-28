@@ -111,4 +111,4 @@ require (
 )
 
 // agl/ed25519 has no packages at upstream path; redirect required by decred/dcrd/dcrec/edwards/v2.
-replace github.com/agl/ed25519 => github.com/luxfi/edwards25519 v0.0.0-20200305024217-f36fc4b53d43
+replace github.com/agl/ed25519 => github.com/luxfi/edwards25519 v0.1.0
