@@ -7,7 +7,7 @@ RUN pnpm install --frozen-lockfile 2>/dev/null || pnpm install
 COPY ui/ .
 RUN pnpm build
 
-# Lux MPC — single image ships both daemon (mpcd) + CLI (mpc).
+# MPC — single image ships both daemon (mpcd) + CLI (mpc).
 # Default entrypoint: mpcd. Override ENTRYPOINT / CMD with `mpc <cmd>` for CLI.
 # syntax=docker/dockerfile:1
 

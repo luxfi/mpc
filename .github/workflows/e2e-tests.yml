@@ -36,7 +36,7 @@ jobs:
         with:
           path: |
             ./lux-mpc
-            ./lux-mpc-cli
+            ./mpc
           key: ${{ steps.cache-key.outputs.key }}
 
       - name: Cache Go modules
@@ -60,8 +60,8 @@ jobs:
         if: steps.cache-binaries.outputs.cache-hit != 'true'
         run: |
           go build -o lux-mpc ./cmd/lux-mpc
-          go build -o lux-mpc-cli ./cmd/lux-mpc-cli
-          chmod +x lux-mpc lux-mpc-cli
+          go build -o mpc ./cmd/mpc
+          chmod +x lux-mpc mpc
 
   # Key Generation E2E Tests
   e2e-keygen:
@@ -104,20 +104,20 @@ jobs:
         with:
           path: |
             ./lux-mpc
-            ./lux-mpc-cli
+            ./mpc
           key: ${{ needs.build.outputs.cache-key }}
 
       - name: Install binaries
         run: |
           sudo mv lux-mpc /usr/local/bin/
-          sudo mv lux-mpc-cli /usr/local/bin/
+          sudo mv mpc /usr/local/bin/
 
       - name: Verify binaries are available
         run: |
           which lux-mpc
-          which lux-mpc-cli
+          which mpc
           lux-mpc --version || echo "lux-mpc binary ready"
-          lux-mpc-cli --version || echo "lux-mpc-cli binary ready"
+          mpc --version || echo "mpc binary ready"
 
       - name: Install E2E dependencies
         run: |
@@ -186,20 +186,20 @@ jobs:
         with:
           path: |
             ./lux-mpc
-            ./lux-mpc-cli
+            ./mpc
           key: ${{ needs.build.outputs.cache-key }}
 
       - name: Install binaries
         run: |
           sudo mv lux-mpc /usr/local/bin/
-          sudo mv lux-mpc-cli /usr/local/bin/
+          sudo mv mpc /usr/local/bin/
 
       - name: Verify binaries are available
         run: |
           which lux-mpc
-          which lux-mpc-cli
+          which mpc
           lux-mpc --version || echo "lux-mpc binary ready"
-          lux-mpc-cli --version || echo "lux-mpc-cli binary ready"
+          mpc --version || echo "mpc binary ready"
 
       - name: Install E2E dependencies
         run: |
@@ -268,20 +268,20 @@ jobs:
         with:
           path: |
             ./lux-mpc
-            ./lux-mpc-cli
+            ./mpc
           key: ${{ needs.build.outputs.cache-key }}
 
       - name: Install binaries
         run: |
           sudo mv lux-mpc /usr/local/bin/
-          sudo mv lux-mpc-cli /usr/local/bin/
+          sudo mv mpc /usr/local/bin/
 
       - name: Verify binaries are available
         run: |
           which lux-mpc
-          which lux-mpc-cli
+          which mpc
           lux-mpc --version || echo "lux-mpc binary ready"
-          lux-mpc-cli --version || echo "lux-mpc-cli binary ready"
+          mpc --version || echo "mpc binary ready"
 
       - name: Install E2E dependencies
         run: |

@@ -534,7 +534,7 @@ const landingHTML = `<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Lux MPC — Threshold Signing Service</title>
+<title>MPC — Threshold Signing Service</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0a0a0a;color:#e5e5e5;display:flex;align-items:center;justify-content:center;min-height:100vh}
@@ -555,7 +555,7 @@ h1{font-size:2.5rem;font-weight:700;margin-bottom:.5rem;background:linear-gradie
 </head>
 <body>
 <div class="c">
-<h1>Lux MPC</h1>
+<h1>MPC</h1>
 <p class="tag">Threshold Signing Service &bull; 3-of-5 Consensus</p>
 <div class="cards">
 <div class="card"><h3>CGGMP21</h3><p>5-round threshold ECDSA (secp256k1) for Bitcoin, Ethereum, Lux, XRPL, and all EVM chains.</p></div>
