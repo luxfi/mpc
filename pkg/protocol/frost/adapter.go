@@ -3,12 +3,13 @@ package frost
 import (
 	"context"
 	"crypto/ecdsa"
-	"encoding/json"
+	"crypto/elliptic"
 	"errors"
 	"fmt"
 	"math/big"
 	"sync"
 
+	"github.com/fxamacker/cbor/v2"
 	log "github.com/luxfi/log"
 	"github.com/luxfi/threshold/pkg/math/curve"
 	"github.com/luxfi/threshold/pkg/party"
@@ -328,11 +329,24 @@ func (c *frostConfigAdapter) GetThreshold() int {
 	return 0
 }
 
-// GetPublicKey returns nil for EdDSA as it uses different key type
+// GetPublicKey returns the public key as an ecdsa.PublicKey.
+// For Taproot configs (secp256k1), we recover the full point from the x-only key.
+// For regular FROST configs, we convert the curve.Point to ecdsa.PublicKey.
 func (c *frostConfigAdapter) GetPublicKey() *ecdsa.PublicKey {
-	// FROST uses Ed25519/Schnorr, not ECDSA
-	// This is a limitation of the current interface design
-	// For Taproot, we could potentially convert but it's not standard ECDSA
+	if c.isTaproot && c.taprootConfig != nil {
+		pkBytes := c.taprootConfig.PublicKey
+		if len(pkBytes) != 32 {
+			return nil
+		}
+		return xOnlyToECDSA(pkBytes)
+	}
+	if c.config != nil && c.config.PublicKey != nil && !c.config.PublicKey.IsIdentity() {
+		compressed, err := c.config.PublicKey.MarshalBinary()
+		if err != nil || len(compressed) != 33 {
+			return nil
+		}
+		return compressedToECDSA(compressed)
+	}
 	return nil
 }
 
@@ -385,10 +399,12 @@ func (c *frostConfigAdapter) GetPartyIDs() []string {
 
 func (c *frostConfigAdapter) Serialize() ([]byte, error) {
 	if c.isTaproot && c.taprootConfig != nil {
-		return json.Marshal(c.taprootConfig)
+		// Use CBOR serialization: crypto types (Secp256k1Scalar, Secp256k1Point) lack JSON marshalers
+		return marshalTaprootConfig(c.taprootConfig)
 	}
 	if c.config != nil {
-		return json.Marshal(c.config)
+		// Regular FROST Config also has curve types without JSON marshalers
+		return marshalFROSTRegularConfig(c.config)
 	}
 	return nil, errors.New("no config to serialize")
 }
@@ -420,8 +436,8 @@ func (s *frostSignatureAdapter) Verify(pubKey *ecdsa.PublicKey, message []byte) 
 }
 
 func (s *frostSignatureAdapter) Serialize() ([]byte, error) {
-	// Marshal the signature using JSON for now
-	return json.Marshal(s.sig)
+	// Use MarshalBinary which correctly handles curve.Point R and curve.Scalar z
+	return s.sig.MarshalBinary()
 }
 
 // Helper functions
@@ -454,24 +470,261 @@ func toFROSTConfig(cfg protocol.KeyGenConfig) (*frost.Config, error) {
 		if adapter.config != nil {
 			return adapter.config, nil
 		}
-		// If it's a Taproot config, we need to convert it
+		// If it's a Taproot config, convert to regular Config for signing
 		if adapter.taprootConfig != nil {
-			// This would need proper conversion logic
-			return nil, errors.New("cannot convert Taproot config to regular FROST config")
+			tc := adapter.taprootConfig
+			publicKey, err := curve.Secp256k1{}.LiftX(tc.PublicKey)
+			if err != nil {
+				return nil, fmt.Errorf("failed to lift taproot public key: %w", err)
+			}
+			verificationShares := make(map[party.ID]curve.Point, len(tc.VerificationShares))
+			for k, v := range tc.VerificationShares {
+				verificationShares[k] = v
+			}
+			return &frost.Config{
+				ID:                 tc.ID,
+				Threshold:          tc.Threshold,
+				PrivateShare:       tc.PrivateShare,
+				PublicKey:          publicKey,
+				ChainKey:           tc.ChainKey,
+				VerificationShares: party.NewPointMap(verificationShares),
+			}, nil
 		}
 	}
 
-	// Otherwise, deserialize if possible
+	// Otherwise, deserialize via CBOR
 	data, err := cfg.Serialize()
 	if err != nil {
 		return nil, fmt.Errorf("failed to serialize config: %w", err)
 	}
 
-	// Try to unmarshal as FROST config
-	config := frost.EmptyConfig(curve.Secp256k1{})
-	if err := json.Unmarshal(data, config); err != nil {
+	config, err := unmarshalFROSTRegularConfig(data)
+	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal as FROST config: %w", err)
 	}
 
 	return config, nil
+}
+
+// ============================================================================
+// CBOR serialization for regular FROST Config (non-Taproot)
+// ============================================================================
+
+type frostRegularConfigMarshal struct {
+	ID                 party.ID
+	Threshold          int
+	PrivateShare       []byte
+	PublicKey          []byte // 33 bytes compressed
+	ChainKey           []byte
+	VerificationShares []frostVerificationShareMarshal
+}
+
+type frostVerificationShareMarshal struct {
+	ID    party.ID
+	Point []byte // 33 bytes compressed
+}
+
+func marshalFROSTRegularConfig(config *frost.Config) ([]byte, error) {
+	privateBytes, err := config.PrivateShare.MarshalBinary()
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal private share: %w", err)
+	}
+
+	pubBytes, err := config.PublicKey.MarshalBinary()
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal public key: %w", err)
+	}
+
+	shares := make([]frostVerificationShareMarshal, 0, len(config.VerificationShares.Points))
+	for id, point := range config.VerificationShares.Points {
+		pointBytes, err := point.MarshalBinary()
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal verification share for %s: %w", id, err)
+		}
+		shares = append(shares, frostVerificationShareMarshal{
+			ID:    id,
+			Point: pointBytes,
+		})
+	}
+
+	cm := &frostRegularConfigMarshal{
+		ID:                 config.ID,
+		Threshold:          config.Threshold,
+		PrivateShare:       privateBytes,
+		PublicKey:          pubBytes,
+		ChainKey:           config.ChainKey,
+		VerificationShares: shares,
+	}
+
+	return cbor.Marshal(cm)
+}
+
+func unmarshalFROSTRegularConfig(data []byte) (*frost.Config, error) {
+	cm := &frostRegularConfigMarshal{}
+	if err := cbor.Unmarshal(data, cm); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
+	}
+
+	group := curve.Secp256k1{}
+
+	privateShare := group.NewScalar()
+	if err := privateShare.UnmarshalBinary(cm.PrivateShare); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal private share: %w", err)
+	}
+
+	publicKey := group.NewPoint()
+	if err := publicKey.UnmarshalBinary(cm.PublicKey); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal public key: %w", err)
+	}
+
+	verificationShares := make(map[party.ID]curve.Point, len(cm.VerificationShares))
+	for _, vs := range cm.VerificationShares {
+		point := group.NewPoint()
+		if err := point.UnmarshalBinary(vs.Point); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal verification share for %s: %w", vs.ID, err)
+		}
+		verificationShares[vs.ID] = point
+	}
+
+	return &frost.Config{
+		ID:                 cm.ID,
+		Threshold:          cm.Threshold,
+		PrivateShare:       privateShare,
+		PublicKey:          publicKey,
+		ChainKey:           cm.ChainKey,
+		VerificationShares: party.NewPointMap(verificationShares),
+	}, nil
+}
+
+// marshalTaprootConfig serializes a TaprootConfig to CBOR bytes.
+// Crypto types (Secp256k1Scalar, Secp256k1Point) do not have JSON marshalers,
+// so we use a flat intermediate struct with raw byte slices.
+type taprootConfigMarshal struct {
+	ID                 party.ID
+	Threshold          int
+	PrivateShare       []byte // 32 bytes (Secp256k1Scalar)
+	PublicKey          []byte // 32 bytes (x-only Taproot public key)
+	ChainKey           []byte // 32 bytes
+	VerificationShares []taprootVerificationShareMarshal
+}
+
+type taprootVerificationShareMarshal struct {
+	ID    party.ID
+	Point []byte // 33 bytes (compressed Secp256k1Point)
+}
+
+func marshalTaprootConfig(config *frost.TaprootConfig) ([]byte, error) {
+	privateShareBytes, err := config.PrivateShare.MarshalBinary()
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal private share: %w", err)
+	}
+
+	shares := make([]taprootVerificationShareMarshal, 0, len(config.VerificationShares))
+	for id, point := range config.VerificationShares {
+		pointBytes, err := point.MarshalBinary()
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal verification share for %s: %w", id, err)
+		}
+		shares = append(shares, taprootVerificationShareMarshal{
+			ID:    id,
+			Point: pointBytes,
+		})
+	}
+
+	cm := &taprootConfigMarshal{
+		ID:                 config.ID,
+		Threshold:          config.Threshold,
+		PrivateShare:       privateShareBytes,
+		PublicKey:          config.PublicKey,
+		ChainKey:           config.ChainKey,
+		VerificationShares: shares,
+	}
+
+	return cbor.Marshal(cm)
+}
+
+// ============================================================================
+// secp256k1 curve helpers for ecdsa.PublicKey conversion
+// ============================================================================
+
+var secp256k1CurveParams *elliptic.CurveParams
+
+func init() {
+	secp256k1CurveParams = &elliptic.CurveParams{
+		Name:    "secp256k1",
+		BitSize: 256,
+	}
+	secp256k1CurveParams.P, _ = new(big.Int).SetString("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F", 16)
+	secp256k1CurveParams.N, _ = new(big.Int).SetString("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141", 16)
+	secp256k1CurveParams.B = big.NewInt(7)
+	secp256k1CurveParams.Gx, _ = new(big.Int).SetString("79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798", 16)
+	secp256k1CurveParams.Gy, _ = new(big.Int).SetString("483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8", 16)
+}
+
+func ellipticSecp256k1() elliptic.Curve {
+	return secp256k1CurveParams
+}
+
+// xOnlyToECDSA converts a 32-byte x-only public key (BIP-340) to ecdsa.PublicKey with even Y.
+func xOnlyToECDSA(xBytes []byte) *ecdsa.PublicKey {
+	x := new(big.Int).SetBytes(xBytes)
+	p := secp256k1CurveParams.P
+
+	// y^2 = x^3 + 7 mod p
+	x3 := new(big.Int).Mul(x, x)
+	x3.Mod(x3, p)
+	x3.Mul(x3, x)
+	x3.Mod(x3, p)
+	y2 := new(big.Int).Add(x3, big.NewInt(7))
+	y2.Mod(y2, p)
+
+	exp := new(big.Int).Add(p, big.NewInt(1))
+	exp.Rsh(exp, 2)
+	y := new(big.Int).Exp(y2, exp, p)
+
+	check := new(big.Int).Mul(y, y)
+	check.Mod(check, p)
+	if check.Cmp(y2) != 0 {
+		return nil
+	}
+
+	// BIP-340 uses even Y
+	if y.Bit(0) != 0 {
+		y.Sub(p, y)
+	}
+
+	return &ecdsa.PublicKey{Curve: ellipticSecp256k1(), X: x, Y: y}
+}
+
+// compressedToECDSA converts a 33-byte compressed secp256k1 point to ecdsa.PublicKey.
+func compressedToECDSA(compressed []byte) *ecdsa.PublicKey {
+	if len(compressed) != 33 {
+		return nil
+	}
+	x := new(big.Int).SetBytes(compressed[1:33])
+	p := secp256k1CurveParams.P
+
+	x3 := new(big.Int).Mul(x, x)
+	x3.Mod(x3, p)
+	x3.Mul(x3, x)
+	x3.Mod(x3, p)
+	y2 := new(big.Int).Add(x3, big.NewInt(7))
+	y2.Mod(y2, p)
+
+	exp := new(big.Int).Add(p, big.NewInt(1))
+	exp.Rsh(exp, 2)
+	y := new(big.Int).Exp(y2, exp, p)
+
+	check := new(big.Int).Mul(y, y)
+	check.Mod(check, p)
+	if check.Cmp(y2) != 0 {
+		return nil
+	}
+
+	isOdd := compressed[0] == 0x03
+	if y.Bit(0) == 1 != isOdd {
+		y.Sub(p, y)
+	}
+
+	return &ecdsa.PublicKey{Curve: ellipticSecp256k1(), X: x, Y: y}
 }

@@ -200,6 +200,20 @@ func (c *KMSClient) RotateKeyShare(ctx context.Context, walletID string, newKeyS
 	return c.StoreKeyShare(ctx, walletID, newKeyShare)
 }
 
+// DeleteKeyShare removes an MPC key share from encrypted storage
+func (c *KMSClient) DeleteKeyShare(ctx context.Context, walletID string) error {
+	secretName := fmt.Sprintf("%s/wallets/%s/keyshare", c.secretPath, walletID)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if _, ok := c.secrets[secretName]; !ok {
+		return fmt.Errorf("key share not found for wallet %s", walletID)
+	}
+	delete(c.secrets, secretName)
+	logger.Info("Deleted key share", "walletID", walletID)
+	return nil
+}
+
 // StorePresignature stores a presignature encrypted with AES-256-GCM
 func (c *KMSClient) StorePresignature(ctx context.Context, walletID, sigID string, presigData []byte) error {
 	secretName := fmt.Sprintf("%s/wallets/%s/presigs/%s", c.secretPath, walletID, sigID)

@@ -148,10 +148,16 @@ func (k *KMSEnabledKVStore) Delete(key string) error {
 			var reference map[string]string
 			if err := json.Unmarshal(data, &reference); err == nil {
 				if reference["storage"] == "kms" {
-					// Delete from Lux KMS
-					// Delete operation not implemented in stub
-					// In production, this would delete from KMS
-					logger.Debug("KMS delete operation skipped (stub)", "key", key)
+					// Delete the key share from Lux KMS
+					ctx := context.Background()
+					if delErr := k.kmsClient.DeleteKeyShare(ctx, key); delErr != nil {
+						logger.Warn("Failed to delete key share from Lux KMS, continuing with local delete",
+							"key", key,
+							"err", delErr,
+						)
+					} else {
+						logger.Info("Deleted key share from Lux KMS", "key", key)
+					}
 				}
 			}
 		}
