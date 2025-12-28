@@ -22,13 +22,13 @@ ENV GONOSUMDB=*
 WORKDIR /app
 COPY go.mod ./
 RUN GONOSUMCHECK='*' GONOSUMDB='*' go mod download
-COPY go.sum ./
 COPY . .
 COPY --from=ui /ui/dist ./ui/dist/
+RUN rm -f go.sum
 
 ENV GOEXPERIMENT=runtimesecret
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o mpcd ./cmd/mpcd
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o mpc  ./cmd/mpc
+RUN GONOSUMCHECK='*' GONOSUMDB='*' CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o mpcd ./cmd/mpcd
+RUN GONOSUMCHECK='*' GONOSUMDB='*' CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o mpc  ./cmd/mpc
 
 FROM alpine:3.21
 RUN apk add --no-cache ca-certificates tzdata
