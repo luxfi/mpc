@@ -34,11 +34,11 @@
 //
 //	factory, err := transport.NewFactory(transport.FactoryConfig{
 //	    NodeID:     "node0",
-//	    ListenAddr: ":9651",
+//	    ListenAddr: ":9999",
 //	    Peers: map[string]string{
-//	        "node0": "localhost:9651",
-//	        "node1": "localhost:9652",
-//	        "node2": "localhost:9653",
+//	        "node0": "localhost:9999",
+//	        "node1": "node1.example:9999",
+//	        "node2": "node2.example:9999",
 //	    },
 //	    PrivateKey: privateKey,
 //	    PublicKey:  publicKey,
@@ -74,7 +74,7 @@ type FactoryConfig struct {
 	// NodeID is this node's unique identifier
 	NodeID string
 
-	// ListenAddr is the ZAP transport listen address (e.g., ":9651")
+	// ListenAddr is the ZAP transport listen address (e.g., ":9999")
 	ListenAddr string
 
 	// Peers maps node IDs to their network addresses
