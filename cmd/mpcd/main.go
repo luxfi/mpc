@@ -899,8 +899,9 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 		}
 
 		mux := http.NewServeMux()
-		// /health is unauthenticated (K8s liveness/readiness probes)
-		mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		// Health probe handler — unauthenticated (K8s liveness/readiness probes).
+		// Served on both /health (legacy) and /healthz (platform standard).
+		healthHandler := func(w http.ResponseWriter, r *http.Request) {
 			ready := peerRegistry.ArePeersReady()
 			connected := factory.Transport().GetPeers()
 			status := "healthy"
@@ -922,7 +923,9 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 				"version":         Version,
 			}
 			json.NewEncoder(w).Encode(resp)
-		})
+		}
+		mux.HandleFunc("/health", healthHandler)
+		mux.HandleFunc("/healthz", healthHandler)
 		mux.HandleFunc("/keys", internalAuth(func(w http.ResponseWriter, r *http.Request) {
 			keys, err := factory.KeyInfoStore().ListKeys()
 			w.Header().Set("Content-Type", "application/json")
