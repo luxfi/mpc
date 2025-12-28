@@ -1,7 +1,0 @@
-FROM alpine:3.20
-ARG TARGETARCH
-RUN apk add --no-cache ca-certificates
-COPY mpcd-linux-${TARGETARCH} /usr/local/bin/mpcd
-RUN chmod +x /usr/local/bin/mpcd
-EXPOSE 8081 9651 9800
-ENTRYPOINT ["mpcd"]
