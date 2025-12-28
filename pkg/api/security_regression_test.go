@@ -170,8 +170,13 @@ func TestWebAuthnRequiresValidSignature(t *testing.T) {
 
 func TestWebAuthnOriginValidation(t *testing.T) {
 	allowedOrigins := map[string]bool{
-		"https://lux.network":     true,
-		"https://mpc.lux.network": true,
+		"https://lux.network":                 true,
+		"https://mpc.lux.network":             true,
+		"https://exchange.dev.":    true,
+		"https://exchange.test.":   true,
+		"https://exchange.main.":   true,
+		"https://":                true,
+		"https://www.":            true,
 	}
 
 	attackOrigins := []string{
@@ -179,6 +184,8 @@ func TestWebAuthnOriginValidation(t *testing.T) {
 		"https://lux.network.evil.com",
 		"http://lux.network",
 		"https://mpc.lux.network.attacker.com",
+		"https://exchange..evil.com",
+		"http://",
 		"",
 	}
 
