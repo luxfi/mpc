@@ -365,6 +365,7 @@ func (ec *eventConsumer) consumeReshareEvent() error {
 				msg.NodeIDs,
 				isNewPeer,
 				ec.reshareResultQueue,
+				msg.OrgID,
 			)
 		}
 

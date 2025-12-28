@@ -14,10 +14,11 @@ import (
 )
 
 // MPCBackend is the interface the API layer uses to trigger MPC operations.
+// All mutation methods require orgID for tenant-scoped key storage.
 type MPCBackend interface {
-	TriggerKeygen(walletID string) (*KeygenResult, error)
-	TriggerSign(walletID string, payload []byte) (*SignResult, error)
-	TriggerReshare(walletID string, newThreshold int, newParticipants []string) error
+	TriggerKeygen(orgID, walletID string) (*KeygenResult, error)
+	TriggerSign(orgID, walletID string, payload []byte) (*SignResult, error)
+	TriggerReshare(orgID, walletID string, newThreshold int, newParticipants []string) error
 	GetClusterStatus() *ClusterStatus
 }
 
