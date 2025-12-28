@@ -75,17 +75,25 @@ func newSR25519SigningSession(
 	useBroadcast bool,
 	orgID string,
 ) (*sr25519SigningSession, error) {
-	// Load config from kvstore - SR25519 keys are stored with sr25519: prefix
+	// Load and unmarshal key share inside withSecretErasure so that raw
+	// share bytes on the stack are zeroed after parsing completes.
 	sr25519Key := fmt.Sprintf("sr25519:%s", walletID)
-	shareBytes, err := GetKeyShareWithFallback(kvstore, orgID, sr25519Key)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get SR25519 key share: %w", err)
-	}
-
-	// Config is stored as CBOR (to properly preserve crypto types)
-	config, err := UnmarshalSR25519Config(shareBytes)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal SR25519 key share: %w", err)
+	var config *frost.Config
+	var loadErr error
+	withSecretErasure(func() {
+		shareBytes, err := GetKeyShareWithFallback(kvstore, orgID, sr25519Key)
+		if err != nil {
+			loadErr = fmt.Errorf("failed to get SR25519 key share: %w", err)
+			return
+		}
+		// Config is stored as CBOR (to properly preserve crypto types)
+		config, err = UnmarshalSR25519Config(shareBytes)
+		if err != nil {
+			loadErr = fmt.Errorf("failed to unmarshal SR25519 key share: %w", err)
+		}
+	})
+	if loadErr != nil {
+		return nil, loadErr
 	}
 
 	// Default signing context
