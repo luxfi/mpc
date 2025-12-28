@@ -223,6 +223,73 @@ func TestGCPParseResourceName(t *testing.T) {
 	}
 }
 
+// TestNewPasswordProviderEnvIntegration verifies the full flow:
+// factory creates provider -> provider reads password from env.
+// This is the exact code path used by resolveZapDBPassword in cmd/mpcd.
+func TestNewPasswordProviderEnvIntegration(t *testing.T) {
+	const testPassword = "kms-integration-test-pw"
+	t.Setenv("LUX_MPC_PASSWORD", testPassword)
+
+	provider, err := NewPasswordProvider("env", nil)
+	if err != nil {
+		t.Fatalf("NewPasswordProvider: %v", err)
+	}
+
+	got, err := provider.GetPassword(context.Background(), "")
+	if err != nil {
+		t.Fatalf("GetPassword: %v", err)
+	}
+	if got != testPassword {
+		t.Errorf("got %q, want %q", got, testPassword)
+	}
+}
+
+// TestNewPasswordProviderFileIntegration verifies the full flow:
+// factory creates file provider -> provider reads password from file.
+func TestNewPasswordProviderFileIntegration(t *testing.T) {
+	const testPassword = "file-integration-pw"
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "zapdb-pw.txt")
+	if err := os.WriteFile(path, []byte(testPassword+"\n"), 0600); err != nil {
+		t.Fatalf("failed to write: %v", err)
+	}
+
+	provider, err := NewPasswordProvider("file", map[string]string{"path": path})
+	if err != nil {
+		t.Fatalf("NewPasswordProvider: %v", err)
+	}
+
+	got, err := provider.GetPassword(context.Background(), "")
+	if err != nil {
+		t.Fatalf("GetPassword: %v", err)
+	}
+	if got != testPassword {
+		t.Errorf("got %q, want %q", got, testPassword)
+	}
+}
+
+// TestNewPasswordProviderDefaultsToEnv verifies empty string defaults to env provider.
+func TestNewPasswordProviderDefaultsToEnv(t *testing.T) {
+	const testPassword = "default-env-pw"
+	t.Setenv("LUX_MPC_PASSWORD", testPassword)
+
+	// Empty string and whitespace should both default to "env"
+	for _, input := range []string{"", " ", "  "} {
+		provider, err := NewPasswordProvider(input, nil)
+		if err != nil {
+			t.Fatalf("NewPasswordProvider(%q): %v", input, err)
+		}
+		got, err := provider.GetPassword(context.Background(), "")
+		if err != nil {
+			t.Fatalf("GetPassword for input %q: %v", input, err)
+		}
+		if got != testPassword {
+			t.Errorf("input %q: got %q, want %q", input, got, testPassword)
+		}
+	}
+}
+
 func TestSHA256Hex(t *testing.T) {
 	// Known test vector: SHA-256 of empty string
 	got := sha256Hex([]byte(""))
