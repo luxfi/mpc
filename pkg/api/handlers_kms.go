@@ -49,7 +49,7 @@ const kmsKind = "validator_keys"
 // registerKMSRoutes adds validator key management routes to the MPC API.
 // These replace the standalone KMS server — one binary for both.
 func (s *Server) registerKMSRoutes(r chi.Router) {
-	r.Route("/api/v1/keys", func(r chi.Router) {
+	r.Route("/v1/keys", func(r chi.Router) {
 		r.Post("/generate", s.handleKMSGenerate)
 		r.Get("/", s.handleKMSList)
 		r.Get("/{id}", s.handleKMSGet)
