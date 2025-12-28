@@ -15,7 +15,7 @@ spec:
       kind: Rule
       services:
         - name: mpc-lux
-          port: 9651
+          port: 9999
           passHostHeader: false
   tls:
     certResolver: letsencrypt
