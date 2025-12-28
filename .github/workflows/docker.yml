@@ -1,9 +1,7 @@
 name: Docker
 
 on:
-  workflow_dispatch:
   push:
-    branches: [main, dev, test]
     tags: ['v*']
 
 permissions:
@@ -11,18 +9,51 @@ permissions:
   packages: write
 
 jobs:
-  docker:
-    uses: hanzoai/.github/.github/workflows/docker-build.yml@main
-    with:
-      image: ghcr.io/luxfi/mpc
-      build-args: |
-        GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
-    secrets: inherit
+  build:
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+    runs-on: ${{ matrix.arch == 'arm64' && 'lux-arm64' || 'lux-amd64' }}
+    env:
+      GONOSUMCHECK: '*'
+      GONOSUMDB: '*'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          IMG=ghcr.io/luxfi/mpc:${TAG}-${{ matrix.arch }}
+          docker build \
+            --build-arg GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }} \
+            -t $IMG .
+          docker push $IMG
 
-  notify-universe:
-    needs: docker
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
+  manifest:
+    needs: build
+    runs-on: lux-amd64
+    steps:
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create multi-arch manifest
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          IMG=ghcr.io/luxfi/mpc
+          docker manifest create $IMG:$TAG \
+            $IMG:${TAG}-amd64 \
+            $IMG:${TAG}-arm64
+          docker manifest push $IMG:$TAG
+
+  notify:
+    needs: manifest
+    runs-on: lux-amd64
     steps:
       - uses: peter-evans/repository-dispatch@v3
         with:
@@ -32,7 +63,6 @@ jobs:
           client-payload: |
             {
               "service": "mpc",
-              "image": "ghcr.io/luxfi/mpc",
-              "tag": "${{ github.ref_name }}",
-              "sha": "${{ github.sha }}"
+              "image": "ghcr.io/luxfi/mpc:${{ github.ref_name }}",
+              "tag": "${{ github.ref_name }}"
             }
