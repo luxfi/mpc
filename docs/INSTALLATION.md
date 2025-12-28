@@ -1,4 +1,4 @@
-# Lux MPC Installation Guide
+# MPC Installation Guide
 
 ## Prerequisites
 
@@ -10,7 +10,7 @@ Before starting, ensure you have:
 
 ---
 
-## Clone and Install Lux MPC
+## Clone and Install MPC
 
 ### Clone the Repository
 
@@ -31,13 +31,13 @@ Or with Go:
 
 ```bash
 go install ./cmd/lux-mpc
-go install ./cmd/lux-mpc-cli
+go install ./cmd/mpc
 ```
 
 ### Available Commands
 
-- `lux-mpc`: Start a Lux MPC node
-- `lux-mpc-cli`: CLI utility for peer, identity, and initiator configuration
+- `lux-mpc`: Start a MPC node
+- `mpc`: CLI utility for peer, identity, and initiator configuration
 
 ---
 
@@ -85,7 +85,7 @@ docker compose up -d
 ## Generate Peer Configuration
 
 ```bash
-lux-mpc-cli generate-peers -n 3
+mpc generate-peers -n 3
 ```
 
 Example output:
@@ -137,7 +137,7 @@ badger_password: "F))ysJp?E]ol&I;^"
 ### 2. Register Peers to Consul
 
 ```bash
-lux-mpc-cli register-peers
+mpc register-peers
 ```
 
 ---
@@ -147,7 +147,7 @@ lux-mpc-cli register-peers
 ### Generate the Initiator
 
 ```bash
-lux-mpc-cli generate-initiator
+mpc generate-initiator
 ```
 
 > 💡 Use `--encrypt` in production.
@@ -188,13 +188,13 @@ Example for `node0`:
 
 ```bash
 cd node0
-lux-mpc-cli generate-identity --node node0
+mpc generate-identity --node node0
 ```
 
 > 💡 For production, use encryption:
 >
 > ```bash
-> lux-mpc-cli generate-identity --node node0 --encrypt
+> mpc generate-identity --node node0 --encrypt
 > ```
 
 ### Generate Strong Password for Encryption
@@ -243,7 +243,7 @@ Repeat this for `node1` and `node2`.
 
 ---
 
-## Start Lux MPC Nodes
+## Start MPC Nodes
 
 Start each node:
 
@@ -280,8 +280,8 @@ lux-mpc start -n node2
 2. Enable **TLS certificates** on all endpoints.
 3. Encrypt all keys:
    ```bash
-   lux-mpc-cli generate-initiator --encrypt
-   lux-mpc-cli generate-identity --node node0 --encrypt
+   mpc generate-initiator --encrypt
+   mpc generate-identity --node node0 --encrypt
    ```
 4. Use `--prompt-credentials` to securely input Badger passwords (avoid hardcoding in `config.yaml`).
 

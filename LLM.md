@@ -1,6 +1,6 @@
-# LLM.md - Hanzo MPC Signer Architecture & Development Guide
+# LLM.md - MPC Signer Architecture & Development Guide
 
-This document provides comprehensive guidance for AI assistants working with the Hanzo MPC (Multi-Party Computation) codebase.
+This document provides comprehensive guidance for AI assistants working with the MPC (Multi-Party Computation) codebase.
 
 ## 🏭 Production Deployment State (2026-03-02)
 
@@ -31,7 +31,7 @@ This document provides comprehensive guidance for AI assistants working with the
 
 ## 📚 Overview
 
-Hanzo MPC is a threshold signing service that provides:
+MPC is a threshold signing service that provides:
 - **ECDSA (secp256k1)** for Bitcoin/Ethereum/EVM chains
 - **EdDSA (Ed25519)** for Solana/Polkadot/Sui
 - **Threshold signatures** (t-of-n) with CGGMP21 protocol
@@ -39,11 +39,11 @@ Hanzo MPC is a threshold signing service that provides:
 
 ### Architecture Position
 
-Hanzo MPC is designed as a **pluggable signer backend** for Hanzo KMS:
+MPC is designed as a **pluggable signer backend** for KMS:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                      Hanzo KMS (Control Plane)                  │
+│                      KMS (Control Plane)                  │
 │  ┌──────────┬─────────────┬──────────────┬─────────────────┐    │
 │  │ Policy   │ Approvals   │  Audit Log   │  Key Registry   │    │
 │  └────┬─────┴──────┬──────┴───────┬──────┴───────┬─────────┘    │
@@ -61,14 +61,14 @@ Hanzo MPC is designed as a **pluggable signer backend** for Hanzo KMS:
 
 ### Product Architecture
 
-1. **Hanzo KMS Platform** (Control Plane)
+1. **KMS Platform** (Control Plane)
    - Key registry + metadata
    - Policy + workflow (quorum, time locks, spend limits, allowlists)
    - Audit log
    - Unified API
    - Secrets manager
 
-2. **Hanzo MPC Signer** (This Project - Data Plane)
+2. **MPC Signer** (This Project - Data Plane)
    - DKG / key share management
    - Threshold signing sessions
    - Reshare/rotate shares
@@ -94,7 +94,7 @@ make build
 go install ./cmd/mpcd
 
 # Or for legacy NATS/Consul mode
-go install ./cmd/lux-mpc-cli
+go install ./cmd/mpc
 ```
 
 ### Consensus Mode (NEW - Recommended)
@@ -117,16 +117,16 @@ lux mpc start
 ### Legacy Mode (NATS + Consul)
 ```bash
 # Generate peers configuration
-lux-mpc-cli generate-peers -n 3
+mpc generate-peers -n 3
 
 # Register peers to Consul
-lux-mpc-cli register-peers
+mpc register-peers
 
 # Generate event initiator
-lux-mpc-cli generate-initiator
+mpc generate-initiator
 
 # Generate node identity
-lux-mpc-cli generate-identity --node node0
+mpc generate-identity --node node0
 
 # Start MPC node in legacy mode
 mpcd start --mode legacy -n node0
@@ -138,7 +138,7 @@ mpcd start --mode legacy -n node0
 /Users/z/work/lux/mpc/
 ├── cmd/                    # Command-line applications
 │   ├── mpcd/              # Main MPC daemon (consensus-embedded)
-│   └── lux-mpc-cli/       # CLI tools for configuration
+│   └── mpc/       # CLI tools for configuration
 ├── pkg/                    # Core packages
 │   ├── client/            # Go client library
 │   ├── mpc/               # MPC implementation (TSS)
@@ -358,8 +358,8 @@ The MPC Signer integrates with Commerce for crypto payments:
 ```go
 // Commerce uses MPC via the processor interface
 type MPCProcessor struct {
-    kmsClient  *kms.Client   // Hanzo KMS for policy/approval
-    mpcClient  *mpc.Client   // Hanzo MPC for signing
+    kmsClient  *kms.Client   // KMS for policy/approval
+    mpcClient  *mpc.Client   // MPC for signing
 }
 
 func (p *MPCProcessor) Charge(ctx context.Context, req PaymentRequest) (*PaymentResult, error) {

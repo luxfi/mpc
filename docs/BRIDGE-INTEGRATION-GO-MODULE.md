@@ -1,8 +1,8 @@
-# Using Lux MPC as a Go Module in Bridge
+# Using MPC as a Go Module in Bridge
 
 ## Overview
 
-Instead of copying binaries or using a compatibility layer, the bridge can import Lux MPC directly as a Go module dependency. This is cleaner and more maintainable.
+Instead of copying binaries or using a compatibility layer, the bridge can import MPC directly as a Go module dependency. This is cleaner and more maintainable.
 
 ## How to Use in Bridge
 
@@ -80,7 +80,7 @@ func (s *BridgeMPCService) Sign(ctx context.Context, keyID string, message []byt
 
 ## Available Packages
 
-The Lux MPC module exports these packages:
+The MPC module exports these packages:
 
 - `github.com/luxfi/mpc/pkg/client` - High-level client API
 - `github.com/luxfi/mpc/pkg/mpc` - Core MPC node implementation
@@ -110,7 +110,7 @@ When you're ready to tag a new version:
 ```bash
 # Commit all changes
 git add -A
-git commit -m "Rebrand to Lux MPC and add bridge integration"
+git commit -m "Rebrand to MPC and add bridge integration"
 
 # Create and push tag
 git tag v0.3.1

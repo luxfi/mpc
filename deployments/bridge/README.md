@@ -1,10 +1,10 @@
 # Lux Bridge MPC Integration
 
-This directory contains the bridge compatibility layer that allows the Lux Bridge to use Lux MPC (Go implementation) instead of the legacy Rust MPC implementation.
+This directory contains the bridge compatibility layer that allows the Lux Bridge to use MPC (Go implementation) instead of the legacy Rust MPC implementation.
 
 ## Overview
 
-The Lux Bridge currently uses KZen's `multi-party-ecdsa` Rust library for threshold signatures. This integration provides a compatibility layer that allows the bridge to seamlessly migrate to Lux MPC, which uses Lux's `threshold` Go implementation.
+The Lux Bridge currently uses KZen's `multi-party-ecdsa` Rust library for threshold signatures. This integration provides a compatibility layer that allows the bridge to seamlessly migrate to MPC, which uses Lux's `threshold` Go implementation.
 
 ## Quick Start
 
@@ -43,7 +43,7 @@ curl http://localhost:6002/
 
 ```
 ┌─────────────┐     ┌──────────────────┐     ┌─────────────┐
-│   Bridge    │────▶│ Compatibility    │────▶│  Lux MPC    │
+│   Bridge    │────▶│ Compatibility    │────▶│  MPC    │
 │   (Node.js) │     │ Layer (Port 6000)│     │ (Port 8080) │
 └─────────────┘     └──────────────────┘     └─────────────┘
                               │
@@ -63,7 +63,7 @@ curl http://localhost:6002/
 
 ## Key Differences
 
-| Feature | Rust MPC (Current) | Lux MPC (New) |
+| Feature | Rust MPC (Current) | MPC (New) |
 |---------|-------------------|---------------|
 | Protocol | GG18 | CGG21 |
 | Storage | File-based | BadgerDB |
@@ -75,7 +75,7 @@ curl http://localhost:6002/
 1. **Test in Parallel**: Run both implementations side-by-side
 2. **Shadow Mode**: Send requests to both, compare signatures
 3. **Canary Deployment**: Route 10% traffic to new implementation
-4. **Full Migration**: Switch all traffic to Lux MPC
+4. **Full Migration**: Switch all traffic to MPC
 
 ## Monitoring
 
@@ -120,7 +120,7 @@ docker exec -it lux-mpc-0 lux-mpc-cli keygen
 
 ## Performance
 
-Expected improvements with Lux MPC:
+Expected improvements with MPC:
 - 30% faster signature generation (CGG21 vs GG18)
 - Better resource utilization (Go vs Rust process spawning)
 - Improved monitoring and observability
