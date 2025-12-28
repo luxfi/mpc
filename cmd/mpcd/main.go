@@ -538,6 +538,14 @@ func checkRequiredConfigValues(skipPasswordCheck bool) {
 func resolveZapDBPassword(ctx context.Context, c *cli.Command) string {
 	hsmProviderType := c.String("hsm-provider")
 	hsmKeyID := c.String("hsm-key-id")
+	environment := viper.GetString("environment")
+
+	// In production, env/file password providers are rejected. ZapDB passwords
+	// must come from a cloud HSM (aws/gcp/azure) so they aren't readable via kubectl exec.
+	if environment == "production" && (hsmProviderType == "" || hsmProviderType == "env" || hsmProviderType == "file") {
+		logger.Fatal("Production requires cloud HSM password provider (aws/gcp/azure); env/file providers are not permitted",
+			fmt.Errorf("MPC_HSM_PROVIDER=%q", hsmProviderType))
+	}
 
 	provider, err := hsm.NewPasswordProvider(hsmProviderType, nil)
 	if err != nil {
@@ -546,13 +554,17 @@ func resolveZapDBPassword(ctx context.Context, c *cli.Command) string {
 
 	password, err := provider.GetPassword(ctx, hsmKeyID)
 	if err != nil {
-		// Fall back to viper config for backward compatibility
+		if environment == "production" {
+			logger.Fatal("HSM provider failed in production; cannot fall back to config",
+				fmt.Errorf("provider=%s: %w", hsmProviderType, err))
+		}
+		// Fall back to viper config for dev/staging only
 		password = viper.GetString("zapdb_password")
 		if password == "" {
 			logger.Fatal("ZapDB password is required: HSM provider failed and no zapdb_password in config",
 				fmt.Errorf("provider=%s: %w", hsmProviderType, err))
 		}
-		logger.Info("ZapDB password loaded from config (consider using HSM provider for production)")
+		logger.Warn("ZapDB password loaded from config (non-production only)", "environment", environment)
 		return password
 	}
 
@@ -1242,6 +1254,11 @@ func (b *ConsensusMPCBackend) TriggerReshare(orgID, walletID string, newThreshol
 	return b.pubSub.Publish("mpc:reshare", msgData)
 }
 
+func (b *ConsensusMPCBackend) ExportKeyShare(orgID, walletID string) ([]byte, error) {
+	key := mpc.OrgScopedKey(orgID, walletID)
+	return b.factory.KVStore().Get(key)
+}
+
 func (b *ConsensusMPCBackend) GetClusterStatus() *mpcapi.ClusterStatus {
 	ready := b.peerRegistry.ArePeersReady()
 	connected := b.factory.Transport().GetPeers()
@@ -1786,6 +1803,10 @@ func (s *stubMPCBackend) TriggerReshare(orgID, walletID string, newThreshold int
 	return fmt.Errorf("MPC operations not available: set MPC_CLUSTER_URL to enable forwarding")
 }
 
+func (s *stubMPCBackend) ExportKeyShare(orgID, walletID string) ([]byte, error) {
+	return nil, fmt.Errorf("MPC operations not available: set MPC_CLUSTER_URL to enable forwarding")
+}
+
 func (s *stubMPCBackend) GetClusterStatus() *mpcapi.ClusterStatus {
 	return &mpcapi.ClusterStatus{
 		NodeID:  "api-only",
@@ -1896,6 +1917,10 @@ func (a *apiOnlyMPCBackend) TriggerReshare(orgID, walletID string, newThreshold 
 		return fmt.Errorf("reshare forwarding failed: %w", err)
 	}
 	return nil
+}
+
+func (a *apiOnlyMPCBackend) ExportKeyShare(orgID, walletID string) ([]byte, error) {
+	return nil, fmt.Errorf("ExportKeyShare not available in api-only mode; use consensus mode for backup operations")
 }
 
 func (a *apiOnlyMPCBackend) GetClusterStatus() *mpcapi.ClusterStatus {
