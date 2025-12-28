@@ -12,7 +12,7 @@
 #   5. Participate in DKG (distributed key generation)
 #
 # The customer nodes connect to Lux nodes via the public endpoint
-# mpc-customer.lux.network:9651 (TLS terminated at Lux ingress).
+# mpc-customer.lux.network:9999 (TLS terminated at Lux ingress).
 ---
 apiVersion: v1
 kind: Namespace
@@ -34,8 +34,8 @@ spec:
     app: mpc-customer
   ports:
     - name: p2p
-      port: 9651
-      targetPort: 9651
+      port: 9999
+      targetPort: 9999
     - name: api
       port: 9800
       targetPort: 9800
@@ -71,18 +71,18 @@ spec:
             - start
             - --mode=consensus
             - --node-id=$(NODE_ID)
-            - --listen=:9651
+            - --listen=:9999
             - --api=:9800
             - --data=/data/mpc
             - --keys=/keys
             - --threshold=3
             # Lux nodes: reachable via public endpoint
-            - --peer=lux-0@mpc-customer.lux.network:9651
-            - --peer=lux-1@mpc-customer.lux.network:9652
-            - --peer=lux-2@mpc-customer.lux.network:9653
+            - --peer=lux-0@mpc-customer.lux.network:9999
+            - --peer=lux-1@mpc-customer.lux.network:9999
+            - --peer=lux-2@mpc-customer.lux.network:9999
             # Customer nodes: local cluster DNS
-            - --peer=cust-0@mpc-customer-0.mpc-customer.mpc.svc:9651
-            - --peer=cust-1@mpc-customer-1.mpc-customer.mpc.svc:9651
+            - --peer=cust-0@mpc-customer-0.mpc-customer.mpc.svc:9999
+            - --peer=cust-1@mpc-customer-1.mpc-customer.mpc.svc:9999
             - --log-level=info
             - --hsm-provider=env
           env:
@@ -97,7 +97,7 @@ spec:
                   key: zapdb-password
           ports:
             - name: p2p
-              containerPort: 9651
+              containerPort: 9999
             - name: api
               containerPort: 9800
           volumeMounts:
