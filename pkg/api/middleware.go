@@ -137,6 +137,35 @@ func requirePermission(perm string) func(http.Handler) http.Handler {
 	}
 }
 
+// requireRoleOrAPIPermission is the canonical signing gate. It accepts
+// JWT-authenticated callers whose role is in `humanRoles`, OR API-key callers
+// (role == "api") that carry the named permission. Bare role == "api" is
+// rejected — R2-3 showed that /v1/mpc/sign treated "api" as an unchecked
+// pass-through because `requirePermission` was never wired into the chain.
+//
+// Usage:
+//
+//	r.With(requireRoleOrAPIPermission([]string{"owner", "admin", "signer"}, "mpc:sign"), ...)
+//	    .Post("/sign", s.handleMpcSignDefault)
+func requireRoleOrAPIPermission(humanRoles []string, perm string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			role := getRole(r.Context())
+			for _, allowed := range humanRoles {
+				if role == allowed {
+					next.ServeHTTP(w, r)
+					return
+				}
+			}
+			if role == "api" && hasPermission(r.Context(), perm) {
+				next.ServeHTTP(w, r)
+				return
+			}
+			writeError(w, http.StatusForbidden, "insufficient permissions")
+		})
+	}
+}
+
 func writeJSON(w http.ResponseWriter, code int, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
