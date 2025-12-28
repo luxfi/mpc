@@ -84,7 +84,7 @@ func newTFHEKeygenSession(
 			keyinfoStore:       keyinfoStore,
 			resultQueue:        resultQueue,
 			logger:             zerolog.New(utils.ZerologConsoleWriter()).With().Timestamp().Logger(),
-			processing:         make(map[string]bool),
+			processing:         newDedupMap(),
 			processingLock:     sync.Mutex{},
 			topicComposer: &TopicComposer{
 				ComposeBroadcastTopic: func() string {
@@ -188,11 +188,16 @@ func (s *tfheKeygenSession) ProcessInboundMessage(msgBytes []byte) {
 		return
 	}
 
-	msgHashStr := fmt.Sprintf("%x", utils.GetMessageHash(inboundMessage.Body))
-	if s.processing[msgHashStr] {
+	// Verify Ed25519 signature on the wire message
+	if err := s.verifyInboundSignature(inboundMessage); err != nil {
+		s.logger.Warn().Err(err).Str("sender", inboundMessage.SenderNodeID).Msg("Dropping message with invalid signature")
 		return
 	}
-	s.processing[msgHashStr] = true
+
+	msgHashStr := fmt.Sprintf("%x", utils.GetMessageHash(inboundMessage.Body))
+	if s.processing.seen(msgHashStr) {
+		return
+	}
 
 	s.logger.Debug().
 		Str("sender", inboundMessage.SenderID).
@@ -358,7 +363,7 @@ func newTFHEComputeSession(
 			keyinfoStore:       keyinfoStore,
 			resultQueue:        resultQueue,
 			logger:             zerolog.New(utils.ZerologConsoleWriter()).With().Timestamp().Logger(),
-			processing:         make(map[string]bool),
+			processing:         newDedupMap(),
 			processingLock:     sync.Mutex{},
 			topicComposer: &TopicComposer{
 				ComposeBroadcastTopic: func() string {
@@ -413,11 +418,16 @@ func (s *tfheComputeSession) ProcessInboundMessage(msgBytes []byte) {
 		return
 	}
 
-	msgHashStr := fmt.Sprintf("%x", utils.GetMessageHash(inboundMessage.Body))
-	if s.processing[msgHashStr] {
+	// Verify Ed25519 signature on the wire message
+	if err := s.verifyInboundSignature(inboundMessage); err != nil {
+		s.logger.Warn().Err(err).Str("sender", inboundMessage.SenderNodeID).Msg("Dropping message with invalid signature")
 		return
 	}
-	s.processing[msgHashStr] = true
+
+	msgHashStr := fmt.Sprintf("%x", utils.GetMessageHash(inboundMessage.Body))
+	if s.processing.seen(msgHashStr) {
+		return
+	}
 
 	// Handle decryption share messages
 	var share tfhe.DecryptionShare

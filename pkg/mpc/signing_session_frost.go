@@ -107,7 +107,7 @@ func newFROSTSigningSession(
 			keyinfoStore:       keyinfoStore,
 			resultQueue:        resultQueue,
 			logger:             zerolog.New(utils.ZerologConsoleWriter()).With().Timestamp().Logger(),
-			processing:         make(map[string]bool),
+			processing:         newDedupMap(),
 			processingLock:     sync.Mutex{},
 			topicComposer: &TopicComposer{
 				ComposeBroadcastTopic: func() string {
@@ -188,8 +188,8 @@ func (s *frostSigningSession) Init() {
 	// Create FROST Taproot signing protocol
 	startFunc := frost.SignTaproot(s.config, s.signerIDs, s.messageHash)
 
-	// Create handler with proper context, logging, and session ID
-	ctx := context.Background()
+	// Create handler with timeout context for signing operations
+	ctx, cancel := context.WithTimeout(context.Background(), SigningTimeout)
 	handler, err := protocol.NewHandler(
 		ctx,
 		s.protocolLogger,
@@ -199,9 +199,26 @@ func (s *frostSigningSession) Init() {
 		protocol.DefaultConfig(),
 	)
 	if err != nil {
+		cancel()
 		s.logger.Fatal().Err(err).Msg("Failed to create FROST signing handler")
 		return
 	}
+
+	// Timeout watchdog
+	go func() {
+		<-ctx.Done()
+		cancel()
+		if ctx.Err() == context.DeadlineExceeded {
+			s.logger.Error().
+				Str("sessionID", s.sessionID).
+				Dur("timeout", SigningTimeout).
+				Msg("FROST signing session timed out")
+			select {
+			case s.externalFinishChan <- "":
+			default:
+			}
+		}
+	}()
 
 	s.handler = handler
 
@@ -303,12 +320,17 @@ func (s *frostSigningSession) ProcessInboundMessage(msgBytes []byte) {
 		return
 	}
 
-	// Deduplication check
-	msgHashStr := fmt.Sprintf("%x", utils.GetMessageHash(inboundMessage.Body))
-	if s.processing[msgHashStr] {
+	// Verify Ed25519 signature on the wire message
+	if err := s.verifyInboundSignature(inboundMessage); err != nil {
+		s.logger.Warn().Err(err).Str("sender", inboundMessage.SenderNodeID).Msg("Dropping message with invalid signature")
 		return
 	}
-	s.processing[msgHashStr] = true
+
+	// Deduplication check
+	msgHashStr := fmt.Sprintf("%x", utils.GetMessageHash(inboundMessage.Body))
+	if s.processing.seen(msgHashStr) {
+		return
+	}
 
 	// Deserialize the full protocol message from the body
 	protoMsg := &protocol.Message{}
