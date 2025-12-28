@@ -1,12 +1,2 @@
-.git
-vendor/
-dashboard/node_modules/
-contracts/node_modules/
-data/
-*.tsbuildinfo
-.DS_Store
-contracts/
-dashboard/
-deployments/
-*.md
-docs/
+#!include:.dockerignore
+.github/
