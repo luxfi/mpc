@@ -29,5 +29,5 @@ FROM alpine:3.21
 RUN apk add --no-cache ca-certificates tzdata
 COPY --from=builder /app/mpcd /usr/local/bin/mpcd
 COPY --from=builder /app/mpc  /usr/local/bin/mpc
-EXPOSE 8081 9651 9800
+EXPOSE 8081 9999 9800
 ENTRYPOINT ["mpcd"]
