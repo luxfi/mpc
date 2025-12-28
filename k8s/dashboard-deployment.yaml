@@ -28,7 +28,7 @@ spec:
               protocol: TCP
           env:
             - name: NEXT_PUBLIC_API_URL
-              value: "https://mpc.lux.network/api/v1"
+              value: "https://mpc.lux.network/v1"
             - name: NEXT_PUBLIC_IAM_URL
               value: "https://lux.id"
             - name: NEXT_PUBLIC_IAM_CLIENT_ID
