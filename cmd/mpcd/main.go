@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -846,10 +847,59 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 	}
 	logger.Info("[READY] Node is ready (consensus mode)", "nodeID", nodeID)
 
-	// Start HTTP API server
+	// Start HTTP API server (internal MPC node API on port 9800)
 	apiAddr := c.String("api")
 	if apiAddr != "" {
+		// Internal API bearer token — required for all endpoints except /health.
+		// Source: MPC_INTERNAL_API_KEY env var. In production the StatefulSet
+		// injects this from the KMS-synced mpc-secrets K8s Secret.
+		internalAPIKey := os.Getenv("MPC_INTERNAL_API_KEY")
+		if internalAPIKey == "" {
+			// Derive a deterministic key from the node's Ed25519 private key so
+			// all nodes in the cluster share the same key without extra config.
+			// SHA-256(privKey || "mpc-internal-api") truncated to hex.
+			h := sha256.Sum256(append(privKey.Seed(), []byte("mpc-internal-api")...))
+			internalAPIKey = hex.EncodeToString(h[:])
+			logger.Warn("MPC_INTERNAL_API_KEY not set; derived internal API key from node identity (set MPC_INTERNAL_API_KEY in production)")
+		}
+
+		// Rate limiter: 10 requests/min for mutating endpoints (keygen, backup).
+		internalRL := mpcapi.NewRateLimiter(10)
+
+		// internalAuth is middleware that gates all mutating internal endpoints
+		// behind a bearer token. /health is exempt (K8s probes need it).
+		internalAuth := func(next http.HandlerFunc) http.HandlerFunc {
+			return func(w http.ResponseWriter, r *http.Request) {
+				auth := r.Header.Get("Authorization")
+				if auth == "" || auth != "Bearer "+internalAPIKey {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusUnauthorized)
+					json.NewEncoder(w).Encode(map[string]string{"error": "unauthorized"})
+					return
+				}
+				next.ServeHTTP(w, r)
+			}
+		}
+
+		// internalRateLimit wraps a handler with the tight rate limiter.
+		internalRateLimit := func(next http.HandlerFunc) http.HandlerFunc {
+			return func(w http.ResponseWriter, r *http.Request) {
+				ip := r.RemoteAddr
+				if host, _, err := net.SplitHostPort(ip); err == nil {
+					ip = host
+				}
+				if !internalRL.Allow(ip) {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusTooManyRequests)
+					json.NewEncoder(w).Encode(map[string]string{"error": "rate limit exceeded"})
+					return
+				}
+				next.ServeHTTP(w, r)
+			}
+		}
+
 		mux := http.NewServeMux()
+		// /health is unauthenticated (K8s liveness/readiness probes)
 		mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 			ready := peerRegistry.ArePeersReady()
 			connected := factory.Transport().GetPeers()
@@ -873,7 +923,7 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 			}
 			json.NewEncoder(w).Encode(resp)
 		})
-		mux.HandleFunc("/keys", func(w http.ResponseWriter, r *http.Request) {
+		mux.HandleFunc("/keys", internalAuth(func(w http.ResponseWriter, r *http.Request) {
 			keys, err := factory.KeyInfoStore().ListKeys()
 			w.Header().Set("Content-Type", "application/json")
 			if err != nil {
@@ -882,13 +932,14 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 				return
 			}
 			json.NewEncoder(w).Encode(keys)
-		})
-		mux.HandleFunc("/backup", func(w http.ResponseWriter, r *http.Request) {
+		}))
+		mux.HandleFunc("/backup", internalAuth(internalRateLimit(func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodPost {
 				w.WriteHeader(http.StatusMethodNotAllowed)
 				return
 			}
 			w.Header().Set("Content-Type", "application/json")
+			logger.Info("Audit: backup triggered", "nodeID", nodeID, "remote", r.RemoteAddr)
 			if zapKV, ok := factory.KVStore().(*kvstore.Store); ok && zapKV.Exec != nil {
 				s3Cfg := backup.S3ConfigFromEnv(nodeID)
 				mgr, err := backup.NewManager(zapKV.Exec, filepath.Join(dataDir, "backups"), nodeID, 0, s3Cfg)
@@ -907,8 +958,8 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 				w.WriteHeader(http.StatusServiceUnavailable)
 				json.NewEncoder(w).Encode(map[string]string{"error": "backup not available"})
 			}
-		})
-		mux.HandleFunc("/keygen", func(w http.ResponseWriter, r *http.Request) {
+		})))
+		mux.HandleFunc("/keygen", internalAuth(internalRateLimit(func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodPost {
 				w.WriteHeader(http.StatusMethodNotAllowed)
 				return
@@ -969,7 +1020,7 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 				return
 			}
 
-			logger.Info("Keygen triggered", "walletID", walletID)
+			logger.Info("Audit: keygen triggered", "nodeID", nodeID, "walletID", walletID, "remote", r.RemoteAddr)
 
 			// Wait for result with 60s timeout
 			select {
@@ -1000,9 +1051,16 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 					"wallet_id": walletID,
 				})
 			}
-		})
+		})))
 
-		srv := &http.Server{Addr: apiAddr, Handler: mux}
+		srv := &http.Server{
+			Addr:              apiAddr,
+			Handler:           http.MaxBytesHandler(mux, 1<<20), // 1 MB body limit
+			ReadTimeout:       30 * time.Second,
+			ReadHeaderTimeout: 10 * time.Second,
+			WriteTimeout:      90 * time.Second, // keygen can take 60s
+			IdleTimeout:       120 * time.Second,
+		}
 		go func() {
 			logger.Info("HTTP API server starting", "addr", apiAddr)
 			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -1869,7 +1927,7 @@ func (a *apiOnlyMPCBackend) doRequest(method, path string, reqBody interface{}, 
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if a.apiKey != "" {
-		req.Header.Set("X-API-Key", a.apiKey)
+		req.Header.Set("Authorization", "Bearer "+a.apiKey)
 	}
 
 	resp, err := a.httpClient.Do(req)
