@@ -102,12 +102,12 @@ go install ./cmd/lux-mpc-cli
 # Start MPC node in consensus mode (no external dependencies)
 mpcd start --mode consensus \
   --node-id node0 \
-  --listen :9651 \
+  --listen :9999 \
   --api :9800 \
   --data /data/mpc/node0 \
   --threshold 2 \
-  --peer node1@127.0.0.1:9652 \
-  --peer node2@127.0.0.1:9653
+  --peer node1@127.0.0.1:9999 \
+  --peer node2@127.0.0.1:9999
 
 # Or via lux CLI
 lux mpc init --threshold 2 --nodes 3
@@ -206,8 +206,8 @@ The MPC daemon now supports **consensus-embedded transport** that eliminates ext
 ```go
 factory, err := transport.NewFactory(transport.FactoryConfig{
     NodeID:         "node0",
-    ListenAddr:     ":9651",
-    Peers:          map[string]string{"node0": ":9651", "node1": ":9652", "node2": ":9653"},
+    ListenAddr:     ":9999",
+    Peers:          map[string]string{"node0": ":9999", "node1": ":9999", "node2": ":9999"},
     PrivateKey:     privateKey,
     PublicKey:      publicKey,
     BadgerPath:     "/data/mpc/node0",
@@ -249,11 +249,11 @@ keyinfo := factory.KeyInfoStore()  // replaces Consul-based keyinfo.Store
 # config.yaml
 environment: development
 transport:
-  listen_addr: ":9651"
+  listen_addr: ":9999"
   peers:
-    node0: "10.0.0.1:9651"
-    node1: "10.0.0.2:9651"
-    node2: "10.0.0.3:9651"
+    node0: "10.0.0.1:9999"
+    node1: "10.0.0.2:9999"
+    node2: "10.0.0.3:9999"
 badger:
   path: "/data/mpc"
   password: "secure-password"

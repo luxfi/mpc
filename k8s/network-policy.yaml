@@ -21,7 +21,7 @@ spec:
           app: mpc-node
     ports:
     - protocol: TCP
-      port: 9651
+      port: 9999
     - protocol: TCP
       port: 9800
   # mpc-api -> mpc-node: dashboard API proxy
@@ -59,7 +59,7 @@ spec:
           app: mpc-node
     ports:
     - protocol: TCP
-      port: 9651
+      port: 9999
     - protocol: TCP
       port: 9800
   # mpc-node -> postgres

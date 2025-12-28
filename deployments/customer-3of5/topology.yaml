@@ -38,31 +38,31 @@ topology:
   nodes:
     - id: "lux-0"
       operator: "lux"
-      p2p_port: 9651
+      p2p_port: 9999
       api_port: 9800
       data_dir: "/data/mpc/lux-0"
 
     - id: "lux-1"
       operator: "lux"
-      p2p_port: 9652
+      p2p_port: 9999
       api_port: 9801
       data_dir: "/data/mpc/lux-1"
 
     - id: "lux-2"
       operator: "lux"
-      p2p_port: 9653
+      p2p_port: 9999
       api_port: 9802
       data_dir: "/data/mpc/lux-2"
 
     - id: "cust-0"
       operator: "customer"
-      p2p_port: 9651
+      p2p_port: 9999
       api_port: 9800
       data_dir: "/data/mpc/cust-0"
 
     - id: "cust-1"
       operator: "customer"
-      p2p_port: 9652
+      p2p_port: 9999
       api_port: 9801
       data_dir: "/data/mpc/cust-1"
 
