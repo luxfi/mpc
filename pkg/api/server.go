@@ -391,8 +391,9 @@ func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, o
 				r.Get("/balances/{address}", s.handleMpcBalancesByAddress)
 				r.Get("/crypto/wallet/{asset}", s.handleMpcCryptoWallet)
 
-				// Signing
-				r.With(RateLimitMiddleware(20)).Post("/sign", s.handleMpcSignDefault)
+				// Signing — F15: require role + F1: session mandatory (enforced in handler)
+				r.With(requireRole("owner", "admin", "signer", "api"), RateLimitMiddleware(20)).
+					Post("/sign", s.handleMpcSignDefault)
 				r.With(requireRole("owner", "admin", "signer", "api"), RateLimitMiddleware(20)).
 					Post("/settlement/sign", s.handleMpcSignSettlement)
 
