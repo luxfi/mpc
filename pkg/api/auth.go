@@ -10,8 +10,9 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/hanzoai/orm"
-	"github.com/luxfi/mpc/pkg/db"
 	"golang.org/x/crypto/bcrypt"
+
+	"github.com/luxfi/mpc/pkg/db"
 )
 
 type JWTClaims struct {
