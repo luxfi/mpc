@@ -289,7 +289,7 @@ jobs:
           echo "Syft: $(jq '.artifacts | length' sbom.syft.json)"
 
   build:
-    runs-on: [self-hosted, linux, amd64]
+    runs-on: lux-build-linux-amd64
     needs: [test, lint, codeql-analysis, sbom]
 
     steps:
