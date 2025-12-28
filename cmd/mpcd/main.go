@@ -480,12 +480,15 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 		// 2-of-3 signing quorum between them.
 		//
 		// Fixed behaviour: the node is healthy when it has enough ready peers
-		// (including self) to participate in a signing round for the
-		// configured CGGMP21/FROST threshold — i.e. `readyCount >= threshold+1`.
+		// (including self) to form a t-of-n signing quorum using the
+		// operator-facing threshold (CRD `threshold` / mpcd --threshold flag
+		// = minimum signers required). For a 2-of-3 ensemble (threshold=2),
+		// quorum holds when 2 or more nodes are ready. See
+		// HasSigningQuorum in pkg/transport/registry.go for the arithmetic.
 		//
 		// Keygen of fresh wallets still requires all peers (checked separately
 		// on the /keygen endpoint via peerRegistry.ArePeersReady()). Signing
-		// with an existing key only needs threshold+1 parties, which is what
+		// with an existing key only needs threshold parties, which is what
 		// /healthz now reports.
 		healthHandler := func(w http.ResponseWriter, r *http.Request) {
 			// allReady: every expected peer connected. Used for observability.
@@ -519,7 +522,9 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 				"signing_quorum":  quorum,
 				"ready_count":     readyCount,
 				"threshold":       threshold,
-				"required_signers": threshold + 1,
+				// threshold = minimum signers required (operator surface).
+				// Present alongside ready_count so an operator can see how
+				// close to losing quorum the ensemble is.
 				"version":         Version,
 			}
 			json.NewEncoder(w).Encode(resp)
