@@ -228,7 +228,7 @@ github.com/luxfi/database v1.17.43 h1:AuW2IDc/nofuqfdspqCn0P6FsP6uBcx8RMgJr2bDRU
 github.com/luxfi/database v1.17.43/go.mod h1:87bOpi6u0WAiHzBxPyxS/+pN1LJGqOY7QkyEZcI+7Kk=
 github.com/luxfi/edwards25519 v0.0.0-20200305024217-f36fc4b53d43 h1:x/0xBwlF4HZ/esmLmq7utqDlRH7Yw+FOvb/0U5zJAgg=
 github.com/luxfi/edwards25519 v0.0.0-20200305024217-f36fc4b53d43/go.mod h1:9Z+YCRg50oUwtqmMG/+KiVwrHaj0rL0AF6rpPJyCpPc=
-github.com/luxfi/fhe v1.7.6 h1:H2WqsWa/YoeVjDa2EjMtLMyep3MqJgS/rnBwjZSGMcw=
+github.com/luxfi/fhe v1.7.6 h1:zEP6I0+kJ9trWS/oeVF5X+l5ZxxmlhEefZ3nn6gZqis=
 github.com/luxfi/fhe v1.7.6/go.mod h1:evKiXq9Kf7d1SttKZt7ItBAhZ1fQ6O3+iXsD1lw/RYo=
 github.com/luxfi/geth v1.16.69 h1:CHO6xTZ+A+3itk94ts4uyVRJajNVP3RxWTjJp5qGOlk=
 github.com/luxfi/geth v1.16.69/go.mod h1:8eEO1hW5sa6OH2VeCMaCPnRz28JBxFvCPBCWPLsU2ck=
@@ -383,6 +383,8 @@ github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
 github.com/subosito/gotenv v1.6.0 h1:9NlTDc1FTs4qu0DDq7AEtTPNw6SVm7uBMsUCUjABIf8=
 github.com/subosito/gotenv v1.6.0/go.mod h1:Dk4QP5c2W3ibzajGcXpNraDfq2IrhjMIvMSWPKKo0FU=
+github.com/supranational/blst v0.3.16 h1:bTDadT+3fK497EvLdWRQEjiGnUtzJ7jjIUMF0jqwYhE=
+github.com/supranational/blst v0.3.16/go.mod h1:jZJtfjgudtNl4en1tzwPIV3KjUnQUvG3/j+w+fVonLw=
 github.com/tinylib/msgp v1.6.3 h1:bCSxiTz386UTgyT1i0MSCvdbWjVW+8sG3PjkGsZQt4s=
 github.com/tinylib/msgp v1.6.3/go.mod h1:RSp0LW9oSxFut3KzESt5Voq4GVWyS+PSulT77roAqEA=
 github.com/tv42/httpunix v0.0.0-20150427012821-b75d8614f926/go.mod h1:9ESjWnEqriFuLhtthL60Sar/7RFoluCcXsuvEwTV5KM=
