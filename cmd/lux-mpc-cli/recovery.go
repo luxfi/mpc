@@ -51,7 +51,7 @@ func recoverDatabase(ctx context.Context, c *cli.Command) error {
 	fmt.Printf("Recovery path: %s\n", recoveryPath)
 
 	// Create a temporary backup executor to access the backup files
-	tempExecutor := kvstore.NewBadgerBackupExecutor("temp", nil, key, backupDir)
+	tempExecutor := kvstore.NewBackup("temp", nil, key, backupDir)
 
 	// Perform the recovery using the existing method with specified recovery path
 	if err := tempExecutor.RestoreAllBackupsEncrypted(recoveryPath, key); err != nil {

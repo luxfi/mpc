@@ -253,7 +253,7 @@ func runNode(ctx context.Context, c *cli.Command) error {
 	zapKV := NewZapKV(nodeName, nodeID)
 	defer zapKV.Close()
 
-	// Wrap BadgerKV with KMS-enabled store if configured
+	// Wrap ZapDB store with KMS-enabled store if configured
 	var kvStore kvstore.KVStore = zapKV
 	kmsEnabledStore, err := mpc.NewKMSEnabledKVStore(zapKV, nodeID)
 	if err != nil {
@@ -542,7 +542,7 @@ func GetIDFromName(name string, peers []config.Peer) string {
 	return nodeID
 }
 
-func NewZapKV(nodeName, nodeID string) *kvstore.BadgerKVStore {
+func NewZapKV(nodeName, nodeID string) *kvstore.Store {
 	// ZapDB KV store
 	// Use configured db_path or default to current directory + "db"
 	basePath := viper.GetString("db_path")
@@ -558,23 +558,23 @@ func NewZapKV(nodeName, nodeID string) *kvstore.BadgerKVStore {
 	}
 
 	// Create ZapDB config
-	config := kvstore.BadgerConfig{
-		NodeID:              nodeName,
-		EncryptionKey:       []byte(viper.GetString("zapdb_password")),
-		BackupEncryptionKey: []byte(viper.GetString("zapdb_password")), // Using same key for backup encryption
-		BackupDir:           backupDir,
-		DBPath:              dbPath,
+	config := kvstore.Config{
+		NodeID:    nodeName,
+		Key:       []byte(viper.GetString("zapdb_password")),
+		BackupKey: []byte(viper.GetString("zapdb_password")), // Using same key for backup encryption
+		Dir:       backupDir,
+		Path:      dbPath,
 	}
 
-	badgerKv, err := kvstore.NewBadgerKVStore(config)
+	kv, err := kvstore.New(config)
 	if err != nil {
 		logger.Fatal("Failed to create zapdb store", err)
 	}
 	logger.Info("Connected to zapdb store", "path", dbPath, "backup_dir", backupDir)
-	return badgerKv
+	return kv
 }
 
-func StartPeriodicBackup(ctx context.Context, zapKV *kvstore.BadgerKVStore, periodSeconds int) func() {
+func StartPeriodicBackup(ctx context.Context, zapKV *kvstore.Store, periodSeconds int) func() {
 	if periodSeconds <= 0 {
 		periodSeconds = DefaultBackupPeriodSeconds
 	}
@@ -832,9 +832,9 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 				return
 			}
 			w.Header().Set("Content-Type", "application/json")
-			if zapKV, ok := factory.KVStore().(*kvstore.BadgerKVStore); ok && zapKV.BackupExecutor != nil {
+			if zapKV, ok := factory.KVStore().(*kvstore.Store); ok && zapKV.Exec != nil {
 				s3Cfg := backup.S3ConfigFromEnv(nodeID)
-				mgr, err := backup.NewManager(zapKV.BackupExecutor, filepath.Join(dataDir, "backups"), nodeID, 0, s3Cfg)
+				mgr, err := backup.NewManager(zapKV.Exec, filepath.Join(dataDir, "backups"), nodeID, 0, s3Cfg)
 				if err != nil {
 					w.WriteHeader(http.StatusInternalServerError)
 					json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
@@ -952,9 +952,9 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 
 	// Start periodic backup with optional S3 upload
 	backupDir := filepath.Join(dataDir, "backups")
-	if zapKV, ok := factory.KVStore().(*kvstore.BadgerKVStore); ok && zapKV.BackupExecutor != nil {
+	if zapKV, ok := factory.KVStore().(*kvstore.Store); ok && zapKV.Exec != nil {
 		s3Cfg := backup.S3ConfigFromEnv(nodeID)
-		backupMgr, err := backup.NewManager(zapKV.BackupExecutor, backupDir, nodeID, 5*time.Minute, s3Cfg)
+		backupMgr, err := backup.NewManager(zapKV.Exec, backupDir, nodeID, 5*time.Minute, s3Cfg)
 		if err != nil {
 			logger.Warn("Failed to create backup manager", "err", err)
 		} else {
@@ -1069,7 +1069,7 @@ func (b *ConsensusMPCBackend) TriggerKeygen(walletID string) (*mpcapi.KeygenResu
 			return nil, fmt.Errorf("keygen failed: %s", result.ErrorReason)
 		}
 		ethAddr := ""
-		if len(result.ECDSAPubKey) >= 33 {
+		if len(result.ECDSAPubKey) >= 32 {
 			ethAddr = pubKeyToEthAddress(result.ECDSAPubKey)
 		}
 		return &mpcapi.KeygenResult{
