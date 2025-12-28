@@ -18,17 +18,17 @@ RUN git config --global url."https://${GITHUB_TOKEN}@github.com/".insteadOf "htt
 ENV GOPRIVATE=github.com/luxfi/*,github.com/hanzoai/*
 ENV GONOSUMCHECK=*
 ENV GONOSUMDB=*
+ENV GOPROXY=direct
 
 WORKDIR /app
-COPY go.mod ./
-RUN GONOSUMCHECK='*' GONOSUMDB='*' go mod download
+COPY go.mod go.sum ./
+RUN go mod download
 COPY . .
 COPY --from=ui /ui/dist ./ui/dist/
-RUN rm -f go.sum && GONOSUMCHECK='*' GONOSUMDB='*' go mod tidy
 
 ENV GOEXPERIMENT=runtimesecret
-RUN GONOSUMCHECK='*' GONOSUMDB='*' CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o mpcd ./cmd/mpcd
-RUN GONOSUMCHECK='*' GONOSUMDB='*' CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o mpc  ./cmd/mpc
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o mpcd ./cmd/mpcd
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o mpc  ./cmd/mpc
 
 FROM alpine:3.21
 RUN apk add --no-cache ca-certificates tzdata
