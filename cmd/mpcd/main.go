@@ -1886,7 +1886,7 @@ func (a *apiOnlyMPCBackend) doRequest(method, path string, reqBody interface{}, 
 func (a *apiOnlyMPCBackend) TriggerKeygen(orgID, walletID string) (*mpcapi.KeygenResult, error) {
 	reqBody := map[string]string{"org_id": orgID, "wallet_id": walletID}
 	var result mpcapi.KeygenResult
-	// Internal MPC API on port 9800 uses /keygen (not /api/v1/keygen)
+	// Internal MPC API on port 9800 uses /keygen (not /v1/keygen)
 	if err := a.doRequest("POST", "/keygen", reqBody, &result); err != nil {
 		return nil, fmt.Errorf("keygen forwarding failed: %w", err)
 	}
@@ -1900,7 +1900,7 @@ func (a *apiOnlyMPCBackend) TriggerSign(orgID, walletID string, payload []byte) 
 		"payload":   hex.EncodeToString(payload),
 	}
 	var result mpcapi.SignResult
-	if err := a.doRequest("POST", "/api/v1/sign", reqBody, &result); err != nil {
+	if err := a.doRequest("POST", "/v1/sign", reqBody, &result); err != nil {
 		return nil, fmt.Errorf("sign forwarding failed: %w", err)
 	}
 	return &result, nil
@@ -1913,7 +1913,7 @@ func (a *apiOnlyMPCBackend) TriggerReshare(orgID, walletID string, newThreshold 
 		"new_threshold":    newThreshold,
 		"new_participants": newParticipants,
 	}
-	if err := a.doRequest("POST", "/api/v1/reshare", reqBody, nil); err != nil {
+	if err := a.doRequest("POST", "/v1/reshare", reqBody, nil); err != nil {
 		return fmt.Errorf("reshare forwarding failed: %w", err)
 	}
 	return nil
@@ -1925,7 +1925,7 @@ func (a *apiOnlyMPCBackend) ExportKeyShare(orgID, walletID string) ([]byte, erro
 
 func (a *apiOnlyMPCBackend) GetClusterStatus() *mpcapi.ClusterStatus {
 	var status mpcapi.ClusterStatus
-	// Internal MPC API on port 9800 uses /health (not /api/v1/status)
+	// Internal MPC API on port 9800 uses /health (not /v1/status)
 	if err := a.doRequest("GET", "/health", nil, &status); err != nil {
 		logger.Warn("Failed to get cluster status", "err", err, "url", a.clusterURL)
 		return &mpcapi.ClusterStatus{
