@@ -1020,8 +1020,7 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 			jwtSecret = os.Getenv("MPC_JWT_SECRET")
 		}
 		if jwtSecret == "" {
-			jwtSecret = "change-me-in-production"
-			logger.Warn("Using default JWT secret - NOT for production!")
+			return fmt.Errorf("--jwt-secret is required (set JWT_SECRET or MPC_JWT_SECRET env var, source from KMS)")
 		}
 
 		apiKVAddr := c.String("api-kv")
@@ -1102,7 +1101,7 @@ type ConsensusMPCBackend struct {
 	threshold    int
 }
 
-func (b *ConsensusMPCBackend) TriggerKeygen(walletID string) (*mpcapi.KeygenResult, error) {
+func (b *ConsensusMPCBackend) TriggerKeygen(orgID, walletID string) (*mpcapi.KeygenResult, error) {
 	if walletID == "" {
 		h := sha256.Sum256([]byte(fmt.Sprintf("%s-%d", b.nodeID, time.Now().UnixNano())))
 		walletID = hex.EncodeToString(h[:16])
@@ -1125,7 +1124,7 @@ func (b *ConsensusMPCBackend) TriggerKeygen(walletID string) (*mpcapi.KeygenResu
 	defer unsub.Unsubscribe()
 
 	sig := b.identity.SignMessage([]byte(walletID))
-	msg := types.GenerateKeyMessage{WalletID: walletID, Signature: sig}
+	msg := types.GenerateKeyMessage{OrgID: orgID, WalletID: walletID, Signature: sig}
 	msgData, _ := json.Marshal(msg)
 	if err := b.pubSub.Publish("mpc:generate", msgData); err != nil {
 		return nil, fmt.Errorf("failed to publish keygen: %w", err)
@@ -1159,7 +1158,7 @@ func (b *ConsensusMPCBackend) TriggerKeygen(walletID string) (*mpcapi.KeygenResu
 	}
 }
 
-func (b *ConsensusMPCBackend) TriggerSign(walletID string, payload []byte) (*mpcapi.SignResult, error) {
+func (b *ConsensusMPCBackend) TriggerSign(orgID, walletID string, payload []byte) (*mpcapi.SignResult, error) {
 	txID := fmt.Sprintf("sign-%d", time.Now().UnixNano())
 	resultTopic := fmt.Sprintf("mpc.mpc_signing_result.%s", walletID)
 	resultCh := make(chan json.RawMessage, 1)
@@ -1190,6 +1189,7 @@ func (b *ConsensusMPCBackend) TriggerSign(walletID string, payload []byte) (*mpc
 	}
 
 	msg := types.SignTxMessage{
+		OrgID:    orgID,
 		KeyType:  keyType,
 		WalletID: walletID,
 		TxID:     txID,
@@ -1231,8 +1231,9 @@ func (b *ConsensusMPCBackend) TriggerSign(walletID string, payload []byte) (*mpc
 	}
 }
 
-func (b *ConsensusMPCBackend) TriggerReshare(walletID string, newThreshold int, newParticipants []string) error {
+func (b *ConsensusMPCBackend) TriggerReshare(orgID, walletID string, newThreshold int, newParticipants []string) error {
 	msg := map[string]interface{}{
+		"org_id":           orgID,
 		"wallet_id":        walletID,
 		"new_threshold":    newThreshold,
 		"new_participants": newParticipants,
@@ -1773,15 +1774,15 @@ func runAPIOnly(ctx context.Context, c *cli.Command) error {
 // stubMPCBackend returns errors for MPC operations when no cluster URL is configured.
 type stubMPCBackend struct{}
 
-func (s *stubMPCBackend) TriggerKeygen(walletID string) (*mpcapi.KeygenResult, error) {
+func (s *stubMPCBackend) TriggerKeygen(orgID, walletID string) (*mpcapi.KeygenResult, error) {
 	return nil, fmt.Errorf("MPC operations not available: set MPC_CLUSTER_URL to enable forwarding")
 }
 
-func (s *stubMPCBackend) TriggerSign(walletID string, payload []byte) (*mpcapi.SignResult, error) {
+func (s *stubMPCBackend) TriggerSign(orgID, walletID string, payload []byte) (*mpcapi.SignResult, error) {
 	return nil, fmt.Errorf("MPC operations not available: set MPC_CLUSTER_URL to enable forwarding")
 }
 
-func (s *stubMPCBackend) TriggerReshare(walletID string, newThreshold int, newParticipants []string) error {
+func (s *stubMPCBackend) TriggerReshare(orgID, walletID string, newThreshold int, newParticipants []string) error {
 	return fmt.Errorf("MPC operations not available: set MPC_CLUSTER_URL to enable forwarding")
 }
 
@@ -1861,8 +1862,8 @@ func (a *apiOnlyMPCBackend) doRequest(method, path string, reqBody interface{}, 
 	return nil
 }
 
-func (a *apiOnlyMPCBackend) TriggerKeygen(walletID string) (*mpcapi.KeygenResult, error) {
-	reqBody := map[string]string{"wallet_id": walletID}
+func (a *apiOnlyMPCBackend) TriggerKeygen(orgID, walletID string) (*mpcapi.KeygenResult, error) {
+	reqBody := map[string]string{"org_id": orgID, "wallet_id": walletID}
 	var result mpcapi.KeygenResult
 	// Internal MPC API on port 9800 uses /keygen (not /api/v1/keygen)
 	if err := a.doRequest("POST", "/keygen", reqBody, &result); err != nil {
@@ -1871,8 +1872,9 @@ func (a *apiOnlyMPCBackend) TriggerKeygen(walletID string) (*mpcapi.KeygenResult
 	return &result, nil
 }
 
-func (a *apiOnlyMPCBackend) TriggerSign(walletID string, payload []byte) (*mpcapi.SignResult, error) {
+func (a *apiOnlyMPCBackend) TriggerSign(orgID, walletID string, payload []byte) (*mpcapi.SignResult, error) {
 	reqBody := map[string]interface{}{
+		"org_id":    orgID,
 		"wallet_id": walletID,
 		"payload":   hex.EncodeToString(payload),
 	}
@@ -1883,8 +1885,9 @@ func (a *apiOnlyMPCBackend) TriggerSign(walletID string, payload []byte) (*mpcap
 	return &result, nil
 }
 
-func (a *apiOnlyMPCBackend) TriggerReshare(walletID string, newThreshold int, newParticipants []string) error {
+func (a *apiOnlyMPCBackend) TriggerReshare(orgID, walletID string, newThreshold int, newParticipants []string) error {
 	reqBody := map[string]interface{}{
+		"org_id":           orgID,
 		"wallet_id":        walletID,
 		"new_threshold":    newThreshold,
 		"new_participants": newParticipants,

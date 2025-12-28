@@ -72,6 +72,11 @@ func newCGGMP21SigningSession(
 			loadErr = fmt.Errorf("failed to get key share: %w", err)
 			return
 		}
+		defer func() {
+			for i := range shareBytes {
+				shareBytes[i] = 0
+			}
+		}()
 		// Use UnmarshalBinary (CBOR) instead of JSON - required for curve.Curve interface
 		if err := config.UnmarshalBinary(shareBytes); err != nil {
 			loadErr = fmt.Errorf("failed to unmarshal key share: %w", err)
@@ -196,7 +201,8 @@ func (s *cggmp21SigningSession) Init() {
 	)
 	if err != nil {
 		cancel()
-		s.logger.Fatal().Err(err).Msg("Failed to create signing handler")
+		s.logger.Error().Err(err).Msg("Failed to create signing handler")
+		s.errCh <- fmt.Errorf("failed to create signing handler: %w", err)
 		return
 	}
 

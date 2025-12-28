@@ -70,7 +70,7 @@ func (s *Server) handleCreateWallet(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Trigger MPC keygen
-	result, err := s.mpc.TriggerKeygen("")
+	result, err := s.mpc.TriggerKeygen(orgID, "")
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "keygen failed: "+err.Error())
 		return
@@ -171,7 +171,7 @@ func (s *Server) handleReshareWallet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.mpc.TriggerReshare(wallet.WalletID, req.NewThreshold, req.NewParticipants); err != nil {
+	if err := s.mpc.TriggerReshare(orgID, wallet.WalletID, req.NewThreshold, req.NewParticipants); err != nil {
 		writeError(w, http.StatusInternalServerError, "reshare failed: "+err.Error())
 		return
 	}
