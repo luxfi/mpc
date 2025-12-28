@@ -61,19 +61,19 @@ func (s *Server) registerKMSRoutes(r chi.Router) {
 func (s *Server) handleKMSGenerate(w http.ResponseWriter, r *http.Request) {
 	var req kmsGenerateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeKMSError(w, http.StatusBadRequest, "invalid request body")
+		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 	if req.ValidatorID == "" {
-		writeKMSError(w, http.StatusBadRequest, "validator_id is required")
+		writeError(w, http.StatusBadRequest, "validator_id is required")
 		return
 	}
 	if req.Threshold < 2 {
-		writeKMSError(w, http.StatusBadRequest, "threshold must be >= 2")
+		writeError(w, http.StatusBadRequest, "threshold must be >= 2")
 		return
 	}
 	if req.Parties < req.Threshold {
-		writeKMSError(w, http.StatusBadRequest, "parties must be >= threshold")
+		writeError(w, http.StatusBadRequest, "parties must be >= threshold")
 		return
 	}
 
@@ -84,7 +84,7 @@ func (s *Server) handleKMSGenerate(w http.ResponseWriter, r *http.Request) {
 		var existing ValidatorKeySet
 		key := s.db.ORM.NewKey(kmsKind, req.ValidatorID, 0, nil)
 		if err := s.db.ORM.Get(r.Context(), key, &existing); err == nil {
-			writeKMSError(w, http.StatusConflict, fmt.Sprintf("validator %s already exists", req.ValidatorID))
+			writeError(w, http.StatusConflict, fmt.Sprintf("validator %s already exists", req.ValidatorID))
 			return
 		}
 	}
@@ -93,17 +93,17 @@ func (s *Server) handleKMSGenerate(w http.ResponseWriter, r *http.Request) {
 	blsResult, err := s.mpc.TriggerKeygen(orgID, blsWalletID)
 	if err != nil {
 		if strings.Contains(err.Error(), "already exists") {
-			writeKMSError(w, http.StatusConflict, err.Error())
+			writeError(w, http.StatusConflict, err.Error())
 			return
 		}
-		writeKMSError(w, http.StatusInternalServerError, err.Error())
+		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
 	coronaWalletID := fmt.Sprintf("validator-%s-corona", req.ValidatorID)
 	coronaResult, err := s.mpc.TriggerKeygen(orgID, coronaWalletID)
 	if err != nil {
-		writeKMSError(w, http.StatusInternalServerError, err.Error())
+		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
@@ -124,43 +124,43 @@ func (s *Server) handleKMSGenerate(w http.ResponseWriter, r *http.Request) {
 	if s.db != nil {
 		key := s.db.ORM.NewKey(kmsKind, req.ValidatorID, 0, nil)
 		if _, err := s.db.ORM.Put(r.Context(), key, ks); err != nil {
-			writeKMSError(w, http.StatusInternalServerError, err.Error())
+			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 	}
 
-	writeKMSJSON(w, http.StatusCreated, ks)
+	writeJSON(w, http.StatusCreated, ks)
 }
 
 func (s *Server) handleKMSList(w http.ResponseWriter, r *http.Request) {
 	if s.db == nil {
-		writeKMSJSON(w, http.StatusOK, []ValidatorKeySet{})
+		writeJSON(w, http.StatusOK, []ValidatorKeySet{})
 		return
 	}
 
 	q := s.db.ORM.Query(kmsKind)
 	var sets []ValidatorKeySet
 	if _, err := q.GetAll(r.Context(), &sets); err != nil {
-		writeKMSJSON(w, http.StatusOK, []ValidatorKeySet{})
+		writeJSON(w, http.StatusOK, []ValidatorKeySet{})
 		return
 	}
-	writeKMSJSON(w, http.StatusOK, sets)
+	writeJSON(w, http.StatusOK, sets)
 }
 
 func (s *Server) handleKMSGet(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if s.db == nil {
-		writeKMSError(w, http.StatusNotFound, "not found")
+		writeError(w, http.StatusNotFound, "not found")
 		return
 	}
 
 	var ks ValidatorKeySet
 	key := s.db.ORM.NewKey(kmsKind, id, 0, nil)
 	if err := s.db.ORM.Get(r.Context(), key, &ks); err != nil {
-		writeKMSError(w, http.StatusNotFound, "validator key set not found")
+		writeError(w, http.StatusNotFound, "validator key set not found")
 		return
 	}
-	writeKMSJSON(w, http.StatusOK, ks)
+	writeJSON(w, http.StatusOK, ks)
 }
 
 func (s *Server) handleKMSSign(w http.ResponseWriter, r *http.Request) {
@@ -168,11 +168,11 @@ func (s *Server) handleKMSSign(w http.ResponseWriter, r *http.Request) {
 
 	var req kmsSignRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeKMSError(w, http.StatusBadRequest, "invalid request body")
+		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 	if len(req.Message) == 0 {
-		writeKMSError(w, http.StatusBadRequest, "message is required")
+		writeError(w, http.StatusBadRequest, "message is required")
 		return
 	}
 
@@ -180,7 +180,7 @@ func (s *Server) handleKMSSign(w http.ResponseWriter, r *http.Request) {
 
 	ks, err := s.kmsGetValidator(r.Context(), id)
 	if err != nil {
-		writeKMSError(w, http.StatusNotFound, "validator key set not found")
+		writeError(w, http.StatusNotFound, "validator key set not found")
 		return
 	}
 
@@ -191,17 +191,17 @@ func (s *Server) handleKMSSign(w http.ResponseWriter, r *http.Request) {
 	case "corona":
 		walletID = ks.CoronaWalletID
 	default:
-		writeKMSError(w, http.StatusBadRequest, "key_type must be 'bls' or 'corona'")
+		writeError(w, http.StatusBadRequest, "key_type must be 'bls' or 'corona'")
 		return
 	}
 
 	result, err := s.mpc.TriggerSign(orgID, walletID, req.Message)
 	if err != nil {
-		writeKMSError(w, http.StatusInternalServerError, err.Error())
+		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	writeKMSJSON(w, http.StatusOK, map[string]string{
+	writeJSON(w, http.StatusOK, map[string]string{
 		"signature": result.Signature,
 		"r":         result.R,
 		"s":         result.S,
@@ -213,11 +213,11 @@ func (s *Server) handleKMSRotate(w http.ResponseWriter, r *http.Request) {
 
 	var req kmsRotateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeKMSError(w, http.StatusBadRequest, "invalid request body")
+		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 	if req.NewThreshold == 0 && len(req.NewParticipants) == 0 {
-		writeKMSError(w, http.StatusBadRequest, "new_threshold or new_participants required")
+		writeError(w, http.StatusBadRequest, "new_threshold or new_participants required")
 		return
 	}
 
@@ -225,16 +225,16 @@ func (s *Server) handleKMSRotate(w http.ResponseWriter, r *http.Request) {
 
 	ks, err := s.kmsGetValidator(r.Context(), id)
 	if err != nil {
-		writeKMSError(w, http.StatusNotFound, "validator key set not found")
+		writeError(w, http.StatusNotFound, "validator key set not found")
 		return
 	}
 
 	if err := s.mpc.TriggerReshare(orgID, ks.BLSWalletID, req.NewThreshold, req.NewParticipants); err != nil {
-		writeKMSError(w, http.StatusInternalServerError, fmt.Sprintf("bls reshare: %v", err))
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("bls reshare: %v", err))
 		return
 	}
 	if err := s.mpc.TriggerReshare(orgID, ks.CoronaWalletID, req.NewThreshold, req.NewParticipants); err != nil {
-		writeKMSError(w, http.StatusInternalServerError, fmt.Sprintf("corona reshare: %v", err))
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("corona reshare: %v", err))
 		return
 	}
 
@@ -251,7 +251,7 @@ func (s *Server) handleKMSRotate(w http.ResponseWriter, r *http.Request) {
 		s.db.ORM.Put(r.Context(), key, ks)
 	}
 
-	writeKMSJSON(w, http.StatusOK, ks)
+	writeJSON(w, http.StatusOK, ks)
 }
 
 func (s *Server) kmsGetValidator(ctx context.Context, id string) (*ValidatorKeySet, error) {
@@ -264,14 +264,4 @@ func (s *Server) kmsGetValidator(ctx context.Context, id string) (*ValidatorKeyS
 		return nil, err
 	}
 	return &ks, nil
-}
-
-func writeKMSJSON(w http.ResponseWriter, code int, v interface{}) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(code)
-	json.NewEncoder(w).Encode(v)
-}
-
-func writeKMSError(w http.ResponseWriter, code int, msg string) {
-	writeKMSJSON(w, code, map[string]string{"error": msg})
 }
