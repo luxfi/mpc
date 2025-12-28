@@ -1,8 +1,8 @@
 package api
 
 import (
+	"net"
 	"net/http"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -74,21 +74,14 @@ func (rl *RateLimiter) cleanup() {
 	}
 }
 
-// clientIP extracts the client IP from X-Forwarded-For or RemoteAddr.
+// clientIP extracts the client IP from RemoteAddr.
+// chimw.RealIP middleware already processes X-Forwarded-For and sets RemoteAddr.
 func clientIP(r *http.Request) string {
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		// First IP in the chain is the original client.
-		if ip, _, ok := strings.Cut(xff, ","); ok {
-			return strings.TrimSpace(ip)
-		}
-		return strings.TrimSpace(xff)
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
 	}
-	// Strip port from RemoteAddr.
-	addr := r.RemoteAddr
-	if idx := strings.LastIndex(addr, ":"); idx != -1 {
-		return addr[:idx]
-	}
-	return addr
+	return host
 }
 
 // RateLimitMiddleware returns chi-compatible middleware that limits requests per
