@@ -1,0 +1,111 @@
+# KMS deployment -- connects to Lux MPC nodes for signing operations.
+# Deployed alongside Lux MPC nodes in lux-k8s.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kms
+  namespace: lux-mpc-customer
+  labels:
+    app: kms
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kms
+  template:
+    metadata:
+      labels:
+        app: kms
+    spec:
+      terminationGracePeriodSeconds: 10
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+        - name: kms
+          image: ghcr.io/luxfi/kms:latest
+          args:
+            - --listen=:8080
+            - --mpc-url=http://mpc-lux-api.lux-mpc-customer.svc:9800
+            - --vault-id=$(MPC_VAULT_ID)
+            - --store=/data/kms/keys.json
+          env:
+            - name: MPC_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: kms-secrets
+                  key: mpc-token
+            - name: MPC_VAULT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: kms-secrets
+                  key: vault-id
+          ports:
+            - name: http
+              containerPort: 8080
+          volumeMounts:
+            - name: data
+              mountPath: /data/kms
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 30
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: kms-data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: kms-data
+  namespace: lux-mpc-customer
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kms
+  namespace: lux-mpc-customer
+  labels:
+    app: kms
+spec:
+  type: ClusterIP
+  selector:
+    app: kms
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: kms-secrets
+  namespace: lux-mpc-customer
+  annotations:
+    kms.hanzo.ai/project: "lux"
+    kms.hanzo.ai/secret: "mpc-customer-kms"
+type: Opaque
+data: {}

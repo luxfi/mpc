@@ -1,0 +1,160 @@
+# Lux-operated MPC nodes (3 of 5)
+# Deployed in lux-k8s cluster by Lux operations team.
+# Customer nodes connect via mpc-customer.lux.network.
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mpc-lux
+  namespace: lux-mpc-customer
+  labels:
+    app: mpc-lux
+spec:
+  clusterIP: None
+  selector:
+    app: mpc-lux
+  ports:
+    - name: p2p
+      port: 9651
+      targetPort: 9651
+    - name: api
+      port: 9800
+      targetPort: 9800
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mpc-lux-api
+  namespace: lux-mpc-customer
+  labels:
+    app: mpc-lux
+spec:
+  type: ClusterIP
+  selector:
+    app: mpc-lux
+  ports:
+    - name: api
+      port: 9800
+      targetPort: 9800
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mpc-lux
+  namespace: lux-mpc-customer
+  labels:
+    app: mpc-lux
+spec:
+  serviceName: mpc-lux
+  replicas: 3
+  selector:
+    matchLabels:
+      app: mpc-lux
+  template:
+    metadata:
+      labels:
+        app: mpc-lux
+    spec:
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+        - name: mpcd
+          image: ghcr.io/luxfi/mpc:latest
+          args:
+            - mpcd
+            - start
+            - --mode=consensus
+            - --node-id=$(NODE_ID)
+            - --listen=:9651
+            - --api=:9800
+            - --data=/data/mpc
+            - --keys=/keys
+            - --threshold=3
+            - --peer=lux-0@mpc-lux-0.mpc-lux.lux-mpc-customer.svc:9651
+            - --peer=lux-1@mpc-lux-1.mpc-lux.lux-mpc-customer.svc:9651
+            - --peer=lux-2@mpc-lux-2.mpc-lux.lux-mpc-customer.svc:9651
+            - --peer=cust-0@mpc-customer.lux-mpc-customer.svc:9651
+            - --peer=cust-1@mpc-customer.lux-mpc-customer.svc:9652
+            - --log-level=info
+            - --hsm-provider=env
+          env:
+            - name: NODE_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: ZAPDB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mpc-lux-secrets
+                  key: zapdb-password
+          ports:
+            - name: p2p
+              containerPort: 9651
+            - name: api
+              containerPort: 9800
+          volumeMounts:
+            - name: data
+              mountPath: /data/mpc
+            - name: keys
+              mountPath: /keys
+              readOnly: true
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 9800
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 9800
+            initialDelaySeconds: 30
+            periodSeconds: 30
+      volumes:
+        - name: keys
+          secret:
+            secretName: mpc-lux-identity
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 5Gi
+---
+# Secrets placeholder -- actual values come from KMS via KMSSecret CRD.
+# NEVER put real values in this file.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mpc-lux-secrets
+  namespace: lux-mpc-customer
+  annotations:
+    kms.hanzo.ai/project: "lux"
+    kms.hanzo.ai/secret: "mpc-customer-zapdb"
+type: Opaque
+data: {}
+---
+# Identity keys -- populated by init.sh, stored in KMS.
+# Each pod gets its Ed25519 keypair via this secret.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mpc-lux-identity
+  namespace: lux-mpc-customer
+  annotations:
+    kms.hanzo.ai/project: "lux"
+    kms.hanzo.ai/secret: "mpc-customer-identity-lux"
+type: Opaque
+data: {}
