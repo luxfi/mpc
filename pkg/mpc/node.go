@@ -77,6 +77,7 @@ func (p *Node) CreateKeyGenSession(
 	walletID string,
 	threshold int,
 	resultQueue messaging.MessageQueue,
+	orgID ...string,
 ) (KeyGenSession, error) {
 	if !p.peerRegistry.ArePeersReady() {
 		return nil, fmt.Errorf(
@@ -99,6 +100,7 @@ func (p *Node) CreateKeyGenSession(
 		p.keyinfoStore,
 		resultQueue,
 		p.identityStore,
+		firstOrEmpty(orgID),
 	)
 
 	// Note: Init() is called by the caller (keygen handler)
@@ -110,6 +112,7 @@ func (p *Node) CreateEdDSAKeyGenSession(
 	walletID string,
 	threshold int,
 	resultQueue messaging.MessageQueue,
+	orgID ...string,
 ) (FROSTKeygenSession, error) {
 	if !p.peerRegistry.ArePeersReady() {
 		return nil, fmt.Errorf(
@@ -134,6 +137,7 @@ func (p *Node) CreateEdDSAKeyGenSession(
 		p.keyinfoStore,
 		resultQueue,
 		p.identityStore,
+		firstOrEmpty(orgID),
 	)
 
 	// Note: Init() is called by the caller (keygen handler)
@@ -146,6 +150,7 @@ func (p *Node) CreateLSSKeyGenSession(
 	walletID string,
 	threshold int,
 	resultQueue messaging.MessageQueue,
+	orgID ...string,
 ) (KeyGenSession, error) {
 	if !p.peerRegistry.ArePeersReady() {
 		return nil, fmt.Errorf(
@@ -170,6 +175,7 @@ func (p *Node) CreateLSSKeyGenSession(
 		p.keyinfoStore,
 		resultQueue,
 		p.identityStore,
+		firstOrEmpty(orgID),
 	)
 
 	// Note: Init() is called by the caller (keygen handler)
@@ -181,6 +187,7 @@ func (p *Node) CreateSR25519KeyGenSession(
 	walletID string,
 	threshold int,
 	resultQueue messaging.MessageQueue,
+	orgID ...string,
 ) (SR25519KeygenSession, error) {
 	if !p.peerRegistry.ArePeersReady() {
 		return nil, fmt.Errorf(
@@ -204,6 +211,7 @@ func (p *Node) CreateSR25519KeyGenSession(
 		p.keyinfoStore,
 		resultQueue,
 		p.identityStore,
+		firstOrEmpty(orgID),
 	)
 
 	// Note: Init() is called by the caller (keygen handler)
@@ -269,6 +277,7 @@ func (p *Node) CreateBLSKeyGenSession(
 	walletID string,
 	threshold int,
 	resultQueue messaging.MessageQueue,
+	orgID ...string,
 ) (BLSKeygenSession, error) {
 	if !p.peerRegistry.ArePeersReady() {
 		return nil, fmt.Errorf(
@@ -292,6 +301,7 @@ func (p *Node) CreateBLSKeyGenSession(
 		p.keyinfoStore,
 		resultQueue,
 		p.identityStore,
+		firstOrEmpty(orgID),
 	)
 
 	// Note: Init() is called by the caller (keygen handler)
