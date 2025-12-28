@@ -16,17 +16,17 @@ RUN apk add --no-cache git ca-certificates
 ARG GITHUB_TOKEN
 RUN git config --global url."https://${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
 ENV GOPRIVATE=github.com/luxfi/*,github.com/hanzoai/*
-ENV GONOSUMCHECK=github.com/luxfi/*,github.com/hanzoai/*
 ENV GONOSUMDB=github.com/luxfi/*,github.com/hanzoai/*
 
 WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
 COPY . .
 COPY --from=ui /ui/dist ./ui/dist/
-RUN go mod vendor
 
 ENV GOEXPERIMENT=runtimesecret
-RUN CGO_ENABLED=0 GOOS=linux go build -mod=vendor -ldflags="-s -w" -o mpcd ./cmd/mpcd
-RUN CGO_ENABLED=0 GOOS=linux go build -mod=vendor -ldflags="-s -w" -o mpc  ./cmd/mpc
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o mpcd ./cmd/mpcd
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o mpc  ./cmd/mpc
 
 FROM alpine:3.21
 RUN apk add --no-cache ca-certificates tzdata
