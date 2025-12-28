@@ -51,7 +51,7 @@ func (s *Server) handleRegisterWebAuthnBegin(w http.ResponseWriter, r *http.Requ
 		"challenge": base64.URLEncoding.EncodeToString(challenge),
 		"rp": map[string]string{
 			"id":   s.webauthnRPID,
-			"name": "Lux MPC",
+			"name": "MPC",
 		},
 		"user": map[string]string{
 			"id":          base64.URLEncoding.EncodeToString([]byte(userID)),
