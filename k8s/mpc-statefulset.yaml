@@ -121,7 +121,7 @@ spec:
                 secretKeyRef:
                   name: mpc-secrets
                   key: KV_URL
-            - name: LUX_MPC_PASSWORD
+            - name: MPC_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: mpc-secrets
