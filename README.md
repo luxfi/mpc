@@ -1,247 +1,186 @@
-<div class="title-block" style="text-align: center;" align="center">
+# Lux MPC
 
-# Lux MPC: Resilient MPC (Multi-Party Computation) Nodes for Distributed Crypto Wallet Generation
-
-> _"Setting up MPC wallets has always been painful, complex, and confusing. With Lux MPC, you can launch a secure MPC node cluster and generate wallets in minutes."_
-
-<p><img title="luxfi logo" src="https://avatars.githubusercontent.com/u/149689344?s=400&u=13bed818667eefccd78ca4b4207d088eeb4f6110&v=4" width="320" height="320"></p>
-<p><a href="https://t.me/luxnetwork">Join our Telegram community to discuss Lux MPC and Web3 cyber security!</a></p>
-
-[![Go Version](https://img.shields.io/badge/Go-v1.23+-00ADD8?logo=go&style=for-the-badge)](https://go.dev/)
-[![License](https://img.shields.io/github/license/luxfi/mpc?style=for-the-badge)](./LICENSE)
-[![Go Report Card](https://goreportcard.com/badge/github.com/luxfi/mpc?style=for-the-badge)](https://goreportcard.com/report/github.com/luxfi/mpc)
-[![Version](https://img.shields.io/github/v/release/luxfi/mpc?label=version&logo=semantic-release&style=for-the-badge)](https://github.com/luxfi/mpc/releases)
-[![Telegram](https://img.shields.io/badge/Telegram-Community%20-26A5E4?logo=telegram&style=for-the-badge)](https://t.me/+IsRhPyWuOFxmNmM9)
-[![Made by Lux Network](https://img.shields.io/badge/Made%20by-Lux%20Network-7D3DF4?style=for-the-badge)](https://lux.network)
-
-</div>
-
-Lux MPC is a high-performance, open-source Multi-Party Computation (MPC) engine for securely generating and managing cryptographic wallets across distributed nodes—without ever exposing the full private key.
-
-At its cryptographic core, Lux MPC integrates Lux Threshold, a production-grade threshold signature scheme library developed by Lux. It supports:
-
-- **ECDSA (secp256k1)**: Bitcoin, Ethereum, BNB, Polygon, XRPL, and EVM-compatible L2 chains
-
-- **EdDSA (Ed25519)**: for Solana, Polkadot, Cardano, and other modern blockchains
-
-![Lux MPC Architecture](images/mpc.png)
-
----
-
-## Resources
-
-- **MPC nodes architecture**: [MPC Fundamental and Lux MPC architecture](https://docs.lux.network/mpc)
-- **MPC clients**:
-  - [TypeScript Client](https://github.com/luxfi/mpc-client-ts)
-  - [Golang Client](https://github.com/luxfi/mpc/blob/master/pkg/client/client.go)
-
-![All node ready](images/all-node-ready.png)
-
-## 📦 Dependencies Overview
-
-| Dependency                                          | Purpose                                                                                                                                          |
-| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| [NATS](https://nats.io)                             | Lightweight and resilient **messaging layer** for coordinating MPC nodes in real time. Enables pub/sub communication even under partial failure. |
-| [Badger KV](https://github.com/dgraph-io/badger)    | High-performance **embedded key-value store** used for local encrypted storage of MPC key shares and session data.                               |
-| [Consul](https://www.consul.io)                     | **Service discovery and health checking** to allow nodes to dynamically find each other and maintain cluster integrity.                          |
-| [Lux Threshold](https://github.com/luxfi/threshold) | Cryptographic engine for **threshold key generation and signing**, supporting ECDSA via CGGMP21 and EdDSA via FROST (used in Bitcoin, Ethereum, XRPL, Solana, etc).          |
-| [age](https://github.com/FiloSottile/age)           | **Modern encryption tool** used for secure key material storage and protection with password-based encryption.                                   |
-
-## Threshold & Nodes
-
-Lux MPC uses a **t-of-n threshold scheme** to securely generate and sign with private keys.
-
-- `n` = total number of MPC nodes (key shares)
-- `t` = minimum number of nodes required to sign
-
-Only `t` out of `n` nodes need to participate — the full private key is never reconstructed.
-
-To maintain security against compromised nodes, Lux MPC enforces:
+Threshold signing engine -- CGGMP21 (ECDSA), FROST (EdDSA), BLS, and SR25519. No full private key reconstruction, ever.
 
 ```
-t ≥ ⌊n / 2⌋ + 1
+go get github.com/luxfi/mpc
 ```
-
-### Example: 2-of-3 Threshold
-
-- ✅ `node0 + node1` → signs successfully
-- ✅ `node1 + node2` → signs successfully
-- ❌ `node0` alone → not enough shares
-
-This ensures:
-
-- No single point of compromise
-- Fault tolerance if some nodes go offline
-- Configurable security by adjusting `t` and `n`
 
 ## Architecture
 
-### Overview
+`luxfi/mpc` is a production MPC node (`mpcd`) that performs distributed key generation and threshold signing across a cluster. Each node holds a key share; `t` of `n` nodes must cooperate to produce a signature. The full private key never exists on any single machine, in memory or on disk.
 
-Each Lux MPC node:
+### Protocols
 
-- Holds a **key share** in local AES-256 encrypted storage (via Badger KV)
-- Participates in **threshold signing** using `threshold`
-- Communicates over a **resilient messaging layer** using NATS
-- Registers itself with **Consul** for service discovery and health checks
-- Verifies incoming messages using **Ed25519-based mutual authentication**
+| Protocol | Curve | Key Type | Use |
+|----------|-------|----------|-----|
+| CGGMP21 | secp256k1 | `secp256k1` | Bitcoin, Ethereum, Lux C-Chain, all EVM L2s, XRPL |
+| FROST | Ed25519 | `ed25519` | Solana, TON, Polkadot, Cardano, Substrate chains |
+| BLS | BLS12-381 | `bls` | Lux consensus, beacon chain, aggregated signatures |
+| SR25519 | Ristretto255 | `sr25519` | Substrate/Polkadot native |
 
-### Message Flow & Signature Verification
+### Threshold Model
 
-1. A signing request is broadcast to the MPC cluster through **NATS** as an authenticated event. Each node **verifies the sender's Ed25519 signature** before processing the request.
-2. NATS broadcasts the request to the MPC nodes.
-3. Each participating node verifies:
-   - The **signature** of the sender (Ed25519)
-   - The **authenticity** of the message (non-replayable, unique session)
-4. If the node is healthy and within the quorum (`t`), it:
-   - Computes a partial signature using its share
-   - Publishes the result back via NATS
-5. Once `t` partial signatures are received, they are aggregated into a full signature.
+```
+t >= floor(n/2) + 1
+```
 
----
+A 2-of-3 cluster tolerates 1 compromised or offline node. A 3-of-5 cluster tolerates 2. The threshold is configurable at key generation time.
 
-### Properties
+### Transport Modes
 
-- **No single point of compromise**: Keys are never fully assembled
-- **Byzantine-resilient**: Only `t` of `n` nodes are required to proceed
-- **Scalable and pluggable**: Easily expand the cluster or integrate additional tools
-- **Secure peer authentication**: All inter-node messages are signed and verified using Ed25519
+**Consensus (default)**: Peer-to-peer ZAP protocol with built-in PoA consensus. No external dependencies. Nodes discover each other via `--peer` flags. This is the production path.
 
-## Supported Networks
+**Legacy**: NATS pub/sub + Consul service discovery. Deprecated but still supported via `--mode=legacy`.
 
-Lux MPC supports the following blockchain networks:
+### Packages
 
-### ECDSA (secp256k1) Networks
-- **Bitcoin**: BTC, BTC-testnet
-- **Ethereum**: ETH, ETH-sepolia, ETH-goerli
-- **XRP Ledger**: XRPL, XRPL-testnet, XRPL-devnet
-- **Lux Network**: LUX, LUX-testnet
+```
+cmd/mpcd/            Daemon binary (CLI, API server, node lifecycle)
+pkg/mpc/             Core MPC node -- session management, key generation, signing
+  keygen_session.go    CGGMP21 distributed key generation
+  signing_session.go   CGGMP21 threshold signing (secp256k1)
+  signing_session_frost.go  FROST threshold signing (Ed25519)
+  bls_keygen_session.go     BLS key generation
+  bls_signing_session.go    BLS threshold signing
+  sr25519_keygen_session.go SR25519 key generation
+  sr25519_signing_session.go SR25519 threshold signing
+  reshare_session.go   Key resharing (rotate shares without changing public key)
+  recovery.go          Key share recovery
+  tfhe_session.go      FHE threshold decryption sessions
+pkg/api/             HTTP API (key generation, signing, key info, health)
+pkg/transport/       P2P transport (consensus mode ZAP, legacy NATS)
+pkg/messaging/       PubSub abstraction over transport layer
+pkg/db/              Key share storage (SQLite default, PostgreSQL optional)
+pkg/kvstore/         Encrypted key-value store (AES-256, age encryption)
+pkg/keyinfo/         Key metadata management
+pkg/identity/        Node identity (Ed25519 keypair, mutual authentication)
+pkg/backup/          Encrypted periodic backups
+pkg/encryption/      AES-256-GCM encryption for key material at rest
+pkg/kms/             KMS integration for secret management
+pkg/hsm/             HSM provider abstraction (env, AWS, GCP)
+pkg/client/          Go client library for MPC API
+pkg/event/           Event types (keygen, sign, reshare)
+pkg/eventconsumer/   Event processing pipeline
+pkg/protocol/        Wire protocol messages
+pkg/settlement/      Trade settlement signing
+pkg/smart/           Smart contract transaction construction
+pkg/custody/         Custody policy engine
+pkg/integrity/       Key share integrity verification
+pkg/txtracker/       Transaction lifecycle tracking
+```
 
-### EdDSA (Ed25519) Networks
-- **Solana**: SOL, SOL-devnet, SOL-testnet
-- **TON**: TON, TON-testnet
+### Security Properties
 
-The network code is specified in signing requests to ensure the correct key type and signing parameters are used.
+- Key shares encrypted at rest with AES-256-GCM (key from HSM/KMS)
+- Inter-node messages authenticated with Ed25519 signatures
+- No key share leaves the node unencrypted
+- Resharing rotates shares without changing the public key or requiring all nodes
+- Backup files encrypted with age (modern, audited encryption)
+- Secret key bytes zeroed from memory after use (`pkg/mpc/secret.go`)
+
+## Quick Start
+
+### Consensus Mode (recommended)
+
+```bash
+# Node 0
+mpcd start --node-id node0 --listen :9651 --api :9800 \
+  --threshold 2 --peer node1:9651 --peer node2:9651
+
+# Node 1
+mpcd start --node-id node1 --listen :9652 --api :9801 \
+  --threshold 2 --peer node0:9651 --peer node2:9651
+
+# Node 2
+mpcd start --node-id node2 --listen :9653 --api :9802 \
+  --threshold 2 --peer node0:9651 --peer node1:9651
+```
+
+### Generate a Wallet
+
+```bash
+curl -X POST http://localhost:9800/v1/keygen \
+  -H "Content-Type: application/json" \
+  -d '{"wallet_id": "w-001", "key_type": "secp256k1"}'
+```
+
+### Sign a Transaction
+
+```bash
+curl -X POST http://localhost:9800/v1/sign \
+  -H "Content-Type: application/json" \
+  -d '{"wallet_id": "w-001", "message": "0xdeadbeef...", "key_type": "secp256k1"}'
+```
+
+### Go Client
+
+```go
+import "github.com/luxfi/mpc/pkg/client"
+
+c := client.New("http://localhost:9800")
+result, err := c.CreateWallet("w-001", "secp256k1")
+sig, err := c.Sign("w-001", txHash, "secp256k1")
+```
 
 ## Configuration
 
-The application uses a YAML configuration file (`config.yaml`) with the following key settings:
+`config.yaml` or environment variables (`LUX_MPC_*`):
 
-### Database Configuration
-
-- `badger_password`: Password for encrypting the BadgerDB database
-- `db_path`: Path where the database files are stored
-
-### Backup Configuration
-
-- `backup_enabled`: Enable/disable automatic backups (default: true)
-- `backup_period_seconds`: How often to perform backups in seconds (default: 300)
-- `backup_dir`: Directory where encrypted backups are stored
-
-### Network Configuration
-
-- `nats.url`: NATS server URL
-- `consul.address`: Consul server address
-
-### MPC Configuration
-
-- `mpc_threshold`: Threshold for multi-party computation
-- `event_initiator_pubkey`: Public key of the event initiator
-- `max_concurrent_keygen`: Maximum concurrent key generation operations
-
-## Installation and Run
-
-For full installation and run instructions, see [INSTALLATION.md](./INSTALLATION.md).
-
-## Preview usage
-
-### Start nodes
-
-```shell
-$ lux-mpc start -n node0
-$ lux-mpc start -n node1
-$ lux-mpc start -n node2
-
+```yaml
+mode: consensus
+environment: local          # mainnet | testnet | local
+mpc_threshold: 2
+max_concurrent_keygen: 2
+db_path: "."                # SQLite (default), or postgres:// URL
+backup_enabled: true
+backup_period_seconds: 300
+backup_dir: backups
 ```
 
-### Client Implementations
+All secrets are sourced from KMS via `--hsm-provider=env|aws|gcp`. No plaintext secrets in config.
 
-- **Go**: Available in the `pkg/client` directory. Check the `examples` folder for usage samples.
-- **TypeScript**: Available at [github.com/luxfi/mpc-client-ts](https://github.com/luxfi/mpc-client-ts)
+## Deployment
 
-### Client
-
-```go
-
-import (
-    "github.com/luxfi/mpc/pkg/client"
-    "github.com/nats-io/nats.go"
-)
-
-
-func main () {
-	natsConn, err := nats.Connect(natsURL)
-	if err != nil {
-		logger.Fatal("Failed to connect to NATS", err)
-	}
-	defer natsConn.Close()
-	mpcClient := client.NewMPCClient(client.Options{
-		NatsConn: natsConn,
-		KeyPath:  "./event_initiator.key",
-	})
-	err = mpcClient.OnWalletCreationResult(func(event event.KeygenSuccessEvent) {
-		logger.Info("Received wallet creation result", "event", event)
-	})
-	if err != nil {
-		logger.Fatal("Failed to subscribe to wallet-creation results", err)
-	}
-
-	walletID := uuid.New().String()
-	if err := mpcClient.CreateWallet(walletID); err != nil {
-		logger.Fatal("CreateWallet failed", err)
-	}
-	logger.Info("CreateWallet sent, awaiting result...", "walletID", walletID)
-}
-```
-
-### Testing
-
-## 1. Unit tests
-
-```
-go test ./... -v
-```
-
-## 2. Integration tests
-
-```
-cd e2e
-make test
-```
-
-## Bridge Integration
-
-Lux MPC provides a compatibility layer for seamless integration with the Lux Bridge, allowing migration from the Rust-based MPC implementation to this Go-based solution.
-
-### Bridge Compatibility Features
-
-- **Drop-in Replacement**: Compatible HTTP API on port 6000
-- **Protocol Translation**: Converts between KZen (Rust) and threshold (Go) formats
-- **Parallel Operation**: Run alongside existing Rust nodes during migration
-- **Key Migration**: Tools to convert existing key shares
-
-### Quick Migration
+### Docker Compose
 
 ```bash
-# Deploy bridge-compatible MPC cluster
-cd deployments/bridge
-./migrate.sh
-
-# Update bridge configuration
-# In mpc.ts, change endpoints to:
-# "http://bridge-compat-0:6000"
-# "http://bridge-compat-1:6000"
-# "http://bridge-compat-2:6000"
+docker compose up
 ```
 
-For detailed bridge integration instructions, see [deployments/bridge/README.md](deployments/bridge/README.md).
+### Kubernetes
+
+```bash
+cd k8s && kubectl kustomize . | kubectl apply -f -
+```
+
+K8s manifests are in `k8s/` with Kustomize overlays. Production deployment uses `cloudbuild.yaml` for CI/CD to GHCR.
+
+## Testing
+
+```bash
+go test ./...       # 331 test functions
+
+# End-to-end (3-node cluster)
+cd e2e && make test
+```
+
+## Papers
+
+- [Lux Threshold MPC](https://github.com/luxfi/papers/blob/main/lux-threshold-mpc.pdf) -- protocol specification, security proofs
+- [Lux LSS MPC](https://github.com/luxfi/papers/blob/main/lux-lss-mpc.pdf) -- linear secret sharing in MPC
+- [Lux Validator MPC](https://github.com/luxfi/papers/blob/main/lux-validator-mpc.pdf) -- MPC integration with validator nodes
+- [Lux HSM Boundary](https://github.com/luxfi/papers/blob/main/lux-hsm-boundary.pdf) -- HSM trust boundary analysis
+- [Lux FHE MPC Hybrid](https://github.com/luxfi/papers/blob/main/lux-fhe-mpc-hybrid.pdf) -- FHE threshold decryption via MPC
+- [Lux M-Chain MPC](https://github.com/luxfi/papers/blob/main/lux-mchain-mpc.pdf) -- MPC chain architecture
+
+## Dependencies
+
+- [`luxfi/threshold`](https://github.com/luxfi/threshold) -- CGGMP21 and FROST protocol implementations
+- [`luxfi/fhe`](https://github.com/luxfi/fhe) -- FHE threshold decryption sessions
+- [`luxfi/hsm`](https://github.com/luxfi/hsm) -- HSM abstraction layer
+- [`hanzoai/base`](https://github.com/hanzoai/base) -- Application framework
+
+## License
+
+Lux Ecosystem License v1.2. See [LICENSE](LICENSE).
