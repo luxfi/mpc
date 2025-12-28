@@ -7,9 +7,12 @@ import (
 	"fmt"
 )
 
-// EncryptAESGCM encrypts plaintext using AES-GCM.
+// EncryptAESGCM encrypts plaintext using AES-GCM with optional context-binding AAD.
 // Key must be 16, 24, or 32 bytes for AES-128, AES-192, or AES-256.
-func EncryptAESGCM(plain, key []byte) (ciphertext, nonce []byte, err error) {
+// The aad parameter binds the ciphertext to a context (e.g. wallet_id or key path),
+// preventing cross-context ciphertext transplant attacks. Pass nil for no AAD
+// (backward compatible, but not recommended for new callers).
+func EncryptAESGCM(plain, key []byte, aad ...[]byte) (ciphertext, nonce []byte, err error) {
 	// Validate key length for AES
 	switch len(key) {
 	case 16, 24, 32:
@@ -30,13 +33,19 @@ func EncryptAESGCM(plain, key []byte) (ciphertext, nonce []byte, err error) {
 	if _, err = rand.Read(nonce); err != nil {
 		return nil, nil, err
 	}
-	ciphertext = aead.Seal(nil, nonce, plain, nil)
+	var additionalData []byte
+	if len(aad) > 0 {
+		additionalData = aad[0]
+	}
+	ciphertext = aead.Seal(nil, nonce, plain, additionalData)
 	return ciphertext, nonce, nil
 }
 
-// DecryptAESGCM decrypts ciphertext using AES-GCM.
+// DecryptAESGCM decrypts ciphertext using AES-GCM with optional context-binding AAD.
 // Key must be 16, 24, or 32 bytes for AES-128, AES-192, or AES-256.
-func DecryptAESGCM(ciphertext, key, nonce []byte) ([]byte, error) {
+// The aad parameter must match the AAD used during encryption; mismatched AAD
+// causes authentication failure, preventing cross-context transplant attacks.
+func DecryptAESGCM(ciphertext, key, nonce []byte, aad ...[]byte) ([]byte, error) {
 	// Validate key length for AES
 	switch len(key) {
 	case 16, 24, 32:
@@ -53,5 +62,9 @@ func DecryptAESGCM(ciphertext, key, nonce []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return aead.Open(nil, nonce, ciphertext, nil)
+	var additionalData []byte
+	if len(aad) > 0 {
+		additionalData = aad[0]
+	}
+	return aead.Open(nil, nonce, ciphertext, additionalData)
 }
