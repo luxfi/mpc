@@ -70,6 +70,11 @@ func newLSSSigningSession(
 			loadErr = fmt.Errorf("failed to get key share: %w", err)
 			return
 		}
+		defer func() {
+			for i := range shareBytes {
+				shareBytes[i] = 0
+			}
+		}()
 		// Unmarshal config using CBOR (not JSON) to preserve curve types
 		config, err = UnmarshalLSSConfig(shareBytes)
 		if err != nil {
