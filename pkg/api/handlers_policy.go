@@ -65,7 +65,10 @@ func (s *Server) handleCreatePolicy(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleUpdatePolicy(w http.ResponseWriter, r *http.Request) {
 	orgID := getOrgID(r.Context())
-	policyID := urlParam(r, "id")
+	policyID := urlParam(r, "policyId")
+	if policyID == "" {
+		policyID = urlParam(r, "id")
+	}
 
 	var req struct {
 		Name              *string          `json:"name,omitempty"`
@@ -114,7 +117,10 @@ func (s *Server) handleUpdatePolicy(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleDeletePolicy(w http.ResponseWriter, r *http.Request) {
 	orgID := getOrgID(r.Context())
-	policyID := urlParam(r, "id")
+	policyID := urlParam(r, "policyId")
+	if policyID == "" {
+		policyID = urlParam(r, "id")
+	}
 
 	policy, err := orm.Get[db.Policy](s.db.ORM, policyID)
 	if err != nil || policy.OrgID != orgID {
