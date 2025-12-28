@@ -972,12 +972,18 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 				return
 			}
 
-			// Parse optional wallet_id from request body
+			// Parse request body — orgID is required for tenant isolation.
 			var req struct {
+				OrgID    string `json:"org_id"`
 				WalletID string `json:"wallet_id"`
 			}
 			if r.Body != nil {
 				json.NewDecoder(r.Body).Decode(&req)
+			}
+			if req.OrgID == "" {
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]string{"error": "org_id is required"})
+				return
 			}
 			if req.WalletID == "" {
 				// Generate a deterministic wallet ID from timestamp + node
@@ -1009,6 +1015,7 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 			// Create and publish GenerateKeyMessage, signed by this node
 			sig := consensusIdentity.SignMessage([]byte(walletID))
 			msg := types.GenerateKeyMessage{
+				OrgID:     req.OrgID,
 				WalletID:  walletID,
 				Signature: sig,
 			}
@@ -1020,7 +1027,7 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 				return
 			}
 
-			logger.Info("Audit: keygen triggered", "nodeID", nodeID, "walletID", walletID, "remote", r.RemoteAddr)
+			logger.Info("Audit: keygen triggered", "nodeID", nodeID, "orgID", req.OrgID, "walletID", walletID, "remote", r.RemoteAddr)
 
 			// Wait for result with 60s timeout
 			select {
