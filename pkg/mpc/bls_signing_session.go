@@ -61,16 +61,24 @@ func newBLSSigningSession(
 	identityStore identity.Store,
 	orgID string,
 ) (*blsSigningSession, error) {
-	// Load config from kvstore - BLS keys are stored with bls: prefix
+	// Load and unmarshal key share inside withSecretErasure so that raw
+	// share bytes on the stack are zeroed after parsing completes.
 	blsKey := fmt.Sprintf("bls:%s", walletID)
-	shareBytes, err := GetKeyShareWithFallback(kvstore, orgID, blsKey)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get BLS key share: %w", err)
-	}
-
-	config, err := UnmarshalBLSConfig(shareBytes)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal BLS key share: %w", err)
+	var config *blsThreshold.Config
+	var loadErr error
+	withSecretErasure(func() {
+		shareBytes, err := GetKeyShareWithFallback(kvstore, orgID, blsKey)
+		if err != nil {
+			loadErr = fmt.Errorf("failed to get BLS key share: %w", err)
+			return
+		}
+		config, err = UnmarshalBLSConfig(shareBytes)
+		if err != nil {
+			loadErr = fmt.Errorf("failed to unmarshal BLS key share: %w", err)
+		}
+	})
+	if loadErr != nil {
+		return nil, loadErr
 	}
 
 	return &blsSigningSession{
