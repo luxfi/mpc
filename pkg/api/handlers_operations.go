@@ -1,9 +1,12 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -12,6 +15,10 @@ import (
 
 	"github.com/luxfi/mpc/pkg/db"
 )
+
+// errOperationConflict signals concurrent modification of an Operation's
+// ApprovedBy/Status fields. Callers retry.
+var errOperationConflict = errors.New("operation modified concurrently")
 
 // --- /v1/mpc/operations ---
 //
@@ -153,28 +160,52 @@ func hexString(b []byte) string {
 	return string(out)
 }
 
+// validSpecOperationStatuses — F20: reject any status filter not in this set.
+// Values here are the spec-facing status values from mpc.yaml Operation.status.
+var validSpecOperationStatuses = map[string]bool{
+	"pending_approval": true,
+	"approved":         true,
+	"signed":           true,
+	"rejected":         true,
+	"failed":           true,
+	"expired":          true,
+}
+
 func (s *Server) handleListOperations(w http.ResponseWriter, r *http.Request) {
 	orgID := getOrgID(r.Context())
 
-	q := orm.TypedQuery[db.Transaction](s.db.ORM).
-		Filter("orgId=", orgID).
-		Order("-createdAt")
-
-	walletID := r.URL.Query().Get("walletId")
-	if walletID != "" {
-		q = q.Filter("walletId=", walletID)
-	}
 	statusFilter := r.URL.Query().Get("status")
-	if statusFilter != "" {
-		// Spec statuses → Transaction statuses (best-effort).
-		q = q.Filter("status=", reverseMapStatus(statusFilter))
+	if statusFilter != "" && !validSpecOperationStatuses[statusFilter] {
+		writeError(w, http.StatusBadRequest, "invalid status filter")
+		return
+	}
+
+	baseQ := func() *orm.ModelQuery[db.Transaction] {
+		q := orm.TypedQuery[db.Transaction](s.db.ORM).Filter("orgId=", orgID)
+		if walletID := r.URL.Query().Get("walletId"); walletID != "" {
+			q = q.Filter("walletId=", walletID)
+		}
+		if statusFilter != "" {
+			q = q.Filter("status=", reverseMapStatus(statusFilter))
+		}
+		return q
 	}
 
 	perPage := parseIntDefault(r.URL.Query().Get("perPage"), 50)
 	page := parseIntDefault(r.URL.Query().Get("page"), 1)
-	q = q.Limit(perPage)
 
-	txs, err := q.GetAll(r.Context())
+	// F10: totalItems must reflect the full filtered result set, not just
+	// the current page. Count, then fetch the page.
+	total, err := baseQ().Count(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "database error")
+		return
+	}
+	offset := (page - 1) * perPage
+	if offset < 0 {
+		offset = 0
+	}
+	txs, err := baseQ().Order("-createdAt").Offset(offset).Limit(perPage).GetAll(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "database error")
 		return
@@ -186,7 +217,8 @@ func (s *Server) handleListOperations(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"items":      items,
 		"page":       page,
-		"totalItems": len(items),
+		"perPage":    perPage,
+		"totalItems": total,
 	})
 }
 
@@ -214,6 +246,11 @@ func (s *Server) handleGetOperation(w http.ResponseWriter, r *http.Request) {
 
 // handleApproveOperation enforces N-of-M approval per wallet policy.
 // Approver identity is taken from the JWT `sub` (userID) — not from body.
+//
+// F2 — Uses CAS on ApprovedBy (read-modify-write with prior-value guard) so
+// two concurrent final-approvals can't both satisfy quorum and both trigger
+// signing. F23 — Initiator can NEVER self-approve, regardless of how many
+// approvals already exist.
 func (s *Server) handleApproveOperation(w http.ResponseWriter, r *http.Request) {
 	orgID := getOrgID(r.Context())
 	userID := getUserID(r.Context())
@@ -224,30 +261,71 @@ func (s *Server) handleApproveOperation(w http.ResponseWriter, r *http.Request) 
 	}
 	_ = json.NewDecoder(r.Body).Decode(&req)
 
-	t, err := orm.Get[db.Transaction](s.db.ORM, opID)
-	if err != nil || t.OrgID != orgID {
-		writeError(w, http.StatusNotFound, "operation not found")
+	const maxCASRetries = 5
+	var final *db.Transaction
+	var finalized bool
+	for attempt := 0; attempt < maxCASRetries; attempt++ {
+		t, fin, err := s.tryApproveOperation(r.Context(), orgID, userID, opID)
+		if err != nil {
+			if herr, ok := err.(*httpError); ok {
+				writeError(w, herr.code, herr.msg)
+				return
+			}
+			if errors.Is(err, errOperationConflict) {
+				time.Sleep(time.Duration(10*(attempt+1)) * time.Millisecond)
+				continue
+			}
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		final = t
+		finalized = fin
+		break
+	}
+	if final == nil {
+		writeError(w, http.StatusConflict, "operation busy, retry")
 		return
 	}
+	if finalized {
+		go s.signAndBroadcast(opID, orgID)
+	}
+	s.recordMpcAudit(r.Context(), orgID, userID, "operation.approve", "operation", opID)
+	writeJSON(w, http.StatusOK, txToOperation(final))
+}
+
+// tryApproveOperation runs a single CAS attempt. Returns (tx, finalized, err).
+// finalized=true means this attempt satisfied quorum and transitioned to
+// "approved". On policy error (wrong state, dupe approve, self-approve, not
+// found) returns an *httpError — caller must NOT retry.
+func (s *Server) tryApproveOperation(
+	ctx context.Context, orgID, userID, opID string,
+) (*db.Transaction, bool, error) {
+	t, err := orm.Get[db.Transaction](s.db.ORM, opID)
+	if err != nil || t.OrgID != orgID {
+		return nil, false, &httpError{code: http.StatusNotFound, msg: "operation not found"}
+	}
 	if t.Status != "pending_approval" {
-		writeError(w, http.StatusConflict, "operation not in pending_approval state")
-		return
+		return nil, false, &httpError{code: http.StatusConflict, msg: "operation not in pending_approval state"}
 	}
 	for _, id := range t.ApprovedBy {
 		if id == userID {
-			writeError(w, http.StatusConflict, "already approved")
-			return
+			return nil, false, &httpError{code: http.StatusConflict, msg: "already approved"}
 		}
 	}
-	if t.InitiatedBy != nil && *t.InitiatedBy == userID && len(t.ApprovedBy) == 0 {
-		writeError(w, http.StatusForbidden, "initiator cannot self-approve")
-		return
+	// F23 — block initiator from approving regardless of how many approvals
+	// exist. The initiator is never allowed to count as an approver.
+	if t.InitiatedBy != nil && *t.InitiatedBy == userID {
+		return nil, false, &httpError{code: http.StatusForbidden, msg: "initiator cannot self-approve"}
 	}
+
+	// Snapshot for CAS guard.
+	prevApprovedBy := append([]string(nil), t.ApprovedBy...)
+	prevStatus := t.Status
 
 	// Required approvers — from wallet policy if any, else 1.
 	required := 1
 	if t.WalletID != nil {
-		policies, _ := s.loadPolicies(r.Context(), orgID, nil)
+		policies, _ := s.loadPolicies(ctx, orgID, nil)
 		amt := ""
 		if t.Amount != nil {
 			amt = *t.Amount
@@ -262,24 +340,36 @@ func (s *Server) handleApproveOperation(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
-	t.ApprovedBy = append(t.ApprovedBy, userID)
-	if err := t.Update(); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to approve operation")
-		return
+	finalized := false
+	var tx *db.Transaction
+	err = s.db.ORM.RunInTransaction(ctx, func(txdb orm.DB) error {
+		fresh, gerr := orm.Get[db.Transaction](txdb, opID)
+		if gerr != nil {
+			return &httpError{code: http.StatusNotFound, msg: "operation not found"}
+		}
+		// CAS guard — if ApprovedBy or Status has shifted, back off.
+		if !reflect.DeepEqual(fresh.ApprovedBy, prevApprovedBy) || fresh.Status != prevStatus {
+			return errOperationConflict
+		}
+		fresh.ApprovedBy = append(fresh.ApprovedBy, userID)
+		if len(fresh.ApprovedBy) >= required {
+			detail := fmt.Sprintf("quorum reached: %d/%d approvals", len(fresh.ApprovedBy), required)
+			fresh.RecordTransition("approved", detail, &userID)
+			finalized = true
+		}
+		if uerr := fresh.Update(); uerr != nil {
+			return uerr
+		}
+		tx = fresh
+		return nil
+	})
+	if err != nil {
+		if herr, ok := err.(*httpError); ok {
+			return nil, false, herr
+		}
+		return nil, false, err
 	}
-	if len(t.ApprovedBy) < required {
-		// Threshold not yet reached — remain pending_approval.
-		s.recordMpcAudit(r.Context(), orgID, userID, "operation.approve", "operation", opID)
-		writeJSON(w, http.StatusOK, txToOperation(t))
-		return
-	}
-	detail := fmt.Sprintf("quorum reached: %d/%d approvals", len(t.ApprovedBy), required)
-	t.RecordTransition("approved", detail, &userID)
-	t.Update()
-	go s.signAndBroadcast(opID, orgID)
-
-	s.recordMpcAudit(r.Context(), orgID, userID, "operation.approve", "operation", opID)
-	writeJSON(w, http.StatusOK, txToOperation(t))
+	return tx, finalized, nil
 }
 
 func (s *Server) handleRejectOperation(w http.ResponseWriter, r *http.Request) {
@@ -320,24 +410,33 @@ func (s *Server) handleRejectOperation(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleMpcListAudit(w http.ResponseWriter, r *http.Request) {
 	orgID := getOrgID(r.Context())
 
-	q := orm.TypedQuery[db.AuditEntry](s.db.ORM).
-		Filter("orgId=", orgID).
-		Order("-createdAt")
+	baseQ := func() *orm.ModelQuery[db.AuditEntry] {
+		q := orm.TypedQuery[db.AuditEntry](s.db.ORM).Filter("orgId=", orgID)
+		if walletID := r.URL.Query().Get("walletId"); walletID != "" {
+			q = q.Filter("resourceId=", walletID)
+		}
+		if actor := r.URL.Query().Get("actorId"); actor != "" {
+			q = q.Filter("userId=", actor)
+		}
+		if action := r.URL.Query().Get("action"); action != "" {
+			q = q.Filter("action=", action)
+		}
+		return q
+	}
 
-	if walletID := r.URL.Query().Get("walletId"); walletID != "" {
-		q = q.Filter("resourceId=", walletID)
-	}
-	if actor := r.URL.Query().Get("actorId"); actor != "" {
-		q = q.Filter("userId=", actor)
-	}
-	if action := r.URL.Query().Get("action"); action != "" {
-		q = q.Filter("action=", action)
-	}
 	perPage := parseIntDefault(r.URL.Query().Get("perPage"), 100)
 	page := parseIntDefault(r.URL.Query().Get("page"), 1)
-	q = q.Limit(perPage)
 
-	entries, err := q.GetAll(r.Context())
+	total, err := baseQ().Count(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "database error")
+		return
+	}
+	offset := (page - 1) * perPage
+	if offset < 0 {
+		offset = 0
+	}
+	entries, err := baseQ().Order("-createdAt").Offset(offset).Limit(perPage).GetAll(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "database error")
 		return
@@ -367,7 +466,8 @@ func (s *Server) handleMpcListAudit(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"items":      items,
 		"page":       page,
-		"totalItems": len(items),
+		"perPage":    perPage,
+		"totalItems": total,
 	})
 }
 
