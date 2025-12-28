@@ -3,13 +3,17 @@ package transport
 import (
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/hex"
 	"encoding/pem"
 	"fmt"
 	"math/big"
 	"net"
+	"os"
+	"sync"
 	"time"
 )
 
@@ -80,7 +84,62 @@ func NewServerTLSConfig(nodeID string, privKey ed25519.PrivateKey, pubKey ed2551
 	}, nil
 }
 
+// CertPinStore implements Trust-On-First-Use (TOFU) certificate pinning.
+// On first connection to a peer, the certificate fingerprint (SHA-256 of DER)
+// is stored. Subsequent connections verify the peer cert matches the pinned
+// fingerprint, preventing MitM even with self-signed certificates.
+type CertPinStore struct {
+	mu   sync.RWMutex
+	pins map[string]string // peer address/CN → SHA-256 hex fingerprint
+}
+
+// NewCertPinStore creates a new TOFU certificate pin store.
+func NewCertPinStore() *CertPinStore {
+	return &CertPinStore{pins: make(map[string]string)}
+}
+
+// certFingerprint returns the SHA-256 hex fingerprint of a DER-encoded certificate.
+func certFingerprint(cert *x509.Certificate) string {
+	sum := sha256.Sum256(cert.Raw)
+	return hex.EncodeToString(sum[:])
+}
+
+// VerifyOrPin checks a peer certificate against the pin store.
+// First connection: pins the fingerprint (TOFU). Subsequent: verifies match.
+func (s *CertPinStore) VerifyOrPin(peerID string, cert *x509.Certificate) error {
+	fp := certFingerprint(cert)
+
+	s.mu.RLock()
+	existing, pinned := s.pins[peerID]
+	s.mu.RUnlock()
+
+	if pinned {
+		if existing != fp {
+			return fmt.Errorf("tls: certificate fingerprint mismatch for %s (pinned=%s got=%s) — possible MitM", peerID, existing[:16], fp[:16])
+		}
+		return nil
+	}
+
+	// TOFU: first connection, pin the fingerprint
+	s.mu.Lock()
+	// Double-check after acquiring write lock
+	if existing, pinned = s.pins[peerID]; pinned {
+		s.mu.Unlock()
+		if existing != fp {
+			return fmt.Errorf("tls: certificate fingerprint mismatch for %s (pinned=%s got=%s) — possible MitM", peerID, existing[:16], fp[:16])
+		}
+		return nil
+	}
+	s.pins[peerID] = fp
+	s.mu.Unlock()
+	return nil
+}
+
+// defaultCertPinStore is the process-global TOFU pin store.
+var defaultCertPinStore = NewCertPinStore()
+
 // NewClientTLSConfig creates a TLS 1.3 client config with PQ key exchange.
+// Uses TOFU certificate pinning instead of InsecureSkipVerify.
 func NewClientTLSConfig(nodeID string, privKey ed25519.PrivateKey, pubKey ed25519.PublicKey) (*tls.Config, error) {
 	cert, err := newSelfSignedCert(nodeID, privKey, pubKey)
 	if err != nil {
@@ -97,15 +156,20 @@ func NewClientTLSConfig(nodeID string, privKey ed25519.PrivateKey, pubKey ed2551
 			tls.X25519,
 			tls.CurveP256,
 		},
-		// Accept self-signed certs but verify the peer presented one.
-		// ZAP Ed25519 layer provides the primary authentication; TLS provides
-		// defense-in-depth against passive eavesdropping.
+		// Self-signed certs require skipping the CA chain verification,
+		// but we enforce TOFU pinning in VerifyConnection below.
 		InsecureSkipVerify: true,
 		VerifyConnection: func(cs tls.ConnectionState) error {
 			if len(cs.PeerCertificates) == 0 {
 				return fmt.Errorf("peer did not present a TLS certificate")
 			}
-			return nil
+			// TOFU: pin on first connection, reject mismatches on subsequent.
+			peerCert := cs.PeerCertificates[0]
+			peerID := peerCert.Subject.CommonName
+			if peerID == "" {
+				peerID = cs.ServerName
+			}
+			return defaultCertPinStore.VerifyOrPin(peerID, peerCert)
 		},
 	}, nil
 }
@@ -120,21 +184,27 @@ func ListenTLS(addr string, nodeID string, privKey ed25519.PrivateKey, pubKey ed
 }
 
 // TLSOnlyListener wraps a net.Listener to enforce TLS on all connections.
-// Plaintext connections are rejected immediately. This replaces the former
-// DualModeListener which accepted plaintext as a migration aid. Migration
-// is complete — all MPC nodes must use TLS 1.3.
+// Plaintext connections are rejected immediately. The only exception is when
+// ALLOW_PLAINTEXT=true AND ENVIRONMENT=development are both set, which is
+// intended for local development only.
 type TLSOnlyListener struct {
-	inner     net.Listener
-	tlsConfig *tls.Config
+	inner          net.Listener
+	tlsConfig      *tls.Config
+	allowPlaintext bool
 }
 
 // NewTLSOnlyListener wraps a net.Listener to enforce TLS.
+// Plaintext is only allowed when allowPlaintext is true AND
+// ENVIRONMENT=development. The allowPlaintext parameter should be sourced
+// from the ALLOW_PLAINTEXT env var.
 func NewTLSOnlyListener(inner net.Listener, tlsConfig *tls.Config) net.Listener {
-	return &TLSOnlyListener{inner: inner, tlsConfig: tlsConfig}
+	allowPlaintext := os.Getenv("ALLOW_PLAINTEXT") == "true" && os.Getenv("ENVIRONMENT") == "development"
+	return &TLSOnlyListener{inner: inner, tlsConfig: tlsConfig, allowPlaintext: allowPlaintext}
 }
 
 // NewDualModeListener is a deprecated alias for NewTLSOnlyListener.
-// Retained for compile compatibility; plaintext is no longer accepted.
+// Retained for compile compatibility; plaintext is no longer accepted
+// unless ALLOW_PLAINTEXT=true and ENVIRONMENT=development.
 func NewDualModeListener(inner net.Listener, tlsConfig *tls.Config) net.Listener {
 	return NewTLSOnlyListener(inner, tlsConfig)
 }
@@ -161,7 +231,10 @@ func (l *TLSOnlyListener) Accept() (net.Conn, error) {
 		return tls.Server(pconn, l.tlsConfig), nil
 	}
 
-	// Plaintext connection — reject. Do not accept unencrypted MPC traffic.
+	// Plaintext connection — only allowed in development with explicit opt-in.
+	if l.allowPlaintext {
+		return pconn, nil
+	}
 	conn.Close()
 	return nil, fmt.Errorf("tls-only: rejected plaintext connection from %s", conn.RemoteAddr())
 }
