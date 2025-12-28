@@ -188,7 +188,7 @@ jobs:
       - name: Build for CodeQL
         run: |
           CGO_ENABLED=0 go build -v ./cmd/mpcd
-          CGO_ENABLED=0 go build -v ./cmd/lux-mpc-cli
+          CGO_ENABLED=0 go build -v ./cmd/mpc
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
@@ -229,7 +229,7 @@ jobs:
       - name: Build binaries
         run: |
           CGO_ENABLED=0 go build -o mpcd ./cmd/mpcd
-          CGO_ENABLED=0 go build -o lux-mpc-cli ./cmd/lux-mpc-cli
+          CGO_ENABLED=0 go build -o mpc ./cmd/mpc
 
       - name: Generate SBOM with anchore/sbom-action (SPDX-JSON)
         uses: anchore/sbom-action@v0
@@ -324,5 +324,5 @@ jobs:
       - name: Build mpcd
         run: CGO_ENABLED=0 GOWORK=off go build -mod=vendor -v ./cmd/mpcd
 
-      - name: Build lux-mpc-cli
-        run: CGO_ENABLED=0 GOWORK=off go build -mod=vendor -v ./cmd/lux-mpc-cli
+      - name: Build mpc CLI
+        run: CGO_ENABLED=0 GOWORK=off go build -mod=vendor -v ./cmd/mpc
