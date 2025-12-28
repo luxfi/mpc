@@ -22,7 +22,6 @@ import (
 
 	"github.com/luxfi/mpc/pkg/client"
 	"github.com/luxfi/mpc/pkg/event"
-	"github.com/luxfi/mpc/pkg/kvstore"
 )
 
 const (
@@ -525,10 +524,17 @@ func (s *E2ETestSuite) CheckKeyInAllNodes(t *testing.T, walletID, keyType, keyNa
 			t.Logf("Successfully recovered database for %s", nodeName)
 		}
 
-		kvStore := &kvstore.Store{DB: db}
-
-		// Check if our specific key exists
-		data, err := kvStore.Get(key)
+		// Read directly from badger (test only needs Get + Close, no need
+		// for the full database.Database interface that kvstore.Store requires).
+		var data []byte
+		err = db.View(func(txn *badger.Txn) error {
+			item, err := txn.Get([]byte(key))
+			if err != nil {
+				return err
+			}
+			data, err = item.ValueCopy(nil)
+			return err
+		})
 		if err != nil {
 			t.Logf("Failed to get key %s from node %s: %v", key, nodeName, err)
 		} else if len(data) == 0 {
@@ -537,8 +543,8 @@ func (s *E2ETestSuite) CheckKeyInAllNodes(t *testing.T, walletID, keyType, keyNa
 			t.Logf("Found key %s in node %s (%d bytes)", key, nodeName, len(data))
 		}
 
-		if err := kvStore.Close(); err != nil {
-			t.Logf("Warning: failed to close kvStore for %s: %v", nodeName, err)
+		if err := db.Close(); err != nil {
+			t.Logf("Warning: failed to close database for %s: %v", nodeName, err)
 		}
 	}
 }
