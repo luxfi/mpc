@@ -30,9 +30,7 @@ jobs:
         run: |
           TAG=${GITHUB_REF#refs/tags/}
           IMG=ghcr.io/luxfi/mpc:${TAG}-${{ matrix.arch }}
-          docker build \
-            --build-arg GITHUB_TOKEN=${{ secrets.UNIVERSE_PAT }} \
-            -t $IMG .
+          docker build -t $IMG .
           docker push $IMG
 
   manifest:
