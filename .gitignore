@@ -51,7 +51,6 @@ QWEN.md
 
 # Local prebuilt binaries
 mpcd-linux*
-Dockerfile.prebuilt
 
 # Dashboard build artifacts
 dashboard/tsconfig.tsbuildinfo
