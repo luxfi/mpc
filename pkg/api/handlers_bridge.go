@@ -112,7 +112,8 @@ func (s *Server) handleBridgeSign(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Trigger MPC signing
-	result, err := s.mpc.TriggerSign(mpcWalletID, msgHash)
+	orgID := getOrgID(r.Context())
+	result, err := s.mpc.TriggerSign(orgID, mpcWalletID, msgHash)
 	if err != nil {
 		json.NewEncoder(w).Encode(bridgeSignResponse{Status: false, Msg: "MPC signing failed: " + err.Error()})
 		return
@@ -125,7 +126,6 @@ func (s *Server) handleBridgeSign(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Record the bridge transaction in DB
-	orgID := getOrgID(r.Context())
 	if orgID != "" {
 		now := time.Now()
 		tx := orm.New[db.Transaction](s.db.ORM)

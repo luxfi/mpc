@@ -47,6 +47,7 @@ type eddsaReshareSession struct {
 	config       protocol.KeyGenConfig
 	newThreshold int
 	newNodeIDs   []string
+	orgID        string
 }
 
 // newEdDSAReshareSession creates a new EdDSA reshare session
@@ -61,6 +62,7 @@ func newEdDSAReshareSession(
 	keyinfoStore keyinfo.Store,
 	resultQueue messaging.MessageQueue,
 	selfNodeID string,
+	orgID string,
 ) (*eddsaReshareSession, error) {
 	// Generate session ID for resharing
 	sessionID := fmt.Sprintf("reshare-%s", walletID)
@@ -126,6 +128,7 @@ func newEdDSAReshareSession(
 		protocol:     protocol,
 		newThreshold: newThreshold,
 		newNodeIDs:   newNodeIDs,
+		orgID:        orgID,
 	}
 
 	// Load existing config for old peers
@@ -358,8 +361,8 @@ func (s *eddsaReshareSession) loadConfig(walletID string) (protocol.KeyGenConfig
 		return nil, err
 	}
 
-	// Load the key share data
-	keyShareData, err := s.kvstore.Get(walletID)
+	// Load the key share data using org-scoped key
+	keyShareData, err := GetKeyShareWithFallback(s.kvstore, s.orgID, walletID)
 	if err != nil {
 		return nil, err
 	}
@@ -380,8 +383,9 @@ func (s *eddsaReshareSession) saveConfig(config protocol.KeyGenConfig) error {
 		return fmt.Errorf("failed to serialize config: %w", err)
 	}
 
-	// Save to kvstore
-	if err := s.kvstore.Put(s.walletID, configData); err != nil {
+	// Save to kvstore using org-scoped key
+	storeKey := OrgScopedKey(s.orgID, s.walletID)
+	if err := s.kvstore.Put(storeKey, configData); err != nil {
 		return fmt.Errorf("failed to save share data: %w", err)
 	}
 
