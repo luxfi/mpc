@@ -76,13 +76,13 @@ jobs:
       - name: Build binaries
         run: |
           go build -o lux-mpc ./cmd/lux-mpc
-          go build -o lux-mpc-cli ./cmd/lux-mpc-cli
-          chmod +x lux-mpc lux-mpc-cli
+          go build -o mpc ./cmd/mpc
+          chmod +x lux-mpc mpc
 
       - name: Install binaries
         run: |
           sudo mv lux-mpc /usr/local/bin/
-          sudo mv lux-mpc-cli /usr/local/bin/
+          sudo mv mpc /usr/local/bin/
 
       - name: Install E2E dependencies
         run: |
