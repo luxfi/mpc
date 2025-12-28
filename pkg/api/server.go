@@ -68,7 +68,6 @@ type Server struct {
 	webauthnRPID   string
 	webauthnOrigins map[string]bool
 	router         chi.Router
-	server         *http.Server
 	replayGuard    *replayGuard
 }
 
@@ -84,7 +83,7 @@ func maxBodySize(maxBytes int64) func(http.Handler) http.Handler {
 	}
 }
 
-func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, listenAddr string, oidcIssuers ...string) *Server {
+func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, oidcIssuers ...string) *Server {
 	// Default allowed issuers if none provided
 	if len(oidcIssuers) == 0 {
 		oidcIssuers = []string{
@@ -385,29 +384,8 @@ func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, l
 	s.StartTradeReaper(context.Background(), 60*time.Second)
 
 	s.router = r
-	s.server = &http.Server{
-		Addr:         listenAddr,
-		Handler:      r,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 30 * time.Second,
-		IdleTimeout:  60 * time.Second,
-	}
 
 	return s
-}
-
-// Start begins listening and returns the underlying *http.Server so the caller
-// can orchestrate graceful shutdown via srv.Shutdown(ctx). ListenAndServe runs
-// in a goroutine; its error (if any) is sent on the returned channel.
-func (s *Server) Start() (*http.Server, <-chan error) {
-	errCh := make(chan error, 1)
-	go func() {
-		if err := s.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			errCh <- err
-		}
-		close(errCh)
-	}()
-	return s.server, errCh
 }
 
 // SetHSM configures the server-side HSM provider for intent co-signing.
@@ -426,11 +404,6 @@ func (s *Server) SetTradeApproval(notifier custody.PushNotifier) {
 // Handler returns the underlying http.Handler for mounting on external servers (e.g. Hanzo Base).
 func (s *Server) Handler() http.Handler {
 	return s.router
-}
-
-// Shutdown gracefully drains connections and stops the server.
-func (s *Server) Shutdown(ctx context.Context) error {
-	return s.server.Shutdown(ctx)
 }
 
 const landingHTML = `<!DOCTYPE html>
