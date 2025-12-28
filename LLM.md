@@ -281,6 +281,61 @@ event_initiator_pubkey: "hex-encoded-pubkey"
 - `LUX_MPC_BACKUP` - Backup file identifier
 - `LUX_MPC_MODE` - "consensus" (new) or "legacy" (NATS/Consul)
 
+## /v1/mpc/* Spec Surface (Liquidity MPC API)
+
+The `/v1/mpc/*` subrouter implements the frozen spec at
+`~/work/liquidity/openapi/mpc.yaml`. One and only one canonical path per
+operation — no aliases, no backwards compatibility layers.
+
+Mount point: `pkg/api/server.go` inside the authenticated `/v1` group under
+`r.Route("/mpc", ...)`.
+
+Routes:
+
+- `GET|POST /v1/mpc/wallets`, `GET /v1/mpc/wallets/{id}`, `PATCH
+  /v1/mpc/wallets/{id}/default`, `GET /v1/mpc/wallets/balances`, `POST
+  /v1/mpc/wallets/sweep`, `GET|POST /v1/mpc/wallet`,
+  `GET /v1/mpc/balances/{address}`, `GET /v1/mpc/crypto/wallet/{asset}` —
+  wallet surface (`handlers_mpc.go`).
+- `POST /v1/mpc/sign`, `POST /v1/mpc/settlement/sign` — signing
+  (`handlers_mpc.go`). Rate-limited 20 RPM/IP.
+- `POST /v1/mpc/webauthn/challenge|verify`, `POST /v1/mpc/biometric/enroll`,
+  `GET /v1/mpc/biometric/status` — authenticator flows.
+- `GET|POST /v1/mpc/wallets/{id}/sessions`, `GET|DELETE
+  /v1/mpc/wallets/{id}/sessions/{sessionId}` — sessions
+  (`handlers_sessions.go`). Sessions are time-bounded signing grants with
+  `operationLimit` + `valueLimit` enforced by `consumeSessionForSign`.
+- `GET /v1/mpc/operations`, `GET /v1/mpc/operations/{operationId}`, `POST
+  /v1/mpc/operations/{operationId}/approve|reject` — unified view over
+  `db.Transaction` with `kind ∈ {sign,send,mint,burn,transfer,contract_call}`
+  (`handlers_operations.go`).
+- `GET|POST /v1/mpc/policies`, `GET|PATCH|DELETE
+  /v1/mpc/policies/{policyId}` — spending/approval policies
+  (`handlers_policy.go`).
+- `GET /v1/mpc/audit` — audit trail (`handlers_audit.go`).
+
+### Session enforcement
+
+`db.Session` (ORM-registered as `"mpc-session"`) is a specialized short-lived
+Policy. Every `/sign` and `/settlement/sign` call that carries a `sessionId`
+must transactionally consume one operation + accumulate value via
+`Server.consumeSessionForSign`. Sessions expire on any of:
+
+1. wall-clock expiry (`ExpiresAt`)
+2. operation count exhaustion (`OperationsUsed >= OperationLimit`)
+3. cumulative value exhaustion (`ValueAccum + value > ValueLimit`)
+4. explicit `DELETE` revocation
+
+### Migration notes (Apr 2026)
+
+- `/v1/policies` → `/v1/mpc/policies` (top-level `/v1/policies` removed).
+- `/v1/audit` → `/v1/mpc/audit` (top-level `/v1/audit` removed).
+- `/v1/transactions` POST retained as an **internal** entry point; the read
+  surface is `/v1/mpc/operations`. All `Transaction` records are projected
+  into the `Operation` view via `txType` discriminator.
+- Policy handlers now accept both `{id}` (legacy internal) and `{policyId}`
+  (spec) via `urlParam` fallback — internal callers unaffected.
+
 ## 🔐 Security Model
 
 - **Threshold Security**: No single node has the complete key
