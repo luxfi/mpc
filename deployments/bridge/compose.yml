@@ -1,115 +1,138 @@
-version: '3.8'
+# Legacy bridge deployment -- uses NATS/Consul transport (deprecated).
+# New deployments should use consensus mode (ZAP/PoA p2p).
+# See deployments/customer-3of5/compose.yml for the consensus-mode reference.
 
 services:
-  # NATS messaging system
-  nats:
-    image: nats:2.10-alpine
-    ports:
-      - "4222:4222"
-      - "8222:8222"
-    command: "-js -m 8222"
-    networks:
-      - mpc-network
-    healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "4222"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
+  # DEPRECATED: NATS is only needed for --mode=legacy
+  # nats:
+  #   image: nats:2.10-alpine
+  #   ports:
+  #     - "4222:4222"
+  #     - "8222:8222"
+  #   command: "-js -m 8222"
+  #   networks:
+  #     - mpc-network
+  #   healthcheck:
+  #     test: ["CMD", "nc", "-z", "localhost", "4222"]
+  #     interval: 5s
+  #     timeout: 3s
+  #     retries: 5
 
-  # Consul for service discovery
-  consul:
-    image: consul:1.17
-    ports:
-      - "8500:8500"
-    command: "agent -dev -client=0.0.0.0"
-    networks:
-      - mpc-network
-    healthcheck:
-      test: ["CMD", "consul", "members"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
+  # DEPRECATED: Consul is only needed for --mode=legacy
+  # consul:
+  #   image: consul:1.17
+  #   ports:
+  #     - "8500:8500"
+  #   command: "agent -dev -client=0.0.0.0"
+  #   networks:
+  #     - mpc-network
+  #   healthcheck:
+  #     test: ["CMD", "consul", "members"]
+  #     interval: 5s
+  #     timeout: 3s
+  #     retries: 5
 
-  # Lux MPC Node 0
+  # Lux MPC Node 0 (consensus mode)
   lux-mpc-0:
-    image: luxfi/lux-mpc:latest
-    build:
-      context: ../..
-      dockerfile: Dockerfile
+    image: ghcr.io/luxfi/mpc:latest
+    platform: linux/amd64
+    command:
+      - mpcd
+      - start
+      - --mode=consensus
+      - --node-id=mpc-0
+      - --listen=:9651
+      - --api=:9800
+      - --data=/data/mpc
+      - --keys=/keys
+      - --threshold=2
+      - --peer=mpc-1@lux-mpc-1:9651
+      - --peer=mpc-2@lux-mpc-2:9651
+      - --log-level=info
+      - --hsm-provider=env
     environment:
-      - NODE_ID=node0
-      - NATS_URL=nats://nats:4222
-      - CONSUL_URL=http://consul:8500
-      - DB_PATH=/data/mpc
-      - HTTP_PORT=8080
-      - GRPC_PORT=9090
-      - LOG_LEVEL=debug
+      ZAPDB_PASSWORD: "${ZAPDB_PASSWORD_0}"
     volumes:
       - mpc-data-0:/data
+      - ./keys/mpc-0:/keys:ro
     ports:
-      - "8080:8080"
-      - "9090:9090"
+      - "9800:9800"
     networks:
       - mpc-network
-    depends_on:
-      nats:
-        condition: service_healthy
-      consul:
-        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9800/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
-  # Lux MPC Node 1
+  # Lux MPC Node 1 (consensus mode)
   lux-mpc-1:
-    image: luxfi/lux-mpc:latest
-    build:
-      context: ../..
-      dockerfile: Dockerfile
+    image: ghcr.io/luxfi/mpc:latest
+    platform: linux/amd64
+    command:
+      - mpcd
+      - start
+      - --mode=consensus
+      - --node-id=mpc-1
+      - --listen=:9651
+      - --api=:9800
+      - --data=/data/mpc
+      - --keys=/keys
+      - --threshold=2
+      - --peer=mpc-0@lux-mpc-0:9651
+      - --peer=mpc-2@lux-mpc-2:9651
+      - --log-level=info
+      - --hsm-provider=env
     environment:
-      - NODE_ID=node1
-      - NATS_URL=nats://nats:4222
-      - CONSUL_URL=http://consul:8500
-      - DB_PATH=/data/mpc
-      - HTTP_PORT=8080
-      - GRPC_PORT=9090
-      - LOG_LEVEL=debug
+      ZAPDB_PASSWORD: "${ZAPDB_PASSWORD_1}"
     volumes:
       - mpc-data-1:/data
+      - ./keys/mpc-1:/keys:ro
     ports:
-      - "8081:8080"
-      - "9091:9090"
+      - "9801:9800"
     networks:
       - mpc-network
-    depends_on:
-      nats:
-        condition: service_healthy
-      consul:
-        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9800/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
-  # Lux MPC Node 2
+  # Lux MPC Node 2 (consensus mode)
   lux-mpc-2:
-    image: luxfi/lux-mpc:latest
-    build:
-      context: ../..
-      dockerfile: Dockerfile
+    image: ghcr.io/luxfi/mpc:latest
+    platform: linux/amd64
+    command:
+      - mpcd
+      - start
+      - --mode=consensus
+      - --node-id=mpc-2
+      - --listen=:9651
+      - --api=:9800
+      - --data=/data/mpc
+      - --keys=/keys
+      - --threshold=2
+      - --peer=mpc-0@lux-mpc-0:9651
+      - --peer=mpc-1@lux-mpc-1:9651
+      - --log-level=info
+      - --hsm-provider=env
     environment:
-      - NODE_ID=node2
-      - NATS_URL=nats://nats:4222
-      - CONSUL_URL=http://consul:8500
-      - DB_PATH=/data/mpc
-      - HTTP_PORT=8080
-      - GRPC_PORT=9090
-      - LOG_LEVEL=debug
+      ZAPDB_PASSWORD: "${ZAPDB_PASSWORD_2}"
     volumes:
       - mpc-data-2:/data
+      - ./keys/mpc-2:/keys:ro
     ports:
-      - "8082:8080"
-      - "9092:9090"
+      - "9802:9800"
     networks:
       - mpc-network
-    depends_on:
-      nats:
-        condition: service_healthy
-      consul:
-        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9800/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
 volumes:
   mpc-data-0:
