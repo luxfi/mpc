@@ -1,60 +1,80 @@
+# Minimal local development stack.
+# SQLite is the default storage — no external DB required to start.
+# For production, uncomment postgres and valkey below.
+
 services:
-  postgres:
-    image: ghcr.io/hanzoai/sql:latest
-    environment:
-      POSTGRES_DB: mpc_api
-      POSTGRES_USER: mpc
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U mpc -d mpc_api"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-
-  valkey:
-    image: valkey/valkey:8-alpine
-    ports:
-      - "6379:6379"
-    healthcheck:
-      test: ["CMD", "valkey-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-
   api:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/luxfi/mpc-api:latest
     command: >
       start --mode consensus
-      --api-db postgres://mpc:${POSTGRES_PASSWORD:-changeme}@postgres:5432/mpc_api?sslmode=disable
-      --api-kv valkey:6379
       --api-listen :8081
+      --data /data/mpc
       --jwt-secret ${JWT_SECRET:-dev-jwt-secret-change-in-production}
     ports:
       - "8081:8081"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      valkey:
-        condition: service_healthy
     environment:
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-changeme}
+      - JWT_SECRET=${JWT_SECRET:-dev-jwt-secret-change-in-production}
+    volumes:
+      - mpc-data:/data/mpc
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8081/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
   dashboard:
-    build:
-      context: ./dashboard
-      dockerfile: Dockerfile
+    image: ghcr.io/luxfi/mpc-dashboard:latest
     ports:
       - "3000:3000"
     environment:
       - NEXT_PUBLIC_API_URL=http://localhost:8081/v1
     depends_on:
-      - api
+      api:
+        condition: service_healthy
+
+  ## Production: uncomment to use PostgreSQL instead of SQLite.
+  # postgres:
+  #   image: ghcr.io/hanzoai/sql:latest
+  #   environment:
+  #     POSTGRES_DB: mpc_api
+  #     POSTGRES_USER: mpc
+  #     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+  #   volumes:
+  #     - pgdata:/var/lib/postgresql/data
+  #   ports:
+  #     - "5432:5432"
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U mpc -d mpc_api"]
+  #     interval: 5s
+  #     timeout: 3s
+  #     retries: 5
+
+  ## Production: uncomment to enable Valkey KV cache.
+  # valkey:
+  #   image: valkey/valkey:8-alpine
+  #   ports:
+  #     - "6379:6379"
+  #   healthcheck:
+  #     test: ["CMD", "valkey-cli", "ping"]
+  #     interval: 5s
+  #     timeout: 3s
+  #     retries: 5
+
+  ## When using postgres+valkey, change api command to:
+  # api:
+  #   command: >
+  #     start --mode consensus
+  #     --api-db postgres://mpc:${POSTGRES_PASSWORD}@postgres:5432/mpc_api?sslmode=disable
+  #     --api-kv valkey:6379
+  #     --api-listen :8081
+  #     --data /data/mpc
+  #     --jwt-secret ${JWT_SECRET}
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     valkey:
+  #       condition: service_healthy
 
 volumes:
-  pgdata:
+  mpc-data:
+  # pgdata:  # uncomment for production postgres
