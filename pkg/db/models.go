@@ -435,7 +435,7 @@ type DeviceEnrollment struct {
 func init() { orm.Register[DeviceEnrollment]("device-enrollment") }
 
 // PendingTrade represents a trade awaiting user biometric approval before the
-// ATS shard co-signs. The trade is recorded in PostgreSQL; the MPC signing only
+// ATS shard co-signs. The trade is recorded in the database; the MPC signing only
 // happens after the user approves via Face ID / Touch ID on their device.
 //
 // Status flow: pending_approval → approved → signing → signed → settled
