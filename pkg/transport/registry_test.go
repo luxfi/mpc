@@ -5,7 +5,11 @@
 // returned HTTP 503 because ArePeersReady() reported false (not all peers
 // connected), even though 2 nodes were sufficient to form a 2-of-3 signing
 // quorum. The fix added HasSigningQuorum(threshold) which is true when
-// readyCount >= threshold+1 (CGGMP21/FROST signers-required count).
+// readyCount >= threshold, where threshold uses the operator-facing
+// "minimum signers required" semantics (matches the LiquidMPC CRD
+// `threshold` field and mpcd --threshold CLI flag).
+//
+// For a 2-of-3 ensemble threshold=2; for 3-of-5 threshold=3.
 package transport
 
 import (
@@ -47,28 +51,28 @@ func markPeerDisconnected(r *Registry, peerID string) {
 }
 
 // Test_HasSigningQuorum_3Node_2of3 — the Scientist repro.
-// 3 nodes total, threshold=1 (i.e. 2-of-3: need 2 signers = threshold+1).
+// 3 nodes total, operator threshold=2 (2-of-3: 2 signers required).
 // Kill 1 peer → 2 ready (self + 1). Must still report quorum.
 func Test_HasSigningQuorum_3Node_2of3(t *testing.T) {
 	r := newTestRegistry("node0", []string{"node0", "node1", "node2"})
-	threshold := 1 // "2-of-3" in CGGMP21 semantics (signers = threshold+1 = 2)
+	threshold := 2 // 2-of-3: 2 signers required
 
-	// Bootstrap: only self ready.
+	// Bootstrap: only self ready (1 of 2 needed).
 	if r.HasSigningQuorum(threshold) {
-		t.Fatal("alone: 1 peer ready, threshold=1, required=2 — expected no quorum")
+		t.Fatal("alone: 1 peer ready, threshold=2 — expected no quorum")
 	}
 
 	// Peer 1 joins → 2 ready. Should form quorum.
 	markPeerReady(r, "node1")
 	if !r.HasSigningQuorum(threshold) {
-		t.Fatalf("2 ready, threshold=1, required=2 — expected quorum, got none. readyCount=%d",
+		t.Fatalf("2 ready, threshold=2 — expected quorum, got none. readyCount=%d",
 			r.GetReadyPeersCount())
 	}
 
 	// Peer 2 joins → 3 ready. Still quorum (no regression).
 	markPeerReady(r, "node2")
 	if !r.HasSigningQuorum(threshold) {
-		t.Fatalf("3 ready, threshold=1 — expected quorum")
+		t.Fatalf("3 ready, threshold=2 — expected quorum")
 	}
 
 	// Peer 2 disconnects → back to 2 ready. This is the Scientist repro:
@@ -78,21 +82,21 @@ func Test_HasSigningQuorum_3Node_2of3(t *testing.T) {
 		t.Fatalf("after peer disconnect expected readyCount=2, got %d", got)
 	}
 	if !r.HasSigningQuorum(threshold) {
-		t.Fatal("REGRESSION (Scientist P0-1): 2 ready, threshold=1 — quorum lost on single peer loss")
+		t.Fatal("REGRESSION (Scientist P0-1): 2 ready, threshold=2 — quorum lost on single peer loss")
 	}
 
 	// Peer 1 also disconnects → 1 ready. Now we genuinely have no quorum.
 	markPeerDisconnected(r, "node1")
 	if r.HasSigningQuorum(threshold) {
-		t.Fatal("1 ready alone, threshold=1, required=2 — expected no quorum")
+		t.Fatal("1 ready alone, threshold=2 — expected no quorum")
 	}
 }
 
 // Test_HasSigningQuorum_5Node_3of5 — larger ensemble.
-// 5 nodes, threshold=2 (3-of-5: signers = threshold+1 = 3).
+// 5 nodes, operator threshold=3 (3-of-5: 3 signers required).
 func Test_HasSigningQuorum_5Node_3of5(t *testing.T) {
 	r := newTestRegistry("node0", []string{"node0", "node1", "node2", "node3", "node4"})
-	threshold := 2
+	threshold := 3
 
 	// 1 ready (self only) — no quorum.
 	if r.HasSigningQuorum(threshold) {
@@ -108,20 +112,20 @@ func Test_HasSigningQuorum_5Node_3of5(t *testing.T) {
 	// 3 ready — exactly at required. Quorum.
 	markPeerReady(r, "node2")
 	if !r.HasSigningQuorum(threshold) {
-		t.Fatalf("3 ready, threshold=2, required=3 — expected quorum, got none. readyCount=%d",
+		t.Fatalf("3 ready, threshold=3 — expected quorum, got none. readyCount=%d",
 			r.GetReadyPeersCount())
 	}
 
 	// 4 ready — above required. Quorum.
 	markPeerReady(r, "node3")
 	if !r.HasSigningQuorum(threshold) {
-		t.Fatal("4 ready, threshold=2 — expected quorum")
+		t.Fatal("4 ready, threshold=3 — expected quorum")
 	}
 
 	// 5 ready — all ready. Quorum AND ArePeersReady would be true if transport set it.
 	markPeerReady(r, "node4")
 	if !r.HasSigningQuorum(threshold) {
-		t.Fatal("5 ready, threshold=2 — expected quorum")
+		t.Fatal("5 ready, threshold=3 — expected quorum")
 	}
 
 	// Two simultaneous failures → 3 ready. Still quorum (no regression).
@@ -131,13 +135,13 @@ func Test_HasSigningQuorum_5Node_3of5(t *testing.T) {
 		t.Fatalf("after 2 disconnects expected readyCount=3, got %d", got)
 	}
 	if !r.HasSigningQuorum(threshold) {
-		t.Fatal("3 ready after 2 failures, threshold=2 — expected quorum")
+		t.Fatal("3 ready after 2 failures, threshold=3 — expected quorum")
 	}
 
 	// Third failure → 2 ready. Quorum lost (correctly).
 	markPeerDisconnected(r, "node2")
 	if r.HasSigningQuorum(threshold) {
-		t.Fatal("2 ready, threshold=2, required=3 — expected NO quorum (f-1 tolerance exceeded)")
+		t.Fatal("2 ready, threshold=3 — expected NO quorum (f-1 tolerance exceeded)")
 	}
 }
 
@@ -146,13 +150,13 @@ func Test_HasSigningQuorum_5Node_3of5(t *testing.T) {
 // HasSigningQuorum is the relaxed check used by /healthz.
 func Test_HasSigningQuorum_ArePeersReady_Decoupled(t *testing.T) {
 	r := newTestRegistry("node0", []string{"node0", "node1", "node2"})
-	threshold := 1
+	threshold := 2
 
 	// Two peers ready, one missing. HasSigningQuorum=true, ArePeersReady=false.
 	markPeerReady(r, "node1")
 
 	if !r.HasSigningQuorum(threshold) {
-		t.Fatal("expected quorum with 2 of 3 ready")
+		t.Fatal("expected quorum with 2 of 3 ready and threshold=2")
 	}
 
 	// ArePeersReady derives from r.ready which is set via checkPeerConnections;
@@ -164,21 +168,30 @@ func Test_HasSigningQuorum_ArePeersReady_Decoupled(t *testing.T) {
 }
 
 // Test_HasSigningQuorum_BoundaryCheck covers the exact threshold arithmetic
-// to pin the semantics: required = threshold + 1, NOT threshold.
+// to pin the semantics: required = threshold (the operator-facing minimum
+// signers required), NOT threshold+1.
 func Test_HasSigningQuorum_BoundaryCheck(t *testing.T) {
 	cases := []struct {
-		name        string
-		readyCount  int64
-		threshold   int
-		wantQuorum  bool
+		name       string
+		readyCount int64
+		threshold  int
+		wantQuorum bool
 	}{
+		// threshold<=0 is a degenerate config — treat as "any live node is fine".
 		{"threshold=0, ready=0 → no quorum (need >=1)", 0, 0, false},
-		{"threshold=0, ready=1 → quorum (single-party sign)", 1, 0, true},
-		{"threshold=1, ready=1 → no quorum (need >=2)", 1, 1, false},
-		{"threshold=1, ready=2 → quorum", 2, 1, true},
-		{"threshold=2, ready=2 → no quorum (need >=3)", 2, 2, false},
+		{"threshold=0, ready=1 → quorum (degenerate)", 1, 0, true},
+		{"threshold=-1, ready=1 → quorum (degenerate)", 1, -1, true},
+		// 2-of-3 (threshold=2) boundary.
+		{"threshold=2, ready=1 → no quorum", 1, 2, false},
+		{"threshold=2, ready=2 → quorum (2-of-3 survives 1 failure)", 2, 2, true},
 		{"threshold=2, ready=3 → quorum", 3, 2, true},
-		{"threshold=2, ready=4 → quorum", 4, 2, true},
+		// 3-of-5 (threshold=3) boundary.
+		{"threshold=3, ready=2 → no quorum", 2, 3, false},
+		{"threshold=3, ready=3 → quorum (3-of-5 survives 2 failures)", 3, 3, true},
+		{"threshold=3, ready=5 → quorum", 5, 3, true},
+		// Larger ensembles.
+		{"threshold=4, ready=3 → no quorum", 3, 4, false},
+		{"threshold=4, ready=4 → quorum", 4, 4, true},
 	}
 
 	for _, tc := range cases {
