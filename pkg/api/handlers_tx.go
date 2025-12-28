@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -196,7 +197,9 @@ func (s *Server) handleApproveTransaction(w http.ResponseWriter, r *http.Request
 	}
 
 	if len(tx.ApprovedBy) >= requiredApprovers {
-		tx.Status = "approved"
+		tx.RecordTransition("approved",
+			fmt.Sprintf("quorum reached: %d/%d approvals", len(tx.ApprovedBy), requiredApprovers),
+			&userID)
 		if err := tx.Update(); err == nil {
 			go s.signAndBroadcast(txID, orgID)
 		}
@@ -225,7 +228,7 @@ func (s *Server) handleRejectTransaction(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	tx.Status = "rejected"
+	tx.RecordTransition("rejected", fmt.Sprintf("rejected: %s", req.Reason), &userID)
 	tx.RejectedBy = nilIfEmpty(userID)
 	tx.RejectionReason = nilIfEmpty(req.Reason)
 	if err := tx.Update(); err != nil {
