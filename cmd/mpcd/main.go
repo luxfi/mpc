@@ -29,6 +29,8 @@ import (
 	"github.com/urfave/cli/v3"
 	"golang.org/x/term"
 
+	"github.com/hanzoai/base"
+	"github.com/hanzoai/base/core"
 	"github.com/luxfi/hsm"
 
 	mpcapi "github.com/luxfi/mpc/pkg/api"
@@ -73,8 +75,8 @@ func main() {
 					&cli.StringFlag{
 						Name:    "mode",
 						Aliases: []string{"m"},
-						Usage:   "Transport mode: 'legacy' (NATS/Consul) or 'consensus' (ZAP/PoA)",
-						Value:   "legacy",
+						Usage:   "Transport mode: 'consensus' (ZAP/PoA) or 'legacy' (NATS/Consul, deprecated)",
+						Value:   "consensus",
 					},
 					// Consensus mode flags
 					&cli.StringFlag{
@@ -182,10 +184,11 @@ func main() {
 				},
 				Action: func(ctx context.Context, c *cli.Command) error {
 					mode := c.String("mode")
-					if mode == "consensus" {
-						return runNodeConsensus(ctx, c)
+					if mode == "legacy" {
+						logger.Warn("Legacy mode (NATS/Consul) is deprecated and will be removed in a future release. Migrate to --mode=consensus.")
+						return runNode(ctx, c)
 					}
-					return runNode(ctx, c)
+					return runNodeConsensus(ctx, c)
 				},
 			},
 			{
@@ -243,6 +246,7 @@ func main() {
 	}
 }
 
+// Deprecated: runNode uses legacy NATS/Consul transport. Use runNodeConsensus (--mode=consensus) instead.
 func runNode(ctx context.Context, c *cli.Command) error {
 	nodeName := c.String("name")
 	decryptPrivateKey := c.Bool("decrypt-private-key")
@@ -584,6 +588,7 @@ func NewConsulClient(addr string) *api.Client {
 	return consulClient
 }
 
+// Deprecated: LoadPeersFromConsul is used by legacy mode only.
 func LoadPeersFromConsul(consulClient *api.Client) []config.Peer { // Create a Consul Key-Value store client
 	kv := consulClient.KV()
 	peers, err := config.LoadPeersFromConsul(kv, "mpc_peers/")
@@ -672,6 +677,7 @@ func StartPeriodicBackup(ctx context.Context, zapKV *kvstore.Store, periodSecond
 	return backupCancel
 }
 
+// Deprecated: GetNATSConnection is used by legacy mode only.
 func GetNATSConnection(environment string) (*nats.Conn, error) {
 	url := viper.GetString("nats.url")
 	opts := []nats.Option{
@@ -1055,7 +1061,7 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 					threshold:    threshold,
 				}
 
-				apiServer := mpcapi.NewServer(database, mpcBackend, jwtSecret, apiListenAddr)
+				apiServer := mpcapi.NewServer(database, mpcBackend, jwtSecret)
 				apiServer.StartScheduler(ctx)
 
 				// Wire HSM signer for intent co-signing
@@ -1079,14 +1085,23 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 					)
 				}
 
-				logger.Info("Dashboard API server starting", "addr", apiListenAddr)
-				_, apiErrCh := apiServer.Start()
+				// Mount chi handler on Base
+				os.Args = []string{"mpcd", "serve", "--http", apiListenAddr}
+				baseApp := base.New()
+				baseApp.OnServe().BindFunc(func(e *core.ServeEvent) error {
+					e.Router.Any("/{path...}", func(re *core.RequestEvent) error {
+						apiServer.Handler().ServeHTTP(re.Response, re.Request)
+						return nil
+					})
+					return e.Next()
+				})
+
+				logger.Info("Dashboard API starting (Base)", "addr", apiListenAddr)
 				go func() {
-					if err := <-apiErrCh; err != nil {
+					if err := baseApp.Start(); err != nil {
 						logger.Error("Dashboard API server failed", err)
 					}
 				}()
-				defer apiServer.Shutdown(context.Background())
 
 				logger.Info("Dashboard API ready", "addr", apiListenAddr)
 			}
@@ -1751,7 +1766,7 @@ func runAPIOnly(ctx context.Context, c *cli.Command) error {
 		logger.Warn("API-only mode: no MPC_CLUSTER_URL set, MPC operations will fail")
 	}
 
-	apiServer := mpcapi.NewServer(database, mpcBackend, jwtSecret, listenAddr)
+	apiServer := mpcapi.NewServer(database, mpcBackend, jwtSecret)
 	apiServer.StartScheduler(ctx)
 
 	// Wire HSM signer for intent co-signing
@@ -1767,25 +1782,24 @@ func runAPIOnly(ctx context.Context, c *cli.Command) error {
 		logger.Info("HSM signer configured for co-signing", "provider", signer.Provider())
 	}
 
-	_, apiErrCh := apiServer.Start()
-	logger.Info("Dashboard API ready", "addr", listenAddr)
+	// Mount chi handler on Base
+	os.Args = []string{"mpcd", "serve", "--http", listenAddr}
+	baseApp := base.New()
+	baseApp.OnServe().BindFunc(func(e *core.ServeEvent) error {
+		e.Router.Any("/{path...}", func(re *core.RequestEvent) error {
+			apiServer.Handler().ServeHTTP(re.Response, re.Request)
+			return nil
+		})
+		return e.Next()
+	})
 
-	// Wait for shutdown signal or server error
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	logger.Info("Dashboard API starting (Base)", "addr", listenAddr)
 
-	select {
-	case sig := <-sigChan:
-		logger.Warn("Shutdown signal received", "signal", sig)
-	case err := <-apiErrCh:
-		if err != nil {
-			return fmt.Errorf("API server failed: %w", err)
-		}
+	// Base owns the process lifecycle (blocks until shutdown)
+	if err := baseApp.Start(); err != nil {
+		return fmt.Errorf("API server failed: %w", err)
 	}
-
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	return apiServer.Shutdown(shutdownCtx)
+	return nil
 }
 
 // stubMPCBackend returns errors for MPC operations when no cluster URL is configured.
