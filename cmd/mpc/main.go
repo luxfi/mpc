@@ -16,7 +16,7 @@ const (
 
 func main() {
 	cmd := &cli.Command{
-		Name:  "mpc-cli",
+		Name:  "mpc",
 		Usage: "MPC node management tools",
 		Commands: []*cli.Command{
 			{
@@ -154,7 +154,7 @@ func main() {
 				Name:  "version",
 				Usage: "Display detailed version information",
 				Action: func(ctx context.Context, c *cli.Command) error {
-					fmt.Printf("mpc-cli version %s\n", VERSION)
+					fmt.Printf("mpc version %s\n", VERSION)
 					return nil
 				},
 			},
