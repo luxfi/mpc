@@ -172,8 +172,8 @@ func (s *Server) handleProposeSafeTx(w http.ResponseWriter, r *http.Request) {
 		To        string `json:"to"`
 		Value     string `json:"value"`
 		Data      string `json:"data,omitempty"`
-		Operation int    `json:"operation"`   // 0=Call, 1=DelegateCall
-		ChainID   int64  `json:"chain_id"`    // EVM chain ID for EIP-712
+		Operation int    `json:"operation"` // 0=Call, 1=DelegateCall
+		ChainID   int64  `json:"chain_id"`  // EVM chain ID for EIP-712
 		Nonce     int    `json:"nonce"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -245,10 +245,10 @@ func (s *Server) handleProposeSafeTx(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusCreated, map[string]any{
-		"transaction":   tx,
-		"safe_tx_hash":  fmt.Sprintf("0x%x", txHash),
-		"signature_r":   signResult.R,
-		"signature_s":   signResult.S,
+		"transaction":  tx,
+		"safe_tx_hash": fmt.Sprintf("0x%x", txHash),
+		"signature_r":  signResult.R,
+		"signature_s":  signResult.S,
 	})
 }
 

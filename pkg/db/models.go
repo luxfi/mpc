@@ -103,15 +103,15 @@ func init() { orm.Register[Transaction]("transaction") }
 // Policy is a signing policy rule.
 type Policy struct {
 	orm.Model[Policy]
-	OrgID             string  `json:"orgId"`
-	VaultID           *string `json:"vaultId,omitempty"`
-	Name              string  `json:"name"`
-	Priority          int     `json:"priority"`
-	Action            string  `json:"action"`
-	Conditions        []byte  `json:"conditions"`
-	RequiredApprovers int     `json:"requiredApprovers"`
+	OrgID             string   `json:"orgId"`
+	VaultID           *string  `json:"vaultId,omitempty"`
+	Name              string   `json:"name"`
+	Priority          int      `json:"priority"`
+	Action            string   `json:"action"`
+	Conditions        []byte   `json:"conditions"`
+	RequiredApprovers int      `json:"requiredApprovers"`
 	ApproverRoles     []string `json:"approverRoles"`
-	Enabled           bool    `json:"enabled"`
+	Enabled           bool     `json:"enabled"`
 }
 
 func init() { orm.Register[Policy]("policy") }
