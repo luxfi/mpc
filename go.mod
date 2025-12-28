@@ -138,4 +138,6 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
+// agl/ed25519 has no packages at the upstream module path; redirect to our fork.
+// Required by decred/dcrd/dcrec/edwards/v2 (all versions). Cannot remove until upstream fixes.
 replace github.com/agl/ed25519 => github.com/luxfi/edwards25519 v0.0.0-20200305024217-f36fc4b53d43
