@@ -8,35 +8,24 @@ import (
 	ormdb "github.com/hanzoai/orm/db"
 )
 
-// Database holds the ORM entity store. SQLite backs local dev + tests;
-// production deployments use postgres (hanzoai/sql). Both satisfy orm.DB so
-// handlers are backend-agnostic. Serializable CAS is implemented in handlers
-// via orm.RunInTransactionWith(IsolationSerializable); SQLite already
-// serializes writes via its write-mutex, postgres honors the isolation.
+// Database holds the ORM entity store. SQLite is the only backend — the
+// driver-level write mutex plus BEGIN IMMEDIATE gives us serializable
+// writes across goroutines in a single process. For multi-process
+// deployments the same file is accessed through the reserved-lock path,
+// which is enough for the MPC dashboard's control-plane workload.
 type Database struct {
 	ORM orm.DB
 }
 
-// New creates a Database. dsn selects the backend:
+// New creates a Database. dsn selects the SQLite location:
 //
 //	""                    → sqlite ./mpc.db
 //	"sqlite://path"       → sqlite at path
 //	"path.db"             → sqlite at path (legacy)
-//	"postgres://…"        → postgres via pgx
-//	"postgresql://…"      → postgres via pgx (alias)
 //
 // The second positional argument is kept for call-site compatibility and is
 // ignored (it used to configure a KV sidecar that no longer exists).
 func New(dsn, _ string) (*Database, error) {
-	switch {
-	case strings.HasPrefix(dsn, "postgres://"), strings.HasPrefix(dsn, "postgresql://"):
-		sqlDB, err := ormdb.NewSQLDB(&ormdb.SQLConfig{DSN: dsn})
-		if err != nil {
-			return nil, fmt.Errorf("postgres: %w", err)
-		}
-		return &Database{ORM: orm.AdaptDB(sqlDB)}, nil
-	}
-
 	path := "mpc.db"
 	switch {
 	case dsn == "":
@@ -46,7 +35,7 @@ func New(dsn, _ string) (*Database, error) {
 	case strings.HasSuffix(dsn, ".db"):
 		path = dsn
 	default:
-		return nil, fmt.Errorf("unsupported DSN: %q (use sqlite:// or postgres:// or .db path)", dsn)
+		return nil, fmt.Errorf("unsupported DSN: %q (use sqlite:// or a .db path)", dsn)
 	}
 
 	sqliteDB, err := ormdb.NewSQLiteDB(&ormdb.SQLiteDBConfig{Path: path})
