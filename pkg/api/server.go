@@ -2,6 +2,8 @@ package api
 
 import (
 	"context"
+	"crypto/ed25519"
+	"encoding/base64"
 	"net/http"
 	"os"
 	"strings"
@@ -67,6 +69,11 @@ type Server struct {
 	oidcIssuers    []string
 	webauthnRPID   string
 	webauthnOrigins map[string]bool
+	// secureGatePubKey is the Ed25519 verifying key used to validate
+	// SecureGate (or any other configured PAD-2 liveness provider) attestations
+	// attached to /v1/mpc/biometric/enroll. Nil disables the endpoint.
+	secureGatePubKey     ed25519.PublicKey
+	secureGateProviderID string
 	router         chi.Router
 	replayGuard    *replayGuard
 
@@ -126,16 +133,33 @@ func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, o
 		Database: database,
 	})
 
+	// SecureGate liveness attestation verifier. Configure via:
+	//
+	//   MPC_SECUREGATE_PUBKEY_ED25519  — base64-standard Ed25519 public key
+	//   MPC_SECUREGATE_PROVIDER_ID     — optional provider id lock (e.g. "securegate")
+	//
+	// Without the pubkey configured, /v1/mpc/biometric/enroll refuses every
+	// request. This is deliberate: an unconfigured verifier MUST NOT fall
+	// back to trusting body-supplied liveness scores.
+	var sgKey ed25519.PublicKey
+	if raw := os.Getenv("MPC_SECUREGATE_PUBKEY_ED25519"); raw != "" {
+		if dec, err := base64.StdEncoding.DecodeString(raw); err == nil && len(dec) == ed25519.PublicKeySize {
+			sgKey = ed25519.PublicKey(dec)
+		}
+	}
+
 	s := &Server{
-		db:              database,
-		mpc:             mpcBackend,
-		txTracker:       tracker,
-		jwtSecret:       []byte(jwtSecret),
-		oidcIssuers:     oidcIssuers,
-		webauthnRPID:    rpID,
-		webauthnOrigins: webauthnOrigins,
-		replayGuard:     newReplayGuard(),
-		Events:          NewEventBus(),
+		db:                   database,
+		mpc:                  mpcBackend,
+		txTracker:            tracker,
+		jwtSecret:            []byte(jwtSecret),
+		oidcIssuers:          oidcIssuers,
+		webauthnRPID:         rpID,
+		webauthnOrigins:      webauthnOrigins,
+		secureGatePubKey:     sgKey,
+		secureGateProviderID: os.Getenv("MPC_SECUREGATE_PROVIDER_ID"),
+		replayGuard:          newReplayGuard(),
+		Events:               NewEventBus(),
 	}
 
 	// CORS origins — Lux infrastructure only. Tenants add via MPC_CORS_ORIGINS env.
@@ -254,11 +278,11 @@ func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, o
 
 			// Transactions (legacy create/approve/reject plumbing kept as
 			// it is the substrate for the unified /v1/mpc/operations view).
-			// The read surface for operations moves to /v1/mpc/operations
-			// below; direct POST /v1/transactions retained as internal entry
-			// point for intents/payments which wire their own flows.
+			// The read surface for operations is /v1/mpc/operations below;
+			// direct POST /v1/transactions retained as internal entry point
+			// for intents/payments which wire their own flows.
 			r.Group(func(r chi.Router) {
-				r.Use(requireRole("owner", "admin", "signer", "api"))
+				r.Use(requireRoleOrAPIPermission([]string{"owner", "admin", "signer"}, "mpc:transactions:create"))
 				r.Post("/transactions", s.handleCreateTransaction)
 			})
 
@@ -284,7 +308,7 @@ func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, o
 			r.Get("/subscriptions", s.handleListSubscriptions)
 			r.Get("/subscriptions/{id}", s.handleGetSubscription)
 			r.Group(func(r chi.Router) {
-				r.Use(requireRole("owner", "admin", "signer", "api"))
+				r.Use(requireRoleOrAPIPermission([]string{"owner", "admin", "signer"}, "mpc:subscriptions:write"))
 				r.Post("/subscriptions", s.handleCreateSubscription)
 				r.Patch("/subscriptions/{id}", s.handleUpdateSubscription)
 				r.Delete("/subscriptions/{id}", s.handleDeleteSubscription)
@@ -295,7 +319,7 @@ func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, o
 			r.Get("/payment-requests", s.handleListPaymentRequests)
 			r.Get("/payment-requests/{id}", s.handleGetPaymentRequest)
 			r.Group(func(r chi.Router) {
-				r.Use(requireRole("owner", "admin", "signer", "api"))
+				r.Use(requireRoleOrAPIPermission([]string{"owner", "admin", "signer"}, "mpc:payment-requests:write"))
 				r.Post("/payment-requests", s.handleCreatePaymentRequest)
 				r.Post("/payment-requests/{id}/pay", s.handlePayPaymentRequest)
 			})
@@ -308,7 +332,7 @@ func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, o
 				r.Post("/wallets/{id}/smart-wallet", s.handleDeploySmartWallet)
 			})
 			r.Group(func(r chi.Router) {
-				r.Use(requireRole("owner", "admin", "signer", "api"))
+				r.Use(requireRoleOrAPIPermission([]string{"owner", "admin", "signer"}, "mpc:smart-wallets:write"))
 				r.Post("/smart-wallets/{id}/propose", s.handleProposeSafeTx)
 				r.Post("/smart-wallets/{id}/execute", s.handleExecuteSafeTx)
 				r.Post("/smart-wallets/{id}/user-operation", s.handleUserOperation)
@@ -333,7 +357,7 @@ func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, o
 			// Submit requires signer+ (ATS service account); approve/reject require the trade owner
 			r.Get("/trade/pending", s.handlePendingTrades)
 			r.Group(func(r chi.Router) {
-				r.Use(requireRole("owner", "admin", "signer", "api"))
+				r.Use(requireRoleOrAPIPermission([]string{"owner", "admin", "signer"}, "mpc:trade:write"))
 				r.Post("/trade/submit", s.handleTradeSubmit)
 				r.Post("/trade/approve", s.handleTradeApprove)
 				r.Post("/trade/reject", s.handleTradeReject)
@@ -345,7 +369,7 @@ func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, o
 			r.Get("/settlements", s.handleListSettlements)
 			r.Get("/settlements/{id}", s.handleGetSettlement)
 			r.Group(func(r chi.Router) {
-				r.Use(requireRole("owner", "admin", "signer", "api"))
+				r.Use(requireRoleOrAPIPermission([]string{"owner", "admin", "signer"}, "mpc:sign"))
 				r.Use(RateLimitMiddleware(20)) // signing rate limit: 20 RPM per IP
 				r.Post("/intents", s.handleCreateIntent)
 				r.Post("/intents/{id}/sign", s.handleSignIntent)
@@ -391,10 +415,12 @@ func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, o
 				r.Get("/balances/{address}", s.handleMpcBalancesByAddress)
 				r.Get("/crypto/wallet/{asset}", s.handleMpcCryptoWallet)
 
-				// Signing — F15: require role + F1: session mandatory (enforced in handler)
-				r.With(requireRole("owner", "admin", "signer", "api"), RateLimitMiddleware(20)).
+				// Signing — R2-3: "api" role must additionally carry the
+				// concrete permission; a bare API key with permissions=[] is
+				// no longer sufficient.
+				r.With(requireRoleOrAPIPermission([]string{"owner", "admin", "signer"}, "mpc:sign"), RateLimitMiddleware(20)).
 					Post("/sign", s.handleMpcSignDefault)
-				r.With(requireRole("owner", "admin", "signer", "api"), RateLimitMiddleware(20)).
+				r.With(requireRoleOrAPIPermission([]string{"owner", "admin", "signer"}, "mpc:settlement:sign"), RateLimitMiddleware(20)).
 					Post("/settlement/sign", s.handleMpcSignSettlement)
 
 				// WebAuthn (spec-named aliases to the existing handlers)
@@ -416,9 +442,9 @@ func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, o
 				// Operations (unified view over Transaction)
 				r.Get("/operations", s.handleListOperations)
 				r.Get("/operations/{operationId}", s.handleGetOperation)
-				r.With(requireRole("owner", "admin", "signer", "api")).
+				r.With(requireRoleOrAPIPermission([]string{"owner", "admin", "signer"}, "mpc:operations:approve")).
 					Post("/operations/{operationId}/approve", s.handleApproveOperation)
-				r.With(requireRole("owner", "admin", "signer", "api")).
+				r.With(requireRoleOrAPIPermission([]string{"owner", "admin", "signer"}, "mpc:operations:approve")).
 					Post("/operations/{operationId}/reject", s.handleRejectOperation)
 
 				// Policies — owner/admin
