@@ -20,8 +20,9 @@ ENV GONOSUMCHECK=*
 ENV GONOSUMDB=*
 
 WORKDIR /app
-COPY go.mod go.sum ./
-RUN GONOSUMCHECK='*' GONOSUMDB='*' GOFLAGS='-mod=mod' go mod download
+COPY go.mod ./
+RUN GONOSUMCHECK='*' GONOSUMDB='*' go mod download
+COPY go.sum ./
 COPY . .
 COPY --from=ui /ui/dist ./ui/dist/
 
