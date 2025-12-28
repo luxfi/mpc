@@ -17,7 +17,6 @@ require (
 	github.com/hanzoai/kv-go/v9 v9.18.0
 	github.com/hanzoai/orm v0.3.2
 	github.com/hashicorp/consul/api v1.33.7
-	github.com/jackc/pgx/v5 v5.9.1
 	github.com/luxfi/crypto v1.17.45
 	github.com/luxfi/database v1.17.44
 	github.com/luxfi/fhe v1.7.7
@@ -81,6 +80,7 @@ require (
 	github.com/holiman/uint256 v1.3.2 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
+	github.com/jackc/pgx/v5 v5.9.1 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/klauspost/compress v1.18.5 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
