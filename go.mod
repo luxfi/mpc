@@ -31,7 +31,7 @@ require (
 	github.com/luxfi/crypto v1.17.45
 	github.com/luxfi/database v1.17.44
 	github.com/luxfi/fhe v1.7.7
-	github.com/luxfi/hsm v1.1.1
+	github.com/luxfi/hsm v1.1.2
 	github.com/luxfi/log v1.4.1
 	github.com/luxfi/metric v1.5.1
 	github.com/luxfi/threshold v1.6.0
