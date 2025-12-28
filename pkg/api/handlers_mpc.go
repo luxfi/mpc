@@ -11,10 +11,12 @@ package api
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -25,6 +27,14 @@ import (
 	"github.com/luxfi/mpc/pkg/db"
 	"github.com/luxfi/mpc/pkg/webauthn"
 )
+
+// logBiometricBindingWarning records a structured warning when the R3-8
+// envelope→enrollment binding was weak (e.g. Signer has not yet shipped
+// the extended envelope and the server is running in LAX mode). Never fires
+// in STRICT mode — those calls are rejected outright.
+func (s *Server) logBiometricBindingWarning(orgID, userID, msg string) {
+	log.Printf("mpc.biometric.binding_warn org=%s user=%s msg=%q", orgID, userID, msg)
+}
 
 var errUnknownEncoding = errors.New("unknown encoding (must be hex|base64)")
 
@@ -648,24 +658,47 @@ func (s *Server) handleBiometricEnroll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify the server-signed liveness attestation. Fails closed.
-	const minLivenessScore = 0.8
-	if _, err := webauthn.VerifyLiveness(req.LivenessAttestation, &webauthn.LivenessOpts{
-		PubKey:     s.signerPubKey,
-		ProviderID: s.signerProviderID,
-		UserID:     userID,
-		MinScore:   minLivenessScore,
-		MaxAge:     2 * time.Minute,
-	}); err != nil {
-		writeError(w, http.StatusForbidden, "liveness attestation rejected")
-		return
-	}
-
 	// Atomically consume the WebAuthnCredential challenge row and capture the
-	// random challenge bytes we sent.
+	// random challenge bytes we sent. We do this BEFORE liveness verification
+	// so we have the challenge bytes to bind the attestation against (R3-8).
 	chalBytes, ok, err := s.consumeBiometricChallenge(r.Context(), orgID, userID, req.CredentialID)
 	if err != nil || !ok {
 		writeError(w, http.StatusForbidden, "invalid or expired challenge")
+		return
+	}
+
+	// R3-8: compute the credentialHash and challengeID the envelope must
+	// bind to. Signer signs these into the attestation so a stolen
+	// envelope cannot be replayed to enroll an attacker-controlled key.
+	pubKeyBytes, decErr := base64.StdEncoding.DecodeString(req.PublicKey)
+	if decErr != nil {
+		writeError(w, http.StatusBadRequest, "invalid publicKey encoding")
+		return
+	}
+	credentialHashRaw := sha256.Sum256(pubKeyBytes)
+	expectedCredentialHash := base64.StdEncoding.EncodeToString(credentialHashRaw[:])
+	expectedChallengeID := base64.RawURLEncoding.EncodeToString(chalBytes)
+
+	// Verify the server-signed liveness attestation. Fails closed.
+	// Binding mode default = Strict; an operator may relax to Lax during
+	// the Signer rollout window by setting MPC_LIVENESS_BINDING=lax.
+	// The relaxed mode still warns on every call so the rollout progress
+	// is observable in logs.
+	const minLivenessScore = 0.8
+	if _, err := webauthn.VerifyLiveness(req.LivenessAttestation, &webauthn.LivenessOpts{
+		PubKey:                 s.signerPubKey,
+		ProviderID:             s.signerProviderID,
+		UserID:                 userID,
+		MinScore:               minLivenessScore,
+		MaxAge:                 2 * time.Minute,
+		ExpectedCredentialHash: expectedCredentialHash,
+		ExpectedChallengeID:    expectedChallengeID,
+		BindingMode:            s.livenessBindingMode,
+		WarnFn: func(msg string) {
+			s.logBiometricBindingWarning(orgID, userID, msg)
+		},
+	}); err != nil {
+		writeError(w, http.StatusForbidden, "liveness attestation rejected")
 		return
 	}
 
