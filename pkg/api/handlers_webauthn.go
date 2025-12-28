@@ -50,7 +50,7 @@ func (s *Server) handleRegisterWebAuthnBegin(w http.ResponseWriter, r *http.Requ
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"challenge": base64.URLEncoding.EncodeToString(challenge),
 		"rp": map[string]string{
-			"id":   "lux.network",
+			"id":   s.webauthnRPID,
 			"name": "Lux MPC",
 		},
 		"user": map[string]string{
@@ -123,8 +123,8 @@ func (s *Server) handleRegisterWebAuthnComplete(w http.ResponseWriter, r *http.R
 		return
 	}
 	// Validate origin matches expected RP
-	if cd.Origin != "https://lux.network" && cd.Origin != "https://mpc.lux.network" {
-		writeError(w, http.StatusBadRequest, "origin mismatch: expected lux.network, got "+cd.Origin)
+	if !s.webauthnOrigins[cd.Origin] {
+		writeError(w, http.StatusBadRequest, "origin mismatch: "+cd.Origin+" is not an allowed WebAuthn origin")
 		return
 	}
 	if cd.Type != "webauthn.create" {
@@ -228,8 +228,8 @@ func (s *Server) handleVerifyWebAuthn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Validate origin to prevent relay attacks
-	if cd.Origin != "https://lux.network" && cd.Origin != "https://mpc.lux.network" {
-		writeError(w, http.StatusBadRequest, "origin mismatch: expected lux.network")
+	if !s.webauthnOrigins[cd.Origin] {
+		writeError(w, http.StatusBadRequest, "origin mismatch: "+cd.Origin+" is not an allowed WebAuthn origin")
 		return
 	}
 	if cd.Type != "webauthn.get" {
