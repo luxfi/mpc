@@ -1,0 +1,24 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Lux-side manifests only. Customer deploys customer-nodes.yaml separately
+# in their own cluster.
+
+namespace: lux-mpc-customer
+
+resources:
+  - namespace.yaml
+  - lux-nodes.yaml
+  - kms.yaml
+  - ingress.yaml
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: lux-mpc
+      app.kubernetes.io/component: customer-3of5
+
+images:
+  - name: ghcr.io/luxfi/mpc
+    newTag: latest
+  - name: ghcr.io/luxfi/kms
+    newTag: latest
