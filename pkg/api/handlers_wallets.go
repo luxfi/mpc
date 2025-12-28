@@ -184,7 +184,25 @@ func (s *Server) handleReshareWallet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]string{"status": "reshare_complete"})
+	// After reshare, invalidate all existing backup shards. The old key share
+	// material is now stale — backups encrypted with the old shard are useless.
+	// The user must create a new backup with the reshared key material.
+	activeBackups, _ := orm.TypedQuery[db.WalletBackup](s.db.ORM).
+		Filter("orgId=", orgID).
+		Filter("walletId=", walletID).
+		Filter("status=", "active").
+		GetAll(r.Context())
+	for _, backup := range activeBackups {
+		backup.Status = "invalidated_by_reshare"
+		backup.Update()
+	}
+
+	s.writeSigningAuditLog(r.Context(), orgID, wallet.WalletID, "", "", "reshare")
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"status":              "reshare_complete",
+		"backups_invalidated": len(activeBackups),
+		"action_required":     "create new wallet backup with updated key share",
+	})
 }
 
 func (s *Server) handleWalletHistory(w http.ResponseWriter, r *http.Request) {
