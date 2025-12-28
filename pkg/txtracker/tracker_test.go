@@ -15,12 +15,12 @@ import (
 // --- Mock RPC client ---
 
 type mockRPC struct {
-	mu            sync.Mutex
-	receipt       *Receipt
-	blockNumber   int64
-	revertReason  string
-	receiptCalls  int
-	blockCalls    int
+	mu           sync.Mutex
+	receipt      *Receipt
+	blockNumber  int64
+	revertReason string
+	receiptCalls int
+	blockCalls   int
 }
 
 func (m *mockRPC) GetTransactionReceipt(_ context.Context, _ string) (*Receipt, error) {

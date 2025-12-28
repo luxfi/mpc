@@ -13,12 +13,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/luxfi/zapdb/v4"
-	"github.com/luxfi/zapdb/v4/options"
 	"github.com/hashicorp/consul/api"
 	"github.com/luxfi/mpc/pkg/client"
 	"github.com/luxfi/mpc/pkg/event"
 	"github.com/luxfi/mpc/pkg/kvstore"
+	badger "github.com/luxfi/zapdb/v4"
+	"github.com/luxfi/zapdb/v4/options"
 	"github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v2"
@@ -39,9 +39,9 @@ type TestConfig struct {
 	} `yaml:"consul"`
 	MPCThreshold         int    `yaml:"mpc_threshold"`
 	Environment          string `yaml:"environment"`
-	ZapDBPassword       string `yaml:"zapdb_password"`
+	ZapDBPassword        string `yaml:"zapdb_password"`
 	EventInitiatorPubkey string `yaml:"event_initiator_pubkey"`
-	MPCVersion        string `yaml:"mpc_version"`
+	MPCVersion           string `yaml:"mpc_version"`
 	MaxConcurrentKeygen  int    `yaml:"max_concurrent_keygen"`
 	DbPath               string `yaml:"db_path"`
 }
