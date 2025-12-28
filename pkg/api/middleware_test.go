@@ -190,6 +190,55 @@ func TestRequireRole_NoRoleInContext(t *testing.T) {
 	}
 }
 
+// R2-3: requireRoleOrAPIPermission must admit human roles on their role
+// alone, but require API-key callers to carry the explicit permission. A
+// bare "api" role with permissions=[] must be rejected.
+func TestRequireRoleOrAPIPermission(t *testing.T) {
+	called := false
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	})
+	gate := requireRoleOrAPIPermission([]string{"owner", "admin", "signer"}, "mpc:sign")
+
+	run := func(name, role string, perms []string, wantCode int) {
+		t.Helper()
+		called = false
+		req := httptest.NewRequest(http.MethodPost, "/sign", nil)
+		ctx := context.WithValue(req.Context(), ctxRole, role)
+		if perms != nil {
+			ctx = context.WithValue(ctx, ctxPermissions, perms)
+		}
+		req = req.WithContext(ctx)
+		rec := httptest.NewRecorder()
+		gate(inner).ServeHTTP(rec, req)
+		if rec.Code != wantCode {
+			t.Errorf("%s: status=%d want=%d body=%s", name, rec.Code, wantCode, rec.Body.String())
+		}
+	}
+
+	// Human roles pass without any permission check.
+	run("owner passes", "owner", nil, http.StatusOK)
+	run("admin passes", "admin", nil, http.StatusOK)
+	run("signer passes", "signer", nil, http.StatusOK)
+
+	// API key with the right permission passes.
+	run("api+mpc:sign passes", "api", []string{"mpc:sign"}, http.StatusOK)
+
+	// API key with `*` wildcard passes (backwards-compat superkey).
+	run("api+* passes", "api", []string{"*"}, http.StatusOK)
+
+	// Bare API key without the permission — R2-3 regression.
+	run("api+no-perms rejected", "api", []string{}, http.StatusForbidden)
+	run("api+wrong-perm rejected", "api", []string{"sign"}, http.StatusForbidden)
+
+	// Unknown role rejected.
+	run("guest rejected", "guest", nil, http.StatusForbidden)
+	run("empty rejected", "", nil, http.StatusForbidden)
+
+	_ = called
+}
+
 func TestRequireRole_MultipleAllowed(t *testing.T) {
 	called := false
 	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
