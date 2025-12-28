@@ -119,20 +119,27 @@ func ListenTLS(addr string, nodeID string, privKey ed25519.PrivateKey, pubKey ed
 	return tls.Listen("tcp", addr, tlsConfig)
 }
 
-// DualModeListener accepts both TLS and plaintext connections by sniffing the
-// first byte. TLS records start with 0x16 (ContentType handshake). This enables
-// rolling upgrades where some peers are TLS-enabled and others aren't yet.
-type DualModeListener struct {
+// TLSOnlyListener wraps a net.Listener to enforce TLS on all connections.
+// Plaintext connections are rejected immediately. This replaces the former
+// DualModeListener which accepted plaintext as a migration aid. Migration
+// is complete — all MPC nodes must use TLS 1.3.
+type TLSOnlyListener struct {
 	inner     net.Listener
 	tlsConfig *tls.Config
 }
 
-// NewDualModeListener wraps a net.Listener to auto-detect TLS vs plaintext.
-func NewDualModeListener(inner net.Listener, tlsConfig *tls.Config) net.Listener {
-	return &DualModeListener{inner: inner, tlsConfig: tlsConfig}
+// NewTLSOnlyListener wraps a net.Listener to enforce TLS.
+func NewTLSOnlyListener(inner net.Listener, tlsConfig *tls.Config) net.Listener {
+	return &TLSOnlyListener{inner: inner, tlsConfig: tlsConfig}
 }
 
-func (l *DualModeListener) Accept() (net.Conn, error) {
+// NewDualModeListener is a deprecated alias for NewTLSOnlyListener.
+// Retained for compile compatibility; plaintext is no longer accepted.
+func NewDualModeListener(inner net.Listener, tlsConfig *tls.Config) net.Listener {
+	return NewTLSOnlyListener(inner, tlsConfig)
+}
+
+func (l *TLSOnlyListener) Accept() (net.Conn, error) {
 	conn, err := l.inner.Accept()
 	if err != nil {
 		return nil, err
@@ -143,7 +150,7 @@ func (l *DualModeListener) Accept() (net.Conn, error) {
 	n, err := conn.Read(peek)
 	if err != nil || n == 0 {
 		conn.Close()
-		return nil, fmt.Errorf("dual-mode: failed to peek: %w", err)
+		return nil, fmt.Errorf("tls-only: failed to peek: %w", err)
 	}
 
 	// Prepend the peeked byte back
@@ -154,12 +161,13 @@ func (l *DualModeListener) Accept() (net.Conn, error) {
 		return tls.Server(pconn, l.tlsConfig), nil
 	}
 
-	// Plaintext connection — pass through
-	return pconn, nil
+	// Plaintext connection — reject. Do not accept unencrypted MPC traffic.
+	conn.Close()
+	return nil, fmt.Errorf("tls-only: rejected plaintext connection from %s", conn.RemoteAddr())
 }
 
-func (l *DualModeListener) Close() error   { return l.inner.Close() }
-func (l *DualModeListener) Addr() net.Addr { return l.inner.Addr() }
+func (l *TLSOnlyListener) Close() error   { return l.inner.Close() }
+func (l *TLSOnlyListener) Addr() net.Addr { return l.inner.Addr() }
 
 // prependConn prepends buffered bytes before the underlying connection data.
 type prependConn struct {
