@@ -101,9 +101,8 @@ func (s *Server) handleRegisterWebAuthnComplete(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	// In production, fully verify the attestation object.
-	// For now, store the credential public key from the attestation.
-	// The clientDataJSON contains the challenge we sent — verify it matches.
+	// Verify clientDataJSON and extract the actual P-256 public key
+	// from the attestation object instead of storing the raw attestation.
 	clientData, err := base64.URLEncoding.DecodeString(req.Response.ClientDataJSON)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid clientDataJSON")
@@ -123,10 +122,36 @@ func (s *Server) handleRegisterWebAuthnComplete(w http.ResponseWriter, r *http.R
 		writeError(w, http.StatusBadRequest, "challenge mismatch")
 		return
 	}
+	// Validate origin matches expected RP
+	if cd.Origin != "https://lux.network" && cd.Origin != "https://mpc.lux.network" {
+		writeError(w, http.StatusBadRequest, "origin mismatch: expected lux.network, got "+cd.Origin)
+		return
+	}
+	if cd.Type != "webauthn.create" {
+		writeError(w, http.StatusBadRequest, "invalid ceremony type: expected webauthn.create")
+		return
+	}
 
-	// Update credential record
+	// Extract uncompressed P-256 public key from the attestation object.
+	// The client MUST send the extracted COSE public key as base64, not the raw attestation.
+	// If the client sends the raw attestation, this will reject it — forcing proper key extraction.
+	extractedPubKey := req.Response.AttestationObject
+	pubBytes, pubErr := base64.StdEncoding.DecodeString(extractedPubKey)
+	if pubErr != nil || len(pubBytes) < 65 || pubBytes[0] != 0x04 {
+		writeError(w, http.StatusBadRequest, "attestation must contain base64-encoded uncompressed P-256 public key (65 bytes, 0x04 prefix); extract the COSE key from the attestation object client-side")
+		return
+	}
+	// Verify it's a valid P-256 point
+	testX := new(big.Int).SetBytes(pubBytes[1:33])
+	testY := new(big.Int).SetBytes(pubBytes[33:65])
+	if !elliptic.P256().IsOnCurve(testX, testY) {
+		writeError(w, http.StatusBadRequest, "public key is not a valid P-256 point")
+		return
+	}
+
+	// Update credential record with validated P-256 public key
 	cred.WebAuthnID = req.ID
-	cred.PublicKey = req.Response.AttestationObject // Store full attestation for later verification
+	cred.PublicKey = extractedPubKey // Base64-encoded uncompressed P-256 point (65 bytes)
 	cred.Status = "active"
 	if req.DeviceName != "" {
 		cred.DeviceName = &req.DeviceName
@@ -198,7 +223,19 @@ func (s *Server) handleVerifyWebAuthn(w http.ResponseWriter, r *http.Request) {
 		Origin    string `json:"origin"`
 		Type      string `json:"type"`
 	}
-	json.Unmarshal(clientData, &cd)
+	if err := json.Unmarshal(clientData, &cd); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid clientDataJSON structure")
+		return
+	}
+	// Validate origin to prevent relay attacks
+	if cd.Origin != "https://lux.network" && cd.Origin != "https://mpc.lux.network" {
+		writeError(w, http.StatusBadRequest, "origin mismatch: expected lux.network")
+		return
+	}
+	if cd.Type != "webauthn.get" {
+		writeError(w, http.StatusBadRequest, "invalid ceremony type: expected webauthn.get")
+		return
+	}
 
 	// The challenge should be SHA256(tx_id) to bind the biometric to the specific transaction
 	expectedChallenge := sha256.Sum256([]byte(req.TxID))
@@ -217,20 +254,19 @@ func (s *Server) handleVerifyWebAuthn(w http.ResponseWriter, r *http.Request) {
 	signedData := append(authData, clientDataHash[:]...)
 	signedHash := sha256.Sum256(signedData)
 
-	// Verify ES256 signature against stored public key
-	pubKeyBytes, _ := base64.StdEncoding.DecodeString(creds[0].PublicKey)
-	if len(pubKeyBytes) >= 65 {
-		// Uncompressed P-256 public key: 0x04 || x (32) || y (32)
-		x := new(big.Int).SetBytes(pubKeyBytes[1:33])
-		y := new(big.Int).SetBytes(pubKeyBytes[33:65])
-		pubKey := &ecdsa.PublicKey{Curve: elliptic.P256(), X: x, Y: y}
-		if !ecdsa.VerifyASN1(pubKey, signedHash[:], sig) {
-			writeError(w, http.StatusUnauthorized, "invalid biometric signature")
-			return
-		}
+	// Always verify ES256 signature. Reject if public key can't be parsed.
+	pubKeyBytes, decErr := base64.StdEncoding.DecodeString(creds[0].PublicKey)
+	if decErr != nil || len(pubKeyBytes) < 65 || pubKeyBytes[0] != 0x04 {
+		writeError(w, http.StatusUnauthorized, "stored credential has invalid public key; re-register the WebAuthn credential")
+		return
 	}
-	// If we can't parse the key (e.g., it's an attestation object), allow for now
-	// and rely on the WebAuthn credential being registered to this user.
+	x := new(big.Int).SetBytes(pubKeyBytes[1:33])
+	y := new(big.Int).SetBytes(pubKeyBytes[33:65])
+	pubKey := &ecdsa.PublicKey{Curve: elliptic.P256(), X: x, Y: y}
+	if !ecdsa.VerifyASN1(pubKey, signedHash[:], sig) {
+		writeError(w, http.StatusUnauthorized, "invalid biometric signature")
+		return
+	}
 
 	// Biometric verified — now approve the transaction (same logic as handleApproveTransaction)
 	tx, err := orm.Get[db.Transaction](s.db.ORM, req.TxID)
@@ -273,6 +309,8 @@ func (s *Server) handleVerifyWebAuthn(w http.ResponseWriter, r *http.Request) {
 		if err := tx.Update(); err == nil {
 			go s.signAndBroadcast(tx.Id(), orgID)
 			signed = true
+			// Audit log the signing trigger
+			s.writeSigningAuditLog(r.Context(), orgID, strFromPtr(tx.WalletID), req.TxID, tx.Id(), "webauthn_verify")
 		}
 	}
 

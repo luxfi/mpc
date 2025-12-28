@@ -66,10 +66,10 @@ func TestGetKeyShareWithFallback_M1_CrossTenantLeak(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, orgShare, got)
 
-	// Empty orgID still returns legacy key (backward compat for unscoped callers)
-	got, err = GetKeyShareWithFallback(store, "", "wallet123")
-	require.NoError(t, err)
-	assert.Equal(t, legacyShare, got)
+	// K-1 fix: Empty orgID is now REJECTED (no backward compat for unscoped callers)
+	_, err = GetKeyShareWithFallback(store, "", "wallet123")
+	require.Error(t, err, "empty orgID must be rejected")
+	assert.Contains(t, err.Error(), "orgID is required")
 }
 
 func TestGetKeyShareWithFallback_OrgScopedNotFound(t *testing.T) {
