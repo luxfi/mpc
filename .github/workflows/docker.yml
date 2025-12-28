@@ -9,13 +9,48 @@ permissions:
   packages: write
 
 jobs:
-  docker:
-    uses: hanzoai/.github/.github/workflows/docker-build.yml@main
-    with:
-      image: ghcr.io/luxfi/mpc
-      build-args: |
-        GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
-    secrets: inherit
+  build:
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          IMG=ghcr.io/luxfi/mpc:${TAG}-${{ matrix.arch }}
+          docker build \
+            --build-arg GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }} \
+            -t $IMG .
+          docker push $IMG
+
+  manifest:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create manifest
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          IMG=ghcr.io/luxfi/mpc
+          docker manifest create $IMG:$TAG \
+            $IMG:${TAG}-amd64 \
+            $IMG:${TAG}-arm64
+          docker manifest push $IMG:$TAG
 
   notify:
     needs: docker
