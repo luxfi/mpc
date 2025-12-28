@@ -221,7 +221,7 @@ func (s *E2ETestSuite) RegisterPeers(t *testing.T) {
 	nodeDir := filepath.Join(s.testDir, "test_node0")
 	cmd := exec.Command("lux-mpc-cli", "register-peers")
 	cmd.Dir = nodeDir
-	cmd.Env = append(os.Environ(), "LUX_MPC_CONFIG=config.yaml")
+	cmd.Env = append(os.Environ(), "MPC_CONFIG=config.yaml")
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -277,7 +277,7 @@ func (s *E2ETestSuite) StartNodes(t *testing.T) {
 		// Start node process
 		cmd := exec.Command("lux-mpc", "start", "-n", nodeName)
 		cmd.Dir = nodeDir
-		cmd.Env = append(os.Environ(), "LUX_MPC_CONFIG=config.yaml")
+		cmd.Env = append(os.Environ(), "MPC_CONFIG=config.yaml")
 
 		// Create log files for stdout and stderr
 		logDir := filepath.Join(s.testDir, "logs")
