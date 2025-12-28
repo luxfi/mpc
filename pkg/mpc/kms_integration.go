@@ -24,7 +24,7 @@ type KMSEnabledKVStore struct {
 
 // NewKMSEnabledKVStore creates a new KMS-enabled KV store
 func NewKMSEnabledKVStore(store kvstore.KVStore, nodeID string) (*KMSEnabledKVStore, error) {
-	// Try to initialize Lux KMS integration
+	// Try to initialize KMS integration
 	kmsConfig := kms.KMSConfig{
 		ClientID:     viper.GetString("kms.client_id"),
 		ClientSecret: viper.GetString("kms.client_secret"),
@@ -46,7 +46,7 @@ func NewKMSEnabledKVStore(store kvstore.KVStore, nodeID string) (*KMSEnabledKVSt
 		if environment != "" && environment != "development" {
 			logger.Fatal("KMS project ID is required in production — refusing to store key shares unencrypted", nil)
 		}
-		logger.Warn("No Lux KMS project ID configured, falling back to regular storage (development only)")
+		logger.Warn("No KMS project ID configured, falling back to regular storage (development only)")
 		return &KMSEnabledKVStore{
 			KVStore: store,
 			enabled: false,
@@ -56,16 +56,16 @@ func NewKMSEnabledKVStore(store kvstore.KVStore, nodeID string) (*KMSEnabledKVSt
 	kmsClient, err := kms.NewKMSClient(kmsConfig)
 	if err != nil {
 		if environment != "" && environment != "development" {
-			logger.Fatal("Failed to initialize Lux KMS in production — refusing to store key shares unencrypted", err)
+			logger.Fatal("Failed to initialize KMS in production — refusing to store key shares unencrypted", err)
 		}
-		logger.Warn("Failed to initialize Lux KMS integration, falling back to regular storage (development only)", "error", err)
+		logger.Warn("Failed to initialize KMS integration, falling back to regular storage (development only)", "error", err)
 		return &KMSEnabledKVStore{
 			KVStore: store,
 			enabled: false,
 		}, nil
 	}
 
-	logger.Info("Lux KMS integration enabled for secure key storage")
+	logger.Info("KMS integration enabled for secure key storage")
 	return &KMSEnabledKVStore{
 		KVStore:   store,
 		kmsClient: kmsClient,
@@ -94,14 +94,14 @@ func (k *KMSEnabledKVStore) Put(key string, value []byte) error {
 			}
 		}
 
-		// Store in Lux KMS
+		// Store in KMS
 		ctx := context.Background()
 		if err := k.kmsClient.StoreKeyShare(ctx, key, value); err != nil {
 			environment := os.Getenv("ENVIRONMENT")
 			if environment != "" && environment != "development" {
-				logger.Fatal("Failed to store key share in Lux KMS (production) — refusing unencrypted fallback", err)
+				logger.Fatal("Failed to store key share in KMS (production) — refusing unencrypted fallback", err)
 			}
-			logger.Error("Failed to store key share in Lux KMS, falling back to regular storage (development only)", err, "walletID", key)
+			logger.Error("Failed to store key share in KMS, falling back to regular storage (development only)", err, "walletID", key)
 			return k.KVStore.Put(key, value)
 		}
 
@@ -136,12 +136,12 @@ func (k *KMSEnabledKVStore) Get(key string) ([]byte, error) {
 	var reference map[string]string
 	if err := json.Unmarshal(data, &reference); err == nil {
 		if reference["storage"] == "kms" {
-			// Retrieve from Lux KMS
+			// Retrieve from KMS
 			ctx := context.Background()
 			share, err := k.kmsClient.RetrieveKeyShare(ctx, key)
 			if err != nil {
-				logger.Error("Failed to retrieve key share from Lux KMS", err, "walletID", key)
-				return nil, fmt.Errorf("failed to retrieve from Lux KMS: %w", err)
+				logger.Error("Failed to retrieve key share from KMS", err, "walletID", key)
+				return nil, fmt.Errorf("failed to retrieve from KMS: %w", err)
 			}
 			return share, nil
 		}
@@ -160,15 +160,15 @@ func (k *KMSEnabledKVStore) Delete(key string) error {
 			var reference map[string]string
 			if err := json.Unmarshal(data, &reference); err == nil {
 				if reference["storage"] == "kms" {
-					// Delete the key share from Lux KMS
+					// Delete the key share from KMS
 					ctx := context.Background()
 					if delErr := k.kmsClient.DeleteKeyShare(ctx, key); delErr != nil {
-						logger.Warn("Failed to delete key share from Lux KMS, continuing with local delete",
+						logger.Warn("Failed to delete key share from KMS, continuing with local delete",
 							"key", key,
 							"err", delErr,
 						)
 					} else {
-						logger.Info("Deleted key share from Lux KMS", "key", key)
+						logger.Info("Deleted key share from KMS", "key", key)
 					}
 				}
 			}

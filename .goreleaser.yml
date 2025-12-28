@@ -24,9 +24,9 @@ builds:
       - -X main.date={{.Date}}
       - -X main.builtBy=goreleaser
 
-  - id: lux-mpc-cli
-    main: ./cmd/lux-mpc-cli
-    binary: lux-mpc-cli
+  - id: mpc
+    main: ./cmd/mpc
+    binary: mpc
     env:
       - CGO_ENABLED=0
     goos:
@@ -106,7 +106,7 @@ dockers:
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
       - "--label=org.opencontainers.image.version={{.Version}}"
       - "--label=org.opencontainers.image.source={{.GitURL}}"
-      - "--label=org.opencontainers.image.description=Lux MPC - Threshold Signature Service"
+      - "--label=org.opencontainers.image.description=MPC - Threshold Signature Service"
       - "--label=org.opencontainers.image.licenses=MIT"
   - image_templates:
       - "luxfi/mpc:{{ .Tag }}-arm64"
@@ -121,7 +121,7 @@ dockers:
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
       - "--label=org.opencontainers.image.version={{.Version}}"
       - "--label=org.opencontainers.image.source={{.GitURL}}"
-      - "--label=org.opencontainers.image.description=Lux MPC - Threshold Signature Service"
+      - "--label=org.opencontainers.image.description=MPC - Threshold Signature Service"
       - "--label=org.opencontainers.image.licenses=MIT"
 
 docker_manifests:
@@ -149,7 +149,7 @@ nfpms:
     homepage: https://github.com/luxfi/mpc
     maintainer: Lux Development Team <dev@lux.network>
     description: |-
-      Lux MPC - Multi-Party Computation Threshold Signature Service
+      MPC - Multi-Party Computation Threshold Signature Service
       Supporting both ECDSA (CMP/CGGMP21) and EdDSA (FROST) protocols
     license: MIT
     formats:
