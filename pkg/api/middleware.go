@@ -174,3 +174,22 @@ func nilIfEmpty(s string) *string {
 	}
 	return &s
 }
+
+// Dedicated signing audit log — records every MPC signing operation
+// with wallet ID, message hash, intent ID, and trigger source.
+func (s *Server) writeSigningAuditLog(ctx context.Context, orgID, walletID, messageHash, intentID, trigger string) {
+	entry := orm.New[db.AuditEntry](s.db.ORM)
+	entry.OrgID = orgID
+	entry.Action = "mpc.sign"
+	resType := "wallet"
+	entry.ResourceType = &resType
+	entry.ResourceID = &walletID
+	details, _ := json.Marshal(map[string]string{
+		"wallet_id":    walletID,
+		"message_hash": messageHash,
+		"intent_id":    intentID,
+		"trigger":      trigger,
+	})
+	entry.Details = details
+	entry.Create()
+}
