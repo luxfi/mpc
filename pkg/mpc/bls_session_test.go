@@ -168,6 +168,7 @@ func TestBLSKeygenSessionCreation(t *testing.T) {
 		nil, // keyinfoStore
 		nil, // resultQueue
 		nil, // identityStore
+		"",  // orgID
 	)
 
 	require.NotNil(t, session)
@@ -190,7 +191,7 @@ func TestBLSKeygenSessionIsDealer(t *testing.T) {
 		party.ID("node-a"),
 		partyIDs,
 		2,
-		nil, nil, nil, nil,
+		nil, nil, nil, nil, "",
 	)
 	assert.True(t, sessionA.isDealer())
 
@@ -201,7 +202,7 @@ func TestBLSKeygenSessionIsDealer(t *testing.T) {
 		party.ID("node-b"),
 		partyIDs,
 		2,
-		nil, nil, nil, nil,
+		nil, nil, nil, nil, "",
 	)
 	assert.False(t, sessionB.isDealer())
 
@@ -212,7 +213,7 @@ func TestBLSKeygenSessionIsDealer(t *testing.T) {
 		party.ID("node-c"),
 		partyIDs,
 		2,
-		nil, nil, nil, nil,
+		nil, nil, nil, nil, "",
 	)
 	assert.False(t, sessionC.isDealer())
 }
