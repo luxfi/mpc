@@ -62,7 +62,7 @@ func main() {
 		Commands: []*cli.Command{
 			{
 				Name:  "start",
-				Usage: "Start a Lux MPC node",
+				Usage: "Start an MPC node",
 				Flags: []cli.Flag{
 					&cli.StringFlag{
 						Name:  "node-id",

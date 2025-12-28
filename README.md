@@ -1,4 +1,4 @@
-# Lux MPC
+# MPC
 
 Threshold signing engine -- CGGMP21 (ECDSA), FROST (EdDSA), BLS, and SR25519. No full private key reconstruction, ever.
 

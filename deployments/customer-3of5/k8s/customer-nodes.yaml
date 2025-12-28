@@ -2,7 +2,7 @@
 #
 # This manifest is a TEMPLATE for the customer to deploy in their own
 # infrastructure. Customer modifies the peer addresses to point to the
-# Lux MPC nodes' public endpoint.
+# MPC nodes' public endpoint.
 #
 # Customer must:
 #   1. Run init.sh to generate their Ed25519 identity keys

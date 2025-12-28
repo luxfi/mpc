@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document outlines the strategy for replacing the Rust-based MPC implementation in the Lux Bridge with the new Go-based Lux MPC implementation.
+This document outlines the strategy for replacing the Rust-based MPC implementation in the Lux Bridge with the new Go-based MPC implementation.
 
 ## Current Architecture Analysis
 
@@ -29,7 +29,7 @@ The bridge currently uses **KZen's multi-party-ecdsa** (v0.8.1) Rust library:
 
 4. **Storage**: Files on disk (`keys.store`)
 
-### Lux MPC Implementation (Go)
+### MPC Implementation (Go)
 The new implementation uses **Lux's threshold** (v2.0.2) Go library:
 
 #### Key Components:
@@ -50,7 +50,7 @@ The new implementation uses **Lux's threshold** (v2.0.2) Go library:
 
 ## Architecture Differences
 
-| Component | Bridge (Rust) | Lux MPC (Go) |
+| Component | Bridge (Rust) | MPC (Go) |
 |-----------|---------------|--------------|
 | Protocol | GG18 | CGG21 |
 | Language | Rust + Node.js wrapper | Pure Go |
@@ -82,7 +82,7 @@ type BridgeCompatServer struct {
 // POST /api/v1/generate_mpc_sig
 func (s *BridgeCompatServer) GenerateMPCSig(w http.ResponseWriter, r *http.Request) {
     // Parse bridge request format
-    // Convert to Lux MPC signing request
+    // Convert to MPC signing request
     // Return response in bridge format
 }
 
@@ -109,7 +109,7 @@ func ConvertKZenKeyToTSSLib(kzenKeyPath string) (*ecdsa.LocalPartySaveData, erro
 ```
 
 ### Phase 3: Docker Integration
-Update bridge deployment to use Lux MPC:
+Update bridge deployment to use MPC:
 
 ```yaml
 # docker-compose.yaml
@@ -124,11 +124,11 @@ services:
       - mpc-data-0:/data
     ports:
       - "6000:6000"  # Bridge compatibility API
-      - "8080:8080"  # Lux MPC API
+      - "8080:8080"  # MPC API
 ```
 
 ### Phase 4: Gradual Rollout
-1. **Test Environment**: Deploy Lux MPC alongside existing Rust nodes
+1. **Test Environment**: Deploy MPC alongside existing Rust nodes
 2. **Shadow Mode**: Run both implementations, compare signatures
 3. **Canary Deployment**: Route small percentage of traffic
 4. **Full Migration**: Complete switchover
@@ -141,7 +141,7 @@ cd /Users/z/work/lux/mpc
 mkdir -p pkg/bridge
 ```
 
-Create compatibility server that translates bridge API calls to Lux MPC operations.
+Create compatibility server that translates bridge API calls to MPC operations.
 
 ### 2. Implement Key Migration Tool
 ```bash
