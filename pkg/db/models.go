@@ -381,9 +381,10 @@ type WalletBackup struct {
 	BackupID          string        `json:"backupId"`  // unique backup identifier
 	Threshold         int           `json:"threshold"` // T shards required to reconstruct
 	TotalShards       int           `json:"totalShards"`
-	EncryptedKeyShare []byte        `json:"encryptedKeyShare,omitempty"` // AES-256-GCM encrypted wallet key share
-	Shards            []BackupShard `json:"shards,omitempty"`
-	Status            string        `json:"status"` // active, recovered, revoked
+	EncryptedKeyShare      []byte        `json:"encryptedKeyShare,omitempty"`      // AES-256-GCM encrypted wallet key share
+	Shards                 []BackupShard `json:"shards,omitempty"`
+	Status                 string        `json:"status"`                           // active, recovered, revoked
+	UserPasskeyFingerprint string        `json:"userPasskeyFingerprint,omitempty"` // P-256 pubkey that encrypts the backup shard — company CANNOT decrypt
 }
 
 // BackupShard is a labeled Shamir share with its storage destination.
