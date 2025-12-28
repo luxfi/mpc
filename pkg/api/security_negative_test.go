@@ -279,13 +279,8 @@ func TestWebAuthn_InvalidPublicKeyFormats(t *testing.T) {
 
 func TestWebAuthn_OriginAttackVectors(t *testing.T) {
 	allowed := map[string]bool{
-		"https://lux.network":                 true,
-		"https://mpc.lux.network":             true,
-		"https://exchange.dev.satschel.com":    true,
-		"https://exchange.test.satschel.com":   true,
-		"https://exchange.main.satschel.com":   true,
-		"https://liquidity.io":                true,
-		"https://www.liquidity.io":            true,
+		"https://lux.network":     true,
+		"https://mpc.lux.network": true,
 	}
 
 	attacks := []string{
@@ -293,12 +288,9 @@ func TestWebAuthn_OriginAttackVectors(t *testing.T) {
 		"https://evil.lux.network",
 		"https://mpc.lux.network.evil.com",
 		"https://lux.network.evil.com",
-		"https://exchange.satschel.com.evil.com",
 		// Protocol downgrade
 		"http://lux.network",
 		"http://mpc.lux.network",
-		"http://liquidity.io",
-		"http://exchange.dev.satschel.com",
 		// Unicode/IDN attacks
 		"https://lux.nеtwork", // Cyrillic 'е'
 		"https://ℓux.network", // Script small L
