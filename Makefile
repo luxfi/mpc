@@ -25,17 +25,17 @@ lux-mpc-cli:
 lux-mpc-bridge:
 	GOWORK=off GOEXPERIMENT=$(GOEXPERIMENT) go build -o lux-mpc-bridge ./cmd/lux-mpc-bridge 2>/dev/null || true
 
-# Run all tests
+# Run all tests (json1 enables SQLite JSON functions for ORM JSONB queries)
 test:
-	GOEXPERIMENT=$(GOEXPERIMENT) go test ./...
+	CGO_ENABLED=1 GOEXPERIMENT=$(GOEXPERIMENT) go test -tags json1 ./...
 
 # Run tests with verbose output
 test-verbose:
-	GOEXPERIMENT=$(GOEXPERIMENT) go test -v ./...
+	CGO_ENABLED=1 GOEXPERIMENT=$(GOEXPERIMENT) go test -tags json1 -v ./...
 
 # Run tests with coverage report
 test-coverage:
-	GOEXPERIMENT=$(GOEXPERIMENT) go test -v -coverprofile=coverage.out ./...
+	CGO_ENABLED=1 GOEXPERIMENT=$(GOEXPERIMENT) go test -tags json1 -v -coverprofile=coverage.out ./...
 	go tool cover -html=coverage.out -o coverage.html
 
 # Run E2E integration tests

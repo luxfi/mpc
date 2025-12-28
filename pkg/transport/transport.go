@@ -236,18 +236,16 @@ func (t *Transport) connectToPeer(ctx context.Context, nodeID, addr string) {
 			continue
 		}
 
+		// TLS is mandatory. No plaintext fallback.
 		var conn net.Conn
 		var err error
-		if t.config.PrivateKey != nil && t.config.PublicKey != nil {
-			// Try PQ TLS first, fall back to plaintext for rolling upgrades
-			conn, err = DialTLS(addr, t.config.NodeID, t.config.PrivateKey, t.config.PublicKey, 10*time.Second)
-			if err != nil {
-				logger.Warn("TLS dial failed, trying plaintext", "nodeID", nodeID, "err", err)
-				conn, err = net.DialTimeout("tcp", addr, 10*time.Second)
-			}
-		} else {
-			conn, err = net.DialTimeout("tcp", addr, 10*time.Second)
+		if t.config.PrivateKey == nil || t.config.PublicKey == nil {
+			logger.Error("TLS identity keys not configured — cannot connect to peer", nil, "nodeID", nodeID)
+			time.Sleep(backoff)
+			backoff = min(backoff*2, maxBackoff)
+			continue
 		}
+		conn, err = DialTLS(addr, t.config.NodeID, t.config.PrivateKey, t.config.PublicKey, 10*time.Second)
 		if err != nil {
 			logger.Warn("Failed to connect to peer", "nodeID", nodeID, "addr", addr, "err", err)
 			time.Sleep(backoff)

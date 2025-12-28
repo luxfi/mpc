@@ -97,9 +97,16 @@ func NewClientTLSConfig(nodeID string, privKey ed25519.PrivateKey, pubKey ed2551
 			tls.X25519,
 			tls.CurveP256,
 		},
-		// Accept self-signed certs from peer nodes.
-		// Authentication is via ZAP Ed25519 identity, not PKI.
+		// Accept self-signed certs but verify the peer presented one.
+		// ZAP Ed25519 layer provides the primary authentication; TLS provides
+		// defense-in-depth against passive eavesdropping.
 		InsecureSkipVerify: true,
+		VerifyConnection: func(cs tls.ConnectionState) error {
+			if len(cs.PeerCertificates) == 0 {
+				return fmt.Errorf("peer did not present a TLS certificate")
+			}
+			return nil
+		},
 	}, nil
 }
 
