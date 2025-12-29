@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: fund-mpc
+  labels:
+    app.kubernetes.io/part-of: lux-mpc
+    lux.network/mpc-mode: private
+    # The fund operator is expected to add their own labels here for
+    # scheduling, network-policy targeting, and pod-security-admission.
+    pod-security.kubernetes.io/enforce: restricted
