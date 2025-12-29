@@ -41,3 +41,10 @@ func ecdsaASN1ToRaw(der []byte) ([]byte, error) {
 	copy(out[64-len(sBytes):], sBytes)
 	return out, nil
 }
+
+// marshalECDSASig wraps asn1.Marshal so callers do not have to import
+// encoding/asn1 themselves. The output is the same SEQUENCE { r, s }
+// that ecdsa.VerifyASN1 expects.
+func marshalECDSASig(sig ecdsaSig) ([]byte, error) {
+	return asn1.Marshal(sig)
+}
