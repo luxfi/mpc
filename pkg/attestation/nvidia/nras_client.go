@@ -92,9 +92,6 @@ type VerifyOptions struct {
 	// PolicyID is the NRAS-side policy the request opts into. Empty
 	// uses NRAS's default policy.
 	PolicyID string
-
-	// SkipSignature is test-only. Production must always verify.
-	SkipSignature bool
 }
 
 // VerifyResult captures the post-verification facts. Callers fold
@@ -225,26 +222,24 @@ func (c *NRASClient) Verify(ctx context.Context, report []byte, nonce [32]byte, 
 		return nil, ErrNRASTokenExpired
 	}
 
-	if !opt.SkipSignature {
-		var jwtHdr struct {
-			Alg string `json:"alg"`
-			Kid string `json:"kid"`
-		}
-		if err := json.Unmarshal(hdr, &jwtHdr); err != nil {
-			return nil, fmt.Errorf("%w: header: %v", ErrNRASBadJWT, err)
-		}
-		if len(c.TrustRoots) == 0 {
-			return nil, fmt.Errorf("%w: no trust roots", ErrNRASBadSignature)
-		}
-		root, ok := findTrustRoot(c.TrustRoots, jwtHdr.Kid)
-		if !ok {
-			return nil, fmt.Errorf("%w: kid=%q not in trust roots", ErrNRASBadSignature, jwtHdr.Kid)
-		}
-		if err := verifyJWS(root.Public, jwtHdr.Alg, signedInput, sigBytes); err != nil {
-			return nil, fmt.Errorf("%w: %v", ErrNRASBadSignature, err)
-		}
-		res.SignerKeyID = root.KeyID
+	var jwtHdr struct {
+		Alg string `json:"alg"`
+		Kid string `json:"kid"`
 	}
+	if err := json.Unmarshal(hdr, &jwtHdr); err != nil {
+		return nil, fmt.Errorf("%w: header: %v", ErrNRASBadJWT, err)
+	}
+	if len(c.TrustRoots) == 0 {
+		return nil, fmt.Errorf("%w: no trust roots", ErrNRASBadSignature)
+	}
+	root, ok := findTrustRoot(c.TrustRoots, jwtHdr.Kid)
+	if !ok {
+		return nil, fmt.Errorf("%w: kid=%q not in trust roots", ErrNRASBadSignature, jwtHdr.Kid)
+	}
+	if err := verifyJWS(root.Public, jwtHdr.Alg, signedInput, sigBytes); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrNRASBadSignature, err)
+	}
+	res.SignerKeyID = root.KeyID
 
 	return res, nil
 }
