@@ -1,0 +1,169 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mpc-node
+  namespace: fund-mpc
+  labels:
+    app: mpc-node
+    app.kubernetes.io/part-of: lux-mpc
+spec:
+  serviceName: mpc-node-headless
+  replicas: 3
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      app: mpc-node
+  template:
+    metadata:
+      labels:
+        app: mpc-node
+        app.kubernetes.io/part-of: lux-mpc
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      imagePullSecrets:
+        - name: registry-luxfi
+      containers:
+        - name: mpc-node
+          image: ghcr.io/luxfi/mpc:v1.10.0
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          command:
+            - sh
+            - -c
+            - |
+              INDEX=${HOSTNAME##*-}
+              NODE_ID="node${INDEX}"
+              # Build peer list (all other replicas in the StatefulSet)
+              PEERS=""
+              for i in 0 1 2; do
+                if [ "$i" != "$INDEX" ]; then
+                  PEERS="${PEERS} --peer node${i}@mpc-node-${i}.mpc-node-headless.fund-mpc.svc:9999"
+                fi
+              done
+              CMD="mpcd start --node-id ${NODE_ID} --listen :9999 --api :9800 --data /data/mpc --threshold 2 --network private --audit-store local-worm --audit-worm-path /data/mpc/audit.log ${PEERS}"
+              if [ "$INDEX" = "0" ]; then
+                CMD="${CMD} --api-listen :8081 --jwt-secret ${JWT_SECRET}"
+              fi
+              echo "Starting: ${CMD}"
+              exec ${CMD}
+          ports:
+            - containerPort: 9999
+              name: p2p
+              protocol: TCP
+            - containerPort: 9800
+              name: mpc-api
+              protocol: TCP
+            - containerPort: 8081
+              name: dashboard-api
+              protocol: TCP
+          env:
+            - name: MPC_NETWORK
+              value: "private"
+            - name: MPC_AUDIT_STORE
+              value: "local-worm"
+            - name: MPC_AUDIT_WORM_PATH
+              value: "/data/mpc/audit.log"
+            - name: MPC_HSM_PROVIDER
+              valueFrom:
+                secretKeyRef:
+                  name: mpc-secrets
+                  key: hsm-provider
+            - name: MPC_HSM_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: mpc-secrets
+                  key: hsm-key-id
+            - name: MPC_HSM_SIGNER
+              valueFrom:
+                secretKeyRef:
+                  name: mpc-secrets
+                  key: hsm-signer
+                  optional: true
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: mpc-secrets
+                  key: jwt-secret
+            - name: MPC_INTERNAL_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: mpc-secrets
+                  key: internal-api-key
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 9800
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 9800
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          volumeMounts:
+            - name: data
+              mountPath: /data/mpc
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 50Mi
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        # The fund operator overrides this to a hardware-WORM-backed
+        # storage class (NetApp SnapLock, Dell ECS retention, etc.) so
+        # the audit log is immutable beneath mpcd. The annotation lets
+        # admission webhooks verify the requirement.
+        storageClassName: worm-block-storage
+        resources:
+          requests:
+            storage: 50Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mpc-node-headless
+  namespace: fund-mpc
+  labels:
+    app: mpc-node
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app: mpc-node
+  ports:
+    - name: p2p
+      port: 9999
+      targetPort: 9999
+    - name: mpc-api
+      port: 9800
+      targetPort: 9800
+    - name: dashboard-api
+      port: 8081
+      targetPort: 8081
