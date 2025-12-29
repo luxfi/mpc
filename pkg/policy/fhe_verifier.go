@@ -51,6 +51,35 @@ type FChainClient interface {
 	) (encResult []byte, err error)
 }
 
+// PlanProvider is the rule-engine path: a precompiled, cached RulePlan
+// (compiled from the YAML stored on F-Chain PolicyVault) is evaluated
+// locally against per-intent encrypted inputs. The provider returns the
+// same opaque encrypted-verdict bytes the FChainClient path returns, so
+// the downstream ThresholdDecryptor sees one wire shape.
+//
+// PlanProvider is OPTIONAL. When wired, the verifier prefers it over
+// FChainClient — local evaluation avoids one network hop per intent
+// and benefits from the plan cache (compile-once-per-policy-version).
+//
+// Concrete implementations live in luxfi/fhe (which owns the
+// dependencies on fhe.Parameters / BootstrapKey / *Engine). Keeping
+// the interface here means luxfi/mpc does not depend on luxfi/fhe.
+type PlanProvider interface {
+	// EvaluatePlan compiles+caches the policy referenced by
+	// (policyID, policyHash), encrypts the intent fields under the
+	// network public key, runs the plan, and returns the encrypted
+	// verdict in the same opaque byte shape as FChainClient.
+	EvaluatePlan(
+		ctx context.Context,
+		policyID string,
+		policyHash [32]byte,
+		walletID string,
+		amount *big.Int,
+		destinationHash [32]byte,
+		velocityWindow *big.Int,
+	) (encResult []byte, err error)
+}
+
 // ThresholdDecryptor performs threshold decryption of an FHE ciphertext
 // produced by FChainClient. In production this is wired to the M-Chain
 // MPC committee running luxfi/lattice's t-of-n threshold protocol.
@@ -73,16 +102,21 @@ type VelocityProvider interface {
 // counterpart to LocalVerifier.
 //
 // Field semantics:
-//   - FChain: required. Submits encrypted intent to F-Chain PolicyVault.
+//   - WalletRegistry: required. Wallet existence + tier check.
+//   - Velocity: required. Per-wallet running spend totals.
 //   - Decryptor: required. Threshold-decrypts the encrypted verdict.
-//   - Velocity: required. Provides per-wallet running spend totals.
-//   - WalletRegistry, RiskProvider: required for the cheap pre-checks
-//     that mirror LocalVerifier — wallet existence, expiry, risk gate.
+//   - Plan: optional, preferred when set. Local rule-engine path:
+//     plan compiled from F-Chain YAML, evaluated against per-intent
+//     encrypted inputs. Returns the same opaque verdict bytes as the
+//     FChainClient path so the Decryptor sees one wire shape.
+//   - FChain: required when Plan is nil. Remote PolicyVault evaluation.
+//     If both Plan and FChain are set, Plan wins.
 //   - DecryptTimeout: optional. Caps how long the verifier waits on the
 //     threshold-decrypt round before failing closed. Zero = no cap.
 type FHEVerifier struct {
 	WalletRegistry WalletRegistry
 	FChain         FChainClient
+	Plan           PlanProvider
 	Decryptor      ThresholdDecryptor
 	Velocity       VelocityProvider
 	DecryptTimeout time.Duration
@@ -90,8 +124,9 @@ type FHEVerifier struct {
 	Now func() time.Time
 }
 
-// NewFHEVerifier wires the verifier dependencies. All fields except Now
-// and DecryptTimeout are required; passing nil panics at first use.
+// NewFHEVerifier wires the verifier dependencies for the F-Chain
+// remote evaluation path. All fields except Now and DecryptTimeout
+// are required; passing nil panics at first use.
 func NewFHEVerifier(
 	wr WalletRegistry,
 	fc FChainClient,
@@ -101,6 +136,25 @@ func NewFHEVerifier(
 	return &FHEVerifier{
 		WalletRegistry: wr,
 		FChain:         fc,
+		Decryptor:      td,
+		Velocity:       vp,
+	}
+}
+
+// NewFHEVerifierWithPlan wires the verifier for the local rule-engine
+// plan path. Plan compiles + caches the policy YAML once per version
+// and evaluates against per-intent encrypted inputs without an extra
+// network hop to F-Chain. Threshold decryption still runs on the
+// committee.
+func NewFHEVerifierWithPlan(
+	wr WalletRegistry,
+	pp PlanProvider,
+	td ThresholdDecryptor,
+	vp VelocityProvider,
+) *FHEVerifier {
+	return &FHEVerifier{
+		WalletRegistry: wr,
+		Plan:           pp,
 		Decryptor:      td,
 		Velocity:       vp,
 	}
@@ -119,8 +173,16 @@ func (v *FHEVerifier) now() time.Time {
 //
 // The check order is deliberate: cheap structural + registry checks first
 // so that an obviously-bad intent never reaches the (expensive) FHE round.
+//
+// Path selection:
+//   - If Plan is set, the local rule-engine path runs (compiled-once
+//     RulePlan, evaluated locally against encrypted inputs).
+//   - Otherwise FChain.EvaluateLatest is called.
+//
+// Both paths return opaque encrypted-verdict bytes that the Decryptor
+// threshold-decrypts to a final bool.
 func (v *FHEVerifier) Verify(ctx context.Context, ci *intent.CanonicalIntent) error {
-	if v.FChain == nil {
+	if v.Plan == nil && v.FChain == nil {
 		return ErrFHEClientRequired
 	}
 	if v.Decryptor == nil {
@@ -160,14 +222,31 @@ func (v *FHEVerifier) Verify(ctx context.Context, ci *intent.CanonicalIntent) er
 	var destHash [32]byte
 	copy(destHash[:], ci.CalldataHash[:]) // M-Chain hashes the To address into CalldataHash for non-contract calls; bridge code lives upstream.
 
-	// 4. Policy evaluation on F-Chain — homomorphic, no plaintext leakage.
+	// 4. Policy evaluation — homomorphic, no plaintext leakage.
+	//    Prefer the local rule-engine plan path when wired; fall
+	//    back to the F-Chain remote evaluation otherwise.
 	evalCtx := ctx
 	if v.DecryptTimeout > 0 {
 		var cancel context.CancelFunc
 		evalCtx, cancel = context.WithTimeout(ctx, v.DecryptTimeout)
 		defer cancel()
 	}
-	encResult, err := v.FChain.EvaluateLatest(evalCtx, ci.WalletID, amount, destHash, velocity)
+	var (
+		encResult []byte
+	)
+	if v.Plan != nil {
+		encResult, err = v.Plan.EvaluatePlan(
+			evalCtx,
+			ci.PolicyID,
+			ci.PolicyHash,
+			ci.WalletID,
+			amount,
+			destHash,
+			velocity,
+		)
+	} else {
+		encResult, err = v.FChain.EvaluateLatest(evalCtx, ci.WalletID, amount, destHash, velocity)
+	}
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrFHEPolicyEval, err)
 	}
