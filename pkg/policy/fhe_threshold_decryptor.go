@@ -1,5 +1,8 @@
 // RealThresholdDecryptor wires the FHEVerifier's ThresholdDecryptor
-// interface to the t-of-n committee implemented in luxfi/fhe/threshold.
+// interface to the t-of-n committee implemented in
+// luxfi/threshold/protocols/tfhe — the canonical home for threshold
+// FHE primitives. There is one and only one place to define
+// FHECiphertext / FHEThresholdShare / KeyShare / ShareAggregator.
 //
 // Flow:
 //
@@ -29,7 +32,7 @@ import (
 	"fmt"
 	"sync"
 
-	fhethr "github.com/luxfi/fhe/threshold"
+	fhethr "github.com/luxfi/threshold/protocols/tfhe"
 )
 
 // ErrCommitteeQuorum is returned by RealThresholdDecryptor.Decrypt when
