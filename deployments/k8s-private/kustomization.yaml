@@ -1,0 +1,33 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Private mode: fund-only mpc cluster. No M-Chain registration. Audit
+# log lands on a hardware-WORM volume mounted at /data/mpc.
+#
+# Standalone overlay — does NOT inherit the lux-mpc base because the
+# fund's namespace, network policy, and image policy diverge enough
+# from the Lux-operated cluster that a shared base would couple them
+# permanently. One-and-only-one-way still applies: this file is the
+# only entry point for fund operators.
+#
+# Apply with:
+#   kubectl apply -k k8s/private/
+
+namespace: fund-mpc
+
+resources:
+  - namespace.yaml
+  - mpc-statefulset.yaml
+  - mpc-secrets.yaml
+  - private-network-policy.yaml
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: lux-mpc
+      lux.network/mpc-mode: private
+
+# Image is pinned per-release; the tag is the only thing operators
+# bump between deployments. CI tags new releases as v1.<minor>.<patch>.
+images:
+  - name: ghcr.io/luxfi/mpc
+    newTag: v1.10.0
