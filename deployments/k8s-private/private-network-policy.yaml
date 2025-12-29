@@ -1,0 +1,95 @@
+# Private-mode network policy.
+#
+# The fund's egress posture: nothing outbound except (a) other MPC
+# nodes in this StatefulSet, (b) the internal postgres + valkey, (c)
+# DNS, (d) optional HSM provider sidecar by selector. NO traffic to
+# the Lux M-Chain. NO traffic to the public internet.
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mpc-node-egress-private
+  namespace: fund-mpc
+spec:
+  podSelector:
+    matchLabels:
+      app: mpc-node
+  policyTypes:
+  - Egress
+  egress:
+  # Other MPC nodes
+  - to:
+    - podSelector:
+        matchLabels:
+          app: mpc-node
+    ports:
+    - protocol: TCP
+      port: 9999
+    - protocol: TCP
+      port: 9800
+  # Postgres
+  - to:
+    - podSelector:
+        matchLabels:
+          app: mpc-postgres
+    ports:
+    - protocol: TCP
+      port: 5432
+  # Valkey
+  - to:
+    - podSelector:
+        matchLabels:
+          app: mpc-valkey
+    ports:
+    - protocol: TCP
+      port: 6379
+  # HSM provider sidecar (operator labels their pod app=fund-hsm-bridge)
+  - to:
+    - podSelector:
+        matchLabels:
+          app: fund-hsm-bridge
+    ports:
+    - protocol: TCP
+      port: 11111
+  # DNS only
+  - to:
+    - namespaceSelector: {}
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mpc-node-ingress-private
+  namespace: fund-mpc
+spec:
+  podSelector:
+    matchLabels:
+      app: mpc-node
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: mpc-node
+    ports:
+    - protocol: TCP
+      port: 9999
+    - protocol: TCP
+      port: 9800
+  - from:
+    - podSelector:
+        matchLabels:
+          app: mpc-api
+    ports:
+    - protocol: TCP
+      port: 8081
+    - protocol: TCP
+      port: 9800
+  - ports:
+    - protocol: TCP
+      port: 9800
