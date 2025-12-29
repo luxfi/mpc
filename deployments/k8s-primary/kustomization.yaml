@@ -1,0 +1,27 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Primary-mode overlay. Lux-operated production clusters and customer
+# deployments that opt into shared M-Chain audit infra (smaller funds,
+# retail-tier custody) build from here.
+#
+#   kubectl apply -k deployments/k8s-primary/
+#
+# For fund-private clusters that must NOT touch M-Chain, use
+# deployments/k8s-private/ instead.
+
+namespace: lux-mpc
+
+resources:
+  - ../../k8s
+
+patches:
+  - path: mpc-primary-env.yaml
+    target:
+      kind: StatefulSet
+      name: mpc-node
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: lux-mpc
+      lux.network/mpc-mode: primary
