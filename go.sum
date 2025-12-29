@@ -357,8 +357,6 @@ github.com/luxfi/database v1.17.44 h1:hfiTls7sqbweW+o4iaZqB8P997paC+vpgWmhN6v5MJ
 github.com/luxfi/database v1.17.44/go.mod h1:6Ey5y3I0WNLHbxIlIdFqUuKfBg+b0fAgTA8FgRgQ8zg=
 github.com/luxfi/edwards25519 v0.1.0 h1:YPoT831TZMslvNyy/KuTtpHi4BGZWgpwak06RCaYLzo=
 github.com/luxfi/edwards25519 v0.1.0/go.mod h1:MBoV+bPEz1tSMADPMSUaYdZ+agY3syG8B6z7RmJBH0A=
-github.com/luxfi/fhe v1.7.7 h1:RP26i3CxvNy2y/3LKiJPgd9uR5MrlG/MvQnv5rkQFhk=
-github.com/luxfi/fhe v1.7.7/go.mod h1:FHfGNgKL5ZLcnKVKFVNLDJOBbQyQm5DGpVrMnY8ASJo=
 github.com/luxfi/geth v1.16.79 h1:MtP8ZUuSVZDjmZDa1kTJCl0PpG8+wGbQft652GO6a3A=
 github.com/luxfi/geth v1.16.79/go.mod h1:6xNi4sHoh0v1kBf0TOjmFhBg5+4umbSqrwiFZsDanZ0=
 github.com/luxfi/hsm v1.1.2 h1:XvzFp0q7IueMyb5/exve/TB2fJpGhClYDRvSBdB0A9Y=
