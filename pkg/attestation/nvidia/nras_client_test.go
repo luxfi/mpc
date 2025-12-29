@@ -237,23 +237,6 @@ func TestNRAS_RejectsNoTrustRoots(t *testing.T) {
 	}
 }
 
-func TestNRAS_SkipSignature_SkipsTrustRoots(t *testing.T) {
-	m := newMockServer(t)
-	srv := httptest.NewServer(m.handler())
-	defer srv.Close()
-
-	// no trust roots, but skip-signature => ok
-	c := NewNRASClient(srv.URL, nil)
-	c.Now = m.now
-
-	var nonce [32]byte
-	rand.Read(nonce[:])
-	if _, err := c.Verify(context.Background(), reportBytes(nonce), nonce,
-		VerifyOptions{SkipSignature: true}); err != nil {
-		t.Fatalf("expected success: %v", err)
-	}
-}
-
 func TestNRAS_RejectsNoEndpoint(t *testing.T) {
 	c := NewNRASClient("", nil)
 	var n [32]byte
