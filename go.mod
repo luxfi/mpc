@@ -234,6 +234,11 @@ replace github.com/agl/ed25519 => github.com/luxfi/edwards25519 v0.1.0
 
 replace github.com/luxfi/log v1.3.0 => github.com/luxfi/log v1.4.1
 
+// Local development against the threshold-FHE service layer added in
+// luxfi/fhe (LP-137-FHE-THRESHOLD). Drop this once luxfi/fhe cuts a
+// release tag that includes the threshold/ package.
+replace github.com/luxfi/fhe => ../fhe
+
 // luxfi/genesis v1.5.21 / v1.5.22 are missing from proxy.golang.org; no
 // luxfi/mpc code path imports them, but transitive resolution can pick them
 // up. Excluded until genesis retags.
