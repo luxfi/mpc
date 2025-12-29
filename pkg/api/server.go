@@ -91,6 +91,12 @@ type Server struct {
 	// SetTieredWalletRegistry.
 	tieredWallets wallet.Registry
 
+	// approval holds the pluggable executive-approval registry
+	// (pkg/approval). Optional — when nil, /v1/approval/* returns 503.
+	// Wire via Server.SetApproval after constructing the providers + the
+	// orchestrator binding map.
+	approval *ApprovalRegistry
+
 	// Events is the broadcast channel for server-side events (intent status,
 	// signing progress, wallet events). Handlers publish here; WebSocket
 	// clients and ZAP subscribers receive.
@@ -515,6 +521,20 @@ func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, o
 					Post("/{id}/sign", s.handleTieredWalletSign)
 				r.Get("/{id}/balance", s.handleTieredWalletBalance)
 				r.Get("/{id}/usage", s.handleTieredWalletUsage)
+			})
+
+			// /v1/approval/* — executive approval flow (pkg/approval).
+			// Approvals are SEPARATE from MPC signing: out-of-band
+			// (Ledger Enterprise / WebAuthn / KMS / Safe) attest that an
+			// authorized human approved the intent before MPC nodes sign
+			// the chain transaction. No /api/ prefix per house style.
+			r.Route("/approval", func(r chi.Router) {
+				r.With(requireRoleOrAPIPermission([]string{"owner", "admin", "signer"}, "mpc:approval:submit")).
+					Post("/intent", s.handleApprovalSubmit)
+				r.Get("/intent/{id}/status", s.handleApprovalStatus)
+				r.With(requireRoleOrAPIPermission([]string{"owner", "admin", "signer"}, "mpc:approval:cast")).
+					Post("/intent/{id}/cast", s.handleApprovalCast)
+				r.Get("/intent/{id}/bundle", s.handleApprovalBundle)
 			})
 		})
 	})
