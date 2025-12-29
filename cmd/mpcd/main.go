@@ -124,14 +124,22 @@ func main() {
 					},
 					// HSM signer flags (for co-signing)
 					&cli.StringFlag{
-						Name:    "hsm-signer",
-						Usage:   "Signer provider for intent co-signing: aws|gcp|azure|zymbit|mldsa|local (default: local)",
+						Name: "hsm-signer",
+						Usage: "Signer provider for intent co-signing. " +
+							"Cloud KMS: aws|gcp|azure. " +
+							"Network HSM: zymbit|gridplus. " +
+							"USB HSM: yubihsm|nitrokey. " +
+							"Universal PKCS#11 (Thales/Utimaco/Entrust/CloudHSM/SoftHSM2): pkcs11. " +
+							"Airgapped wallets (require AirgapTransport): coldcard|foundation|keystone|ngrave. " +
+							"Online wallets: ledger|trezor. " +
+							"Post-quantum: mldsa. " +
+							"Dev only: local (default).",
 						Sources: cli.EnvVars("MPC_HSM_SIGNER"),
 						Value:   "local",
 					},
 					&cli.StringFlag{
 						Name:    "hsm-signer-key-id",
-						Usage:   "HSM signer key ARN/name for co-signing operations",
+						Usage:   "HSM signer key ARN/name/object-ID for co-signing operations",
 						Sources: cli.EnvVars("MPC_HSM_SIGNER_KEY_ID"),
 					},
 					&cli.BoolFlag{
@@ -158,6 +166,7 @@ func main() {
 					return nil
 				},
 			},
+			airgapCommand(),
 		},
 	}
 
