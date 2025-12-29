@@ -16,6 +16,7 @@ import (
 	"github.com/luxfi/mpc/pkg/custody"
 	"github.com/luxfi/mpc/pkg/db"
 	"github.com/luxfi/mpc/pkg/txtracker"
+	"github.com/luxfi/mpc/pkg/wallet"
 	"github.com/luxfi/mpc/pkg/webauthn"
 )
 
@@ -83,6 +84,12 @@ type Server struct {
 	livenessBindingMode webauthn.BindingMode
 	router         chi.Router
 	replayGuard    *replayGuard
+
+	// tieredWallets is the registry for the 9-tier wallet architecture
+	// (pkg/wallet). Lazily initialized to NewInMemoryRegistry() on first
+	// use. Tests / production wrappers can install a custom Registry via
+	// SetTieredWalletRegistry.
+	tieredWallets wallet.Registry
 
 	// Events is the broadcast channel for server-side events (intent status,
 	// signing progress, wallet events). Handlers publish here; WebSocket
@@ -493,6 +500,21 @@ func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, o
 						[]string{"owner", "admin", "signer"}, treasurySignPermission)).
 						Post("/sign", s.handleTreasurySign)
 				})
+			})
+
+			// /v1/wallet/* — 9-tier wallet architecture (pkg/wallet).
+			// Distinct from /v1/mpc/wallets (Liquidity MPC spec) and
+			// /v1/mpc/treasury (3-of-5 governance). One purpose per surface.
+			// Tier-aware sign dispatch + domain-separation enforcement.
+			r.Route("/wallet", func(r chi.Router) {
+				r.With(requireRoleOrAPIPermission([]string{"owner", "admin"}, "mpc:wallet:tier:write")).
+					Post("/", s.handleTieredWalletCreate)
+				r.Get("/{id}", s.handleTieredWalletGet)
+				r.Get("/tier/{tier}", s.handleTieredWalletListByTier)
+				r.With(requireRoleOrAPIPermission([]string{"owner", "admin", "signer"}, "mpc:wallet:tier:sign"), RateLimitMiddleware(20)).
+					Post("/{id}/sign", s.handleTieredWalletSign)
+				r.Get("/{id}/balance", s.handleTieredWalletBalance)
+				r.Get("/{id}/usage", s.handleTieredWalletUsage)
 			})
 		})
 	})
