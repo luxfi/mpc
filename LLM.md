@@ -2,6 +2,30 @@
 
 This document provides comprehensive guidance for AI assistants working with the MPC (Multi-Party Computation) codebase.
 
+## Fireblocks parity (2026-04-27)
+
+`FIREBLOCKS_PARITY.md` is the canonical matrix — 67 features across 9
+categories, 76% shipped, 16% partial/in-flight, 8% genuinely missing.
+`MIGRATION_FROM_FIREBLOCKS.md` is the operational runbook for moving
+funds + policy + integrations off Fireblocks.
+
+`pkg/automation/` ships the three Fireblocks-class automations that were
+the only remaining inline-shippable gaps:
+
+- `gasstation.go` — auto top-up of operational wallets when balance falls
+  below tier-driven floor. Caller injects a `ChainClient` and a Signer
+  via the existing `/v1/mpc/sign` path. ~230 LOC.
+- `smarttransfer.go` — cheapest-route routing across configured
+  providers (`OnChainProvider`, `BridgeProvider`). Returns sorted Quote
+  slate; caller signs the chosen route via the existing wallet path.
+  ~250 LOC.
+- `feebump.go` — RBF (BIP-125) for stuck Bitcoin tx, EIP-1559 / legacy
+  gas re-pricing for stuck EVM tx. Pure plan generator — caller signs
+  + rebroadcasts via the existing MPC path. ~190 LOC.
+
+All three are pure-Go (stdlib + `math/big`), no external SaaS. Tests in
+`automation_test.go`; full suite passes.
+
 ## 🏭 Production Deployment State (2026-03-02)
 
 ### Namespaces

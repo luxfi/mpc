@@ -28,6 +28,30 @@ export function useTransactions(filters?: { status?: string; chain?: string }) {
   })
 }
 
+export function useOperations(filters?: { status?: string; walletId?: string; page?: number; perPage?: number }) {
+  return useQuery({
+    queryKey: ['mpc', 'operations', filters],
+    queryFn: () => api.listOperations(filters),
+    refetchInterval: 5000,
+  })
+}
+
+export function useOperation(operationId: string) {
+  return useQuery({
+    queryKey: ['mpc', 'operation', operationId],
+    queryFn: () => api.getOperation(operationId),
+    enabled: !!operationId,
+  })
+}
+
+export function useSessions(walletId: string) {
+  return useQuery({
+    queryKey: ['mpc', 'sessions', walletId],
+    queryFn: () => api.listSessions(walletId),
+    enabled: !!walletId,
+  })
+}
+
 export function usePolicies() {
   return useQuery({ queryKey: ['mpc', 'policies'], queryFn: api.listPolicies })
 }
@@ -61,4 +85,24 @@ export function useWalletBackups(walletId: string) {
     queryFn: () => api.getWalletBackups(walletId),
     enabled: !!walletId,
   })
+}
+
+export function useUsers() {
+  return useQuery({ queryKey: ['mpc', 'users'], queryFn: api.listUsers })
+}
+
+export function useAPIKeys() {
+  return useQuery({ queryKey: ['mpc', 'api-keys'], queryFn: api.listAPIKeys })
+}
+
+export function useWebhooks() {
+  return useQuery({ queryKey: ['mpc', 'webhooks'], queryFn: api.listWebhooks })
+}
+
+export function useWhitelist() {
+  return useQuery({ queryKey: ['mpc', 'whitelist'], queryFn: api.listWhitelist })
+}
+
+export function useWebAuthnCredentials() {
+  return useQuery({ queryKey: ['mpc', 'webauthn'], queryFn: api.listWebAuthnCredentials })
 }
