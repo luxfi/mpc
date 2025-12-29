@@ -21,12 +21,14 @@ import (
 // surface for working with airgapped hardware wallets (Coldcard,
 // Foundation Passport, Keystone Pro, NGRAVE Zero).
 //
-// The signing ceremony is file-mediated: mpcd writes the challenge to a
-// working directory, the operator hand-carries it to the offline device
-// via microSD or QR, and the signed response is dropped back into the
-// same directory. This file owns the ceremony orchestration; in-process
-// Signer construction for these devices is gated on a luxfi/hsm release
-// that exports the airgap factory cases.
+// The signing ceremony is file-mediated by design: Coldcard's canonical
+// product flow uses microSD, Foundation Passport uses BBQr-encoded QR,
+// and Keystone/NGRAVE use UR-encoded animated QR — all of which surface
+// as challenge bytes the host writes to disk for the operator to ferry
+// to the offline device. The response file is signed bytes the operator
+// drops back into the same directory. mpcd owns the ceremony I/O; the
+// per-vendor envelope semantics (PSBT vs UR vs BBQr) are owned by the
+// luxfi/hsm Signer, which is constructible since v1.1.3 via NewSigner.
 //
 // The subcommands here are intentionally narrow:
 //
@@ -49,9 +51,11 @@ func airgapCommand() *cli.Command {
 }
 
 // airgapProviders is the canonical set of airgap-capable provider names
-// reserved by luxfi/hsm. Adding entries here is a contract change — they
-// must round-trip through hsm.NewSigner once the airgap surface is
-// published downstream.
+// reserved by luxfi/hsm. Adding entries here is a contract change —
+// every name MUST round-trip through hsm.NewSigner. Coverage lives in
+// airgap_command_test.go so the dispatch table is exercised by `go test`
+// rather than crashing the daemon at boot when an operator probes with
+// an unconfigured provider.
 func airgapProviders() []string {
 	return []string{"coldcard", "foundation", "keystone", "ngrave"}
 }
