@@ -29,13 +29,19 @@ import (
 	"bytes"
 	"context"
 	"crypto"
+	"crypto/ecdsa"
+	"crypto/ed25519"
+	"crypto/elliptic"
+	"crypto/rsa"
 	"crypto/sha256"
+	"crypto/sha512"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"math/big"
 	"net/http"
 	"strings"
 	"time"
@@ -52,6 +58,13 @@ var (
 	ErrNRASTokenExpired  = errors.New("nvidia/nras: token already expired")
 	ErrNRASBadJWT        = errors.New("nvidia/nras: token not a valid JWS compact serialization")
 	ErrNRASBadSignature  = errors.New("nvidia/nras: token signature verification failed")
+
+	// Algorithm-substitution defenses (Red audit F3 / CVE-2015-9235 family).
+	// verifyJWS enforces a strict alg ↔ key-type binding at the dispatch
+	// layer; mismatches are rejected before any verification primitive runs.
+	ErrAlgKeyTypeMismatch = errors.New("nvidia/nras: jws alg does not match trust-root key type")
+	ErrAlgNoneRefused     = errors.New("nvidia/nras: jws alg=none refused")
+	ErrUnknownAlg         = errors.New("nvidia/nras: jws alg unknown")
 )
 
 // NRASClient posts GPU evidence to NRAS and returns a verified
@@ -292,82 +305,111 @@ func splitJWS(token string) (hdr, payload, sig, signedInput []byte, err error) {
 	return hdr, payload, sig, signedInput, nil
 }
 
-// verifyJWS verifies signedInput vs sig under pub. alg must match the
-// public key type to prevent algorithm-substitution attacks (the
-// classic CVE-2015-9235 family).
+// verifyJWS verifies signedInput vs sig under pub. The dispatch is
+// driven by `alg` from the JWS header AND simultaneously enforces that
+// the public-key type matches `alg` — this is the algorithm-substitution
+// defense (Red audit F3 / CVE-2015-9235 family). A token forged with
+// header alg=EdDSA against a trust-root holding an *rsa.PublicKey for
+// the same kid is rejected here, before any verification primitive runs.
+//
+// For ECDSA the curve is also asserted against the alg (ES256→P-256,
+// ES384→P-384). alg=none (any case) is refused unconditionally;
+// unknown algs are refused.
+//
+// The companion verifySignature(pub, msg, sig) in rim.go is intentionally
+// retained for the RIM path: detached RIM signatures carry no alg envelope,
+// so dispatch by key-type is correct there. This split (JWS = alg-driven,
+// RIM = key-type-driven) is the only correct factoring; merging them
+// re-introduces the substitution attack.
 func verifyJWS(pub crypto.PublicKey, alg string, signedInput, sig []byte) error {
 	switch alg {
 	case "EdDSA":
-		// reuse the RIM signature path for ed25519
-		return verifySignature(pub, signedInput, sig)
-	case "ES256", "ES384":
-		// JOSE encodes ECDSA signatures as fixed-width r||s, NOT ASN.1.
-		// Convert before delegating to the RIM path.
-		der, err := joseECDSAToASN1(sig)
-		if err != nil {
-			return fmt.Errorf("ecdsa jose decode: %w", err)
+		pubED, ok := pub.(ed25519.PublicKey)
+		if !ok {
+			return fmt.Errorf("%w: alg=EdDSA pub=%T", ErrAlgKeyTypeMismatch, pub)
 		}
-		return verifySignature(pub, signedInput, der)
+		if !ed25519.Verify(pubED, signedInput, sig) {
+			return errors.New("ed25519 verify failed")
+		}
+		return nil
+
+	case "ES256":
+		pubEC, ok := pub.(*ecdsa.PublicKey)
+		if !ok {
+			return fmt.Errorf("%w: alg=ES256 pub=%T", ErrAlgKeyTypeMismatch, pub)
+		}
+		if pubEC.Curve != elliptic.P256() {
+			return fmt.Errorf("%w: alg=ES256 curve=%s (want P-256)", ErrAlgKeyTypeMismatch, pubEC.Curve.Params().Name)
+		}
+		digest := sha256.Sum256(signedInput)
+		return ecdsaVerifyJOSE(pubEC, digest[:], sig)
+
+	case "ES384":
+		pubEC, ok := pub.(*ecdsa.PublicKey)
+		if !ok {
+			return fmt.Errorf("%w: alg=ES384 pub=%T", ErrAlgKeyTypeMismatch, pub)
+		}
+		if pubEC.Curve != elliptic.P384() {
+			return fmt.Errorf("%w: alg=ES384 curve=%s (want P-384)", ErrAlgKeyTypeMismatch, pubEC.Curve.Params().Name)
+		}
+		digest := sha512.Sum384(signedInput)
+		return ecdsaVerifyJOSE(pubEC, digest[:], sig)
+
 	case "PS256":
-		return verifySignature(pub, signedInput, sig)
+		pubRSA, ok := pub.(*rsa.PublicKey)
+		if !ok {
+			return fmt.Errorf("%w: alg=PS256 pub=%T", ErrAlgKeyTypeMismatch, pub)
+		}
+		digest := sha256.Sum256(signedInput)
+		if err := rsa.VerifyPSS(pubRSA, crypto.SHA256, digest[:], sig, &rsa.PSSOptions{
+			SaltLength: rsa.PSSSaltLengthEqualsHash,
+			Hash:       crypto.SHA256,
+		}); err != nil {
+			return fmt.Errorf("rsa-pss verify: %w", err)
+		}
+		return nil
+
+	case "PS384":
+		pubRSA, ok := pub.(*rsa.PublicKey)
+		if !ok {
+			return fmt.Errorf("%w: alg=PS384 pub=%T", ErrAlgKeyTypeMismatch, pub)
+		}
+		digest := sha512.Sum384(signedInput)
+		if err := rsa.VerifyPSS(pubRSA, crypto.SHA384, digest[:], sig, &rsa.PSSOptions{
+			SaltLength: rsa.PSSSaltLengthEqualsHash,
+			Hash:       crypto.SHA384,
+		}); err != nil {
+			return fmt.Errorf("rsa-pss verify: %w", err)
+		}
+		return nil
+
+	case "none", "None", "NONE", "":
+		return ErrAlgNoneRefused
+
 	default:
-		return fmt.Errorf("unsupported alg %q", alg)
+		return fmt.Errorf("%w: %q", ErrUnknownAlg, alg)
 	}
 }
 
-// joseECDSAToASN1 converts a fixed-width JOSE ECDSA signature
-// (r||s, big-endian, equal length) into ASN.1 DER. We handle this
-// here so the RIM verifier (ASN.1 input) is reusable.
-func joseECDSAToASN1(jose []byte) ([]byte, error) {
-	if len(jose) < 64 || len(jose)%2 != 0 {
-		return nil, fmt.Errorf("jose ecdsa: bad length %d", len(jose))
+// ecdsaVerifyJOSE verifies a JOSE-flavored ECDSA signature (fixed-width
+// r||s, big-endian, equal length — RFC 7515 §3.4) over the supplied
+// pre-hashed digest. The hash algorithm is the caller's responsibility
+// and must match the JWS alg.
+func ecdsaVerifyJOSE(pub *ecdsa.PublicKey, digest, sig []byte) error {
+	if len(sig) == 0 || len(sig)%2 != 0 {
+		return fmt.Errorf("ecdsa jose: bad signature length %d", len(sig))
 	}
-	half := len(jose) / 2
-	r := trimLeadingZeroes(jose[:half])
-	s := trimLeadingZeroes(jose[half:])
-
-	// ASN.1 INTEGER must be unsigned; prepend 0x00 if MSB is set.
-	rEnc := asn1Integer(r)
-	sEnc := asn1Integer(s)
-
-	body := append(rEnc, sEnc...)
-	// SEQUENCE { r, s }
-	out := []byte{0x30}
-	out = appendASN1Length(out, len(body))
-	return append(out, body...), nil
-}
-
-func trimLeadingZeroes(b []byte) []byte {
-	i := 0
-	for i < len(b)-1 && b[i] == 0 {
-		i++
+	half := len(sig) / 2
+	// JOSE width must equal the curve's coordinate size.
+	if want := (pub.Curve.Params().BitSize + 7) / 8; half != want {
+		return fmt.Errorf("ecdsa jose: signature half=%d want=%d for %s", half, want, pub.Curve.Params().Name)
 	}
-	return b[i:]
-}
-
-func asn1Integer(b []byte) []byte {
-	if len(b) > 0 && b[0]&0x80 != 0 {
-		b = append([]byte{0x00}, b...)
+	r := new(big.Int).SetBytes(sig[:half])
+	s := new(big.Int).SetBytes(sig[half:])
+	if !ecdsa.Verify(pub, digest, r, s) {
+		return errors.New("ecdsa verify failed")
 	}
-	out := []byte{0x02}
-	out = appendASN1Length(out, len(b))
-	return append(out, b...)
-}
-
-func appendASN1Length(dst []byte, n int) []byte {
-	if n < 0x80 {
-		return append(dst, byte(n))
-	}
-	// Long form. We support up to 2-byte lengths (>64KB JWS bodies are
-	// not realistic).
-	if n < 0x100 {
-		return append(dst, 0x81, byte(n))
-	}
-	if n < 0x10000 {
-		return append(dst, 0x82, byte(n>>8), byte(n))
-	}
-	// Truncate at 65535 — JWS payloads larger than this fail upstream.
-	return append(dst, 0x82, 0xff, 0xff)
+	return nil
 }
 
 func sha256BytesEqual(a, b []byte) bool {
