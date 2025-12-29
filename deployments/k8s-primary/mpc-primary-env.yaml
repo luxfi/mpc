@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mpc-node
+spec:
+  template:
+    spec:
+      containers:
+        - name: mpc-node
+          env:
+            - name: MPC_NETWORK
+              value: "primary"
+            - name: MPC_AUDIT_STORE
+              value: "composite"
+            - name: MPC_AUDIT_COMPOSITE_LEGS
+              value: "local-worm,mchain"
+            - name: MPC_AUDIT_WORM_PATH
+              value: "/data/mpc/audit.log"
+            - name: MPC_REGISTRAR_URL
+              valueFrom:
+                secretKeyRef:
+                  name: mpc-secrets
+                  key: registrar-url
+                  optional: true
+            - name: MPC_REGISTRAR_AUTH
+              valueFrom:
+                secretKeyRef:
+                  name: mpc-secrets
+                  key: registrar-auth
+                  optional: true
+            - name: MPC_AUDIT_MCHAIN_URL
+              valueFrom:
+                secretKeyRef:
+                  name: mpc-secrets
+                  key: audit-mchain-url
+                  optional: true
+            - name: MPC_AUDIT_MCHAIN_AUTH
+              valueFrom:
+                secretKeyRef:
+                  name: mpc-secrets
+                  key: audit-mchain-auth
+                  optional: true
