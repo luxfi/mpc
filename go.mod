@@ -244,6 +244,11 @@ replace github.com/luxfi/fhe => ../fhe
 // luxfi/lattice cuts a release tag that includes types/trust.go.
 replace github.com/luxfi/lattice/v7 => ../lattice
 
+// Local development against the FHE threshold protocol added in
+// luxfi/threshold/protocols/tfhe (LP-137-FHE-THRESHOLD). Drop this once
+// luxfi/threshold cuts a release tag that includes protocols/tfhe.
+replace github.com/luxfi/threshold => ../threshold
+
 // luxfi/genesis v1.5.21 / v1.5.22 are missing from proxy.golang.org; no
 // luxfi/mpc code path imports them, but transitive resolution can pick them
 // up. Excluded until genesis retags.
