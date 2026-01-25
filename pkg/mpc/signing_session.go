@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/luxfi/log"
+	log "github.com/luxfi/log/logger"
 	"github.com/luxfi/log/level"
 	"github.com/luxfi/threshold/pkg/ecdsa"
 	"github.com/luxfi/threshold/pkg/party"
