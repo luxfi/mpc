@@ -100,7 +100,78 @@ func (p *Node) CreateKeyGenSession(
 		p.identityStore,
 	)
 
-	session.Init()
+	// Note: Init() is called by the caller (keygen handler)
+	return session, nil
+}
+
+// CreateEdDSAKeyGenSession creates a FROST keygen session for EdDSA
+func (p *Node) CreateEdDSAKeyGenSession(
+	walletID string,
+	threshold int,
+	resultQueue messaging.MessageQueue,
+) (FROSTKeygenSession, error) {
+	if !p.peerRegistry.ArePeersReady() {
+		return nil, fmt.Errorf(
+			"peers are not ready yet. ready: %d, expected: %d",
+			p.peerRegistry.GetReadyPeersCount(),
+			len(p.peerIDs)+1,
+		)
+	}
+
+	readyPeerIDs := p.peerRegistry.GetReadyPeersIncludeSelf()
+	// Use version 0 for FROST to create raw party IDs without suffixes
+	// This is required for resharing compatibility - reshare sessions use raw node IDs
+	selfPartyID, allPartyIDs := p.generatePartyIDs(PurposeKeygen, readyPeerIDs, 0)
+
+	session := newFROSTKeygenSession(
+		walletID,
+		p.pubSub,
+		selfPartyID,
+		allPartyIDs,
+		threshold,
+		p.kvstore,
+		p.keyinfoStore,
+		resultQueue,
+		p.identityStore,
+	)
+
+	// Note: Init() is called by the caller (keygen handler)
+	return session, nil
+}
+
+// CreateLSSKeyGenSession creates an LSS keygen session for ECDSA
+// LSS supports dynamic resharing (changing participants), unlike CGGMP21
+func (p *Node) CreateLSSKeyGenSession(
+	walletID string,
+	threshold int,
+	resultQueue messaging.MessageQueue,
+) (KeyGenSession, error) {
+	if !p.peerRegistry.ArePeersReady() {
+		return nil, fmt.Errorf(
+			"peers are not ready yet. ready: %d, expected: %d",
+			p.peerRegistry.GetReadyPeersCount(),
+			len(p.peerIDs)+1,
+		)
+	}
+
+	readyPeerIDs := p.peerRegistry.GetReadyPeersIncludeSelf()
+	// Use version 0 for LSS to create raw party IDs without suffixes
+	// This is required for resharing compatibility - reshare sessions use raw node IDs
+	selfPartyID, allPartyIDs := p.generatePartyIDs(PurposeKeygen, readyPeerIDs, 0)
+
+	session := newLSSKeygenSession(
+		walletID,
+		p.pubSub,
+		selfPartyID,
+		allPartyIDs,
+		threshold,
+		p.kvstore,
+		p.keyinfoStore,
+		resultQueue,
+		p.identityStore,
+	)
+
+	// Note: Init() is called by the caller (keygen handler)
 	return session, nil
 }
 
@@ -127,9 +198,10 @@ func (p *Node) CreateSignSession(
 		return nil, ErrNotInParticipantList
 	}
 
-	// Generate party IDs for signers
-	version := p.getVersion(SessionTypeCGGMP21, walletID)
-	selfPartyID, signerPartyIDs := p.generatePartyIDs(PurposeSign, signerPeerIDs, version)
+	// Generate party IDs for signers using DefaultVersion and PurposeKeygen
+	// IMPORTANT: Must use PurposeKeygen because the party IDs stored in the config
+	// were created during keygen with "UUID:keygen:1" format
+	selfPartyID, signerPartyIDs := p.generatePartyIDs(PurposeKeygen, signerPeerIDs, DefaultVersion)
 
 	session, err := newCGGMP21SigningSession(
 		sessionID,
@@ -148,7 +220,56 @@ func (p *Node) CreateSignSession(
 		return nil, err
 	}
 
-	session.Init()
+	// Note: Init() is called by the caller (sign handler)
+	return session, nil
+}
+
+// CreateEdDSASignSession creates a FROST signing session for EdDSA (Ed25519)
+func (p *Node) CreateEdDSASignSession(
+	sessionID string,
+	walletID string,
+	messageHash []byte,
+	signerPeerIDs []string,
+	resultQueue messaging.MessageQueue,
+	useBroadcast bool,
+) (FROSTSignSession, error) {
+	// Check if we have enough signers
+	keyInfo, err := p.keyinfoStore.Get(walletID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get key info: %w", err)
+	}
+
+	if len(signerPeerIDs) < keyInfo.Threshold+1 {
+		return nil, ErrNotEnoughParticipants
+	}
+
+	// Check if this node is in the signer list
+	if !contains(signerPeerIDs, p.nodeID) {
+		return nil, ErrNotInParticipantList
+	}
+
+	// Generate party IDs for signers
+	// FROST uses version 0 for raw party IDs without suffixes
+	selfPartyID, signerPartyIDs := p.generatePartyIDs(PurposeKeygen, signerPeerIDs, 0)
+
+	session, err := newFROSTSigningSession(
+		sessionID,
+		walletID,
+		messageHash,
+		p.pubSub,
+		selfPartyID,
+		signerPartyIDs,
+		p.kvstore,
+		p.keyinfoStore,
+		resultQueue,
+		p.identityStore,
+		useBroadcast,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// Note: Init() is called by the caller (sign handler)
 	return session, nil
 }
 
@@ -203,7 +324,7 @@ func (p *Node) CreateReshareSession(
 
 	switch sessionType {
 	case SessionTypeECDSA:
-		return newCGGMP21ReshareSession(
+		session, err := newCGGMP21ReshareSession(
 			walletID,
 			threshold,
 			newThreshold,
@@ -215,8 +336,14 @@ func (p *Node) CreateReshareSession(
 			resultQueue,
 			p.nodeID,
 		)
+		// Explicitly return nil interface if session is nil
+		// (prevents nil pointer inside non-nil interface)
+		if session == nil {
+			return nil, err
+		}
+		return session, err
 	case SessionTypeEDDSA:
-		return newEdDSAReshareSession(
+		session, err := newEdDSAReshareSession(
 			walletID,
 			threshold,
 			newThreshold,
@@ -228,6 +355,11 @@ func (p *Node) CreateReshareSession(
 			resultQueue,
 			p.nodeID,
 		)
+		// Explicitly return nil interface if session is nil
+		if session == nil {
+			return nil, err
+		}
+		return session, err
 	default:
 		return nil, fmt.Errorf("unsupported session type for reshare: %v", sessionType)
 	}

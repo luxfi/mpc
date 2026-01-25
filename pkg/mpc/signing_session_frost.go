@@ -2,6 +2,7 @@ package mpc
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"sync"
@@ -9,13 +10,11 @@ import (
 	log "github.com/luxfi/log"
 	"github.com/nats-io/nats.go"
 
-	"github.com/luxfi/threshold/pkg/ecdsa"
-	"github.com/luxfi/threshold/pkg/math/curve"
 	"github.com/luxfi/threshold/pkg/party"
 	"github.com/luxfi/threshold/pkg/pool"
 	"github.com/luxfi/threshold/pkg/protocol"
-	"github.com/luxfi/threshold/protocols/cmp"
-	"github.com/luxfi/threshold/protocols/cmp/config"
+	"github.com/luxfi/threshold/pkg/taproot"
+	"github.com/luxfi/threshold/protocols/frost"
 	"github.com/rs/zerolog"
 
 	"github.com/luxfi/mpc/pkg/encoding"
@@ -28,16 +27,19 @@ import (
 	"github.com/luxfi/mpc/pkg/utils"
 )
 
-type SignSession interface {
+// curve import used for extracting signature components
+
+// FROSTSignSession is the interface for EdDSA signing sessions
+type FROSTSignSession interface {
 	Session
 }
 
-type cggmp21SigningSession struct {
+type frostSigningSession struct {
 	session
 	handler        *protocol.Handler
 	pool           *pool.Pool
-	config         *config.Config
-	signature      *ecdsa.Signature
+	config         *frost.TaprootConfig
+	signature      taproot.Signature // 64-byte BIP-340 signature (R_x || s)
 	messagesCh     chan *protocol.Message
 	resultMutex    sync.Mutex
 	done           bool
@@ -48,7 +50,7 @@ type cggmp21SigningSession struct {
 	protocolLogger log.Logger
 }
 
-func newCGGMP21SigningSession(
+func newFROSTSigningSession(
 	sessionID string,
 	walletID string,
 	messageHash []byte,
@@ -60,24 +62,34 @@ func newCGGMP21SigningSession(
 	resultQueue messaging.MessageQueue,
 	identityStore identity.Store,
 	useBroadcast bool,
-) (*cggmp21SigningSession, error) {
-	// Load config from kvstore
-	shareBytes, err := kvstore.Get(walletID)
+) (*frostSigningSession, error) {
+	// Load config from kvstore - FROST keys are stored with frost: prefix
+	frostKey := fmt.Sprintf("frost:%s", walletID)
+	shareBytes, err := kvstore.Get(frostKey)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get key share: %w", err)
+		return nil, fmt.Errorf("failed to get FROST key share: %w", err)
 	}
 
-	// Create empty config with the correct group - REQUIRED for unmarshalling
-	config := config.EmptyConfig(curve.Secp256k1{})
-	// Use UnmarshalBinary (CBOR) instead of JSON - required for curve.Curve interface
-	if err := config.UnmarshalBinary(shareBytes); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal key share: %w", err)
+	// TaprootConfig is stored as CBOR (to properly preserve crypto types)
+	config, err := UnmarshalFROSTConfig(shareBytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal FROST key share: %w", err)
+	}
+
+	// BIP-340/Taproot requires 32-byte message hash
+	// If message is not already 32 bytes, hash it with SHA-256
+	var hashedMessage []byte
+	if len(messageHash) == 32 {
+		hashedMessage = messageHash
+	} else {
+		hash := sha256.Sum256(messageHash)
+		hashedMessage = hash[:]
 	}
 
 	// Create thread pool
 	threadPool := pool.NewPool(0) // Use max threads
 
-	return &cggmp21SigningSession{
+	return &frostSigningSession{
 		session: session{
 			walletID:           walletID,
 			sessionID:          sessionID,
@@ -85,7 +97,7 @@ func newCGGMP21SigningSession(
 			selfPartyID:        selfPartyID,
 			partyIDs:           signerIDs,
 			subscriberList:     []messaging.Subscription{},
-			rounds:             5, // CGGMP21 signing has 5 rounds
+			rounds:             3, // FROST signing has 3 rounds
 			outCh:              make(chan msg, 100),
 			errCh:              make(chan error, 10),
 			finishCh:           make(chan bool, 1),
@@ -99,10 +111,10 @@ func newCGGMP21SigningSession(
 			processingLock:     sync.Mutex{},
 			topicComposer: &TopicComposer{
 				ComposeBroadcastTopic: func() string {
-					return fmt.Sprintf("sign:broadcast:cggmp21:%s", sessionID)
+					return fmt.Sprintf("sign:broadcast:frost:%s", sessionID)
 				},
 				ComposeDirectTopic: func(nodeID string) string {
-					return fmt.Sprintf("sign:direct:cggmp21:%s:%s", nodeID, sessionID)
+					return fmt.Sprintf("sign:direct:frost:%s:%s", nodeID, sessionID)
 				},
 			},
 			identityStore: identityStore,
@@ -110,27 +122,27 @@ func newCGGMP21SigningSession(
 		pool:         threadPool,
 		config:       config,
 		messagesCh:   make(chan *protocol.Message, 100),
-		messageHash:  messageHash,
+		messageHash:  hashedMessage, // Use the SHA-256 hashed message
 		signerIDs:    signerIDs,
 		useBroadcast: useBroadcast,
 		done:         false,
 	}, nil
 }
 
-// ListenToIncomingMessageAsync overrides the base session's method to call the correct ProcessInboundMessage
-func (s *cggmp21SigningSession) ListenToIncomingMessageAsync() {
+// ListenToIncomingMessageAsync subscribes to FROST signing messages
+func (s *frostSigningSession) ListenToIncomingMessageAsync() {
 	// Subscribe to broadcast messages
 	broadcastTopic := s.topicComposer.ComposeBroadcastTopic()
 	broadcastSub, err := s.pubSub.Subscribe(broadcastTopic, func(m *nats.Msg) {
 		s.logger.Debug().
 			Str("topic", broadcastTopic).
 			Int("size", len(m.Data)).
-			Msg("Received broadcast message")
-		s.ProcessInboundMessage(m.Data) // Calls cggmp21SigningSession's implementation
+			Msg("FROST: Received broadcast message")
+		s.ProcessInboundMessage(m.Data)
 	})
 
 	if err != nil {
-		s.logger.Error().Err(err).Msgf("Failed to subscribe to broadcast topic %s", broadcastTopic)
+		s.logger.Error().Err(err).Msgf("FROST: Failed to subscribe to broadcast topic %s", broadcastTopic)
 		s.errCh <- err
 		return
 	}
@@ -138,18 +150,17 @@ func (s *cggmp21SigningSession) ListenToIncomingMessageAsync() {
 	s.subscriberList = append(s.subscriberList, broadcastSub)
 
 	// Subscribe to direct messages
-	// Use extractNodeID to match the routing done in sendMsg
 	directTopic := s.topicComposer.ComposeDirectTopic(extractNodeID(string(s.selfPartyID)))
 	directSub, err := s.pubSub.Subscribe(directTopic, func(m *nats.Msg) {
 		s.logger.Debug().
 			Str("topic", directTopic).
 			Int("size", len(m.Data)).
-			Msg("Received direct message")
-		s.ProcessInboundMessage(m.Data) // Calls cggmp21SigningSession's implementation
+			Msg("FROST: Received direct message")
+		s.ProcessInboundMessage(m.Data)
 	})
 
 	if err != nil {
-		s.logger.Error().Err(err).Msgf("Failed to subscribe to direct topic %s", directTopic)
+		s.logger.Error().Err(err).Msgf("FROST: Failed to subscribe to direct topic %s", directTopic)
 		s.errCh <- err
 		return
 	}
@@ -159,23 +170,23 @@ func (s *cggmp21SigningSession) ListenToIncomingMessageAsync() {
 	s.logger.Info().
 		Str("broadcast", broadcastTopic).
 		Str("direct", directTopic).
-		Msg("Listening to incoming messages")
+		Msg("FROST: Listening to incoming signing messages")
 }
 
-func (s *cggmp21SigningSession) Init() {
+func (s *frostSigningSession) Init() {
 	s.logger.Info().
 		Str("sessionID", s.sessionID).
 		Str("walletID", s.walletID).
 		Hex("messageHash", s.messageHash).
 		Interface("signerIDs", s.signerIDs).
 		Bool("useBroadcast", s.useBroadcast).
-		Msg("Initializing CGGMP21 signing session")
+		Msg("Initializing FROST signing session")
 
 	// Create protocol logger
 	s.protocolLogger = log.NewTestLogger(log.InfoLevel)
 
-	// Create CGGMP21 signing protocol
-	startFunc := cmp.Sign(s.config, s.signerIDs, s.messageHash, s.pool)
+	// Create FROST Taproot signing protocol
+	startFunc := frost.SignTaproot(s.config, s.signerIDs, s.messageHash)
 
 	// Create handler with proper context, logging, and session ID
 	ctx := context.Background()
@@ -188,7 +199,7 @@ func (s *cggmp21SigningSession) Init() {
 		protocol.DefaultConfig(),
 	)
 	if err != nil {
-		s.logger.Fatal().Err(err).Msg("Failed to create signing handler")
+		s.logger.Fatal().Err(err).Msg("Failed to create FROST signing handler")
 		return
 	}
 
@@ -201,10 +212,10 @@ func (s *cggmp21SigningSession) Init() {
 		Str("sessionID", s.sessionID).
 		Str("partyID", string(s.selfPartyID)).
 		Interface("signerIDs", s.signerIDs).
-		Msg("[INITIALIZED] CGGMP21 signing session initialized successfully")
+		Msg("[INITIALIZED] FROST signing session initialized successfully")
 }
 
-func (s *cggmp21SigningSession) handleProtocolMessages() {
+func (s *frostSigningSession) handleProtocolMessages() {
 	for {
 		select {
 		case protoMsg, ok := <-s.handler.Listen():
@@ -217,17 +228,18 @@ func (s *cggmp21SigningSession) handleProtocolMessages() {
 					s.resultErr = err
 					s.errCh <- err
 				} else {
-					s.signature = result.(*ecdsa.Signature)
+					// FROST Taproot signing returns taproot.Signature which is []byte (64 bytes)
+					s.signature = result.(taproot.Signature)
 				}
 				s.resultMutex.Unlock()
 				s.finishCh <- true
 				return
 			}
 
-			// Serialize the full protocol message to preserve all fields (SSID, RoundNumber, etc.)
+			// Serialize the full protocol message
 			protoBytes, err := protoMsg.MarshalBinary()
 			if err != nil {
-				s.logger.Error().Err(err).Msg("Failed to marshal protocol message")
+				s.logger.Error().Err(err).Msg("FROST: Failed to marshal protocol message")
 				continue
 			}
 
@@ -244,13 +256,13 @@ func (s *cggmp21SigningSession) handleProtocolMessages() {
 				Int("round", int(protoMsg.RoundNumber)).
 				Int("recipients", len(toPartyIDs)).
 				Int("dataLen", len(protoBytes)).
-				Msg("Protocol emitted message")
+				Msg("FROST: Protocol emitted message")
 
 			outMsg := msg{
 				FromPartyID: protoMsg.From,
 				ToPartyIDs:  toPartyIDs,
 				IsBroadcast: protoMsg.Broadcast,
-				Data:        protoBytes, // Use serialized protocol message
+				Data:        protoBytes,
 			}
 
 			s.outCh <- outMsg
@@ -262,36 +274,36 @@ func (s *cggmp21SigningSession) handleProtocolMessages() {
 				Bool("broadcast", protoMsg.Broadcast).
 				Int("round", int(protoMsg.RoundNumber)).
 				Int("dataLen", len(protoMsg.Data)).
-				Msg("Received protocol message, checking CanAccept")
+				Msg("FROST: Received protocol message, checking CanAccept")
 
 			if !s.handler.CanAccept(protoMsg) {
 				s.logger.Warn().
 					Str("from", string(protoMsg.From)).
 					Bool("broadcast", protoMsg.Broadcast).
-					Msg("Handler cannot accept message")
+					Msg("FROST: Handler cannot accept message")
 				continue
 			}
 
 			s.logger.Debug().
 				Str("from", string(protoMsg.From)).
-				Msg("Handler accepted message")
+				Msg("FROST: Handler accepted message")
 			s.handler.Accept(protoMsg)
 		}
 	}
 }
 
-func (s *cggmp21SigningSession) ProcessInboundMessage(msgBytes []byte) {
+func (s *frostSigningSession) ProcessInboundMessage(msgBytes []byte) {
 	s.processingLock.Lock()
 	defer s.processingLock.Unlock()
 
-	// First, unmarshal the wire format to get routing info
+	// First, unmarshal the wire format
 	inboundMessage := &types.Message{}
 	if err := encoding.JsonBytesToStruct(msgBytes, inboundMessage); err != nil {
-		s.logger.Error().Err(err).Msg("ProcessInboundMessage unmarshal error")
+		s.logger.Error().Err(err).Msg("FROST: ProcessInboundMessage unmarshal error")
 		return
 	}
 
-	// Deduplication check using message body hash
+	// Deduplication check
 	msgHashStr := fmt.Sprintf("%x", utils.GetMessageHash(inboundMessage.Body))
 	if s.processing[msgHashStr] {
 		return
@@ -301,7 +313,7 @@ func (s *cggmp21SigningSession) ProcessInboundMessage(msgBytes []byte) {
 	// Deserialize the full protocol message from the body
 	protoMsg := &protocol.Message{}
 	if err := protoMsg.UnmarshalBinary(inboundMessage.Body); err != nil {
-		s.logger.Error().Err(err).Msg("Failed to unmarshal protocol message")
+		s.logger.Error().Err(err).Msg("FROST: Failed to unmarshal protocol message")
 		return
 	}
 
@@ -310,14 +322,14 @@ func (s *cggmp21SigningSession) ProcessInboundMessage(msgBytes []byte) {
 		Bool("broadcast", protoMsg.Broadcast).
 		Int("round", int(protoMsg.RoundNumber)).
 		Int("dataLen", len(protoMsg.Data)).
-		Msg("Received protocol message")
+		Msg("FROST: Received protocol message")
 
 	// Send to handler
 	s.messagesCh <- protoMsg
 }
 
-func (s *cggmp21SigningSession) ProcessOutboundMessage() {
-	s.logger.Info().Msgf("ProcessOutboundMessage started: %s", s.sessionID)
+func (s *frostSigningSession) ProcessOutboundMessage() {
+	s.logger.Info().Msgf("FROST ProcessOutboundMessage started: %s", s.sessionID)
 	for {
 		select {
 		case m := <-s.outCh:
@@ -338,17 +350,17 @@ func (s *cggmp21SigningSession) ProcessOutboundMessage() {
 			s.sendMsg(msgWireBytes)
 
 		case err := <-s.errCh:
-			s.logger.Error().Err(err).Msg("Received error during ProcessOutboundMessage")
+			s.logger.Error().Err(err).Msg("FROST: Received error during ProcessOutboundMessage")
 
 		case <-s.finishCh:
-			s.logger.Info().Msg("Received finish message during ProcessOutboundMessage")
+			s.logger.Info().Msg("FROST: Received finish message during ProcessOutboundMessage")
 			s.publishResult()
 			return
 		}
 	}
 }
 
-func (s *cggmp21SigningSession) publishResult() {
+func (s *frostSigningSession) publishResult() {
 	s.resultMutex.Lock()
 	defer s.resultMutex.Unlock()
 
@@ -357,109 +369,54 @@ func (s *cggmp21SigningSession) publishResult() {
 			s.sessionID,
 			s.walletID,
 			map[string]any{
-				"error": s.resultErr.Error(),
+				"error":    s.resultErr.Error(),
+				"protocol": "FROST",
 			},
 		)
 		evtData, _ := encoding.StructToJsonBytes(failureEvent)
 		if err := s.resultQueue.Enqueue(fmt.Sprintf("%s.%s", event.SigningResultTopicBase, s.walletID), evtData, nil); err != nil {
-			s.logger.Error().Err(err).Msg("failed to publish sign failure event")
+			s.logger.Error().Err(err).Msg("FROST: failed to publish sign failure event")
 		}
-		// IMPORTANT: Always send to externalFinishChan so WaitForFinish() doesn't block forever
 		s.externalFinishChan <- ""
 		return
 	}
 
-	if s.signature == nil {
-		s.logger.Error().Msg("No signature available after signing completion")
-		// IMPORTANT: Always send to externalFinishChan so WaitForFinish() doesn't block forever
+	if s.signature == nil || len(s.signature) != 64 {
+		s.logger.Error().Int("sigLen", len(s.signature)).Msg("FROST: Invalid signature after signing completion (expected 64 bytes)")
 		s.externalFinishChan <- ""
 		return
 	}
 
-	// Verify signature
-	if !s.signature.Verify(s.config.PublicPoint(), s.messageHash) {
-		s.logger.Error().Msg("Failed to verify signature")
-		failureEvent := event.CreateSignFailure(
-			s.sessionID,
-			s.walletID,
-			map[string]any{
-				"error": "signature verification failed",
-			},
-		)
-		evtData, _ := encoding.StructToJsonBytes(failureEvent)
-		if err := s.resultQueue.Enqueue(fmt.Sprintf("%s.%s", event.SigningResultTopicBase, s.walletID), evtData, nil); err != nil {
-			s.logger.Error().Err(err).Msg("failed to publish sign failure event")
-		}
-		// IMPORTANT: Always send to externalFinishChan so WaitForFinish() doesn't block forever
-		s.externalFinishChan <- ""
-		return
-	}
-
-	// Convert signature to bytes
-	// R is a curve.Point - MarshalBinary returns compressed format (0x02/0x03 || X)
-	// We need just the X coordinate (32 bytes)
-	sigRCompressed, _ := s.signature.R.MarshalBinary()
-	sigRBytes := sigRCompressed
-	if len(sigRCompressed) == 33 {
-		// Strip the prefix byte to get raw X coordinate
-		sigRBytes = sigRCompressed[1:]
-	}
-	sigSBytes, _ := s.signature.S.MarshalBinary()
-
-	// Get public key bytes for recovery calculation
-	pubPointBytes, err := s.config.PublicPoint().MarshalBinary()
-	if err != nil {
-		s.logger.Error().Err(err).Msg("Failed to marshal public point for recovery calculation")
-		s.externalFinishChan <- ""
-		return
-	}
-
-	// Calculate recovery byte
-	recoveryByte, err := CalculateRecoveryByte(sigRBytes, sigSBytes, s.messageHash, pubPointBytes)
-	if err != nil {
-		s.logger.Warn().Err(err).Msg("Failed to calculate recovery byte, using 0")
-		recoveryByte = 0
-	}
-
-	s.logger.Debug().
-		Uint8("recoveryByte", recoveryByte).
-		Int("pubKeyLen", len(pubPointBytes)).
-		Hex("sigR", sigRBytes).
-		Hex("sigS", sigSBytes).
-		Msg("Calculated signature recovery byte")
-
-	// Publish success event with raw bytes
-	successEvent := event.CreateSignSuccess(
-		s.sessionID,
-		s.walletID,
-		sigRBytes,
-		sigSBytes,
-		recoveryByte,
-		map[string]any{
-			"messageHash": hex.EncodeToString(s.messageHash),
-			"signers":     len(s.signerIDs),
-			"protocol":    "CGGMP21",
-		},
-	)
-
-	evtData, _ := encoding.StructToJsonBytes(successEvent)
-	if err := s.resultQueue.Enqueue(fmt.Sprintf("%s.%s", event.SigningResultTopicBase, s.walletID), evtData, nil); err != nil {
-		s.logger.Error().Err(err).Msg("failed to publish sign success event")
-	}
+	// taproot.Signature is already in BIP-340 format: R_x (32 bytes) || s (32 bytes) = 64 bytes
+	fullSignature := []byte(s.signature)
 
 	s.logger.Info().
 		Str("sessionID", s.sessionID).
 		Str("walletID", s.walletID).
-		Hex("sigR", sigRBytes).
-		Hex("sigS", sigSBytes).
-		Uint8("recoveryByte", recoveryByte).
-		Msg("CGGMP21 signing completed successfully")
+		Hex("sigRX", fullSignature[:32]).
+		Hex("sigZ", fullSignature[32:]).
+		Int("sigLen", len(fullSignature)).
+		Msg("FROST/Taproot signing completed successfully")
+
+	// Create success event with EdDSA signature format
+	successEvent := event.SigningResultEvent{
+		ResultType: event.ResultTypeSuccess,
+		WalletID:   s.walletID,
+		TxID:       s.sessionID,
+		// For EdDSA, use the Signature field with full 64-byte signature
+		Signature: fullSignature,
+	}
+
+	evtData, _ := encoding.StructToJsonBytes(successEvent)
+	if err := s.resultQueue.Enqueue(fmt.Sprintf("%s.%s", event.SigningResultTopicBase, s.walletID), evtData, nil); err != nil {
+		s.logger.Error().Err(err).Msg("FROST: failed to publish sign success event")
+	}
 
 	// IMPORTANT: Send to externalFinishChan so WaitForFinish() unblocks
-	s.externalFinishChan <- hex.EncodeToString(sigRBytes)
+	s.externalFinishChan <- hex.EncodeToString(fullSignature)
 }
 
-func (s *cggmp21SigningSession) Stop() {
+func (s *frostSigningSession) Stop() {
 	if s.pool != nil {
 		s.pool.TearDown()
 	}
@@ -468,6 +425,6 @@ func (s *cggmp21SigningSession) Stop() {
 	close(s.messagesCh)
 }
 
-func (s *cggmp21SigningSession) WaitForFinish() string {
+func (s *frostSigningSession) WaitForFinish() string {
 	return <-s.externalFinishChan
 }
