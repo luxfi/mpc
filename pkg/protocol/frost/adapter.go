@@ -9,8 +9,7 @@ import (
 	"math/big"
 	"sync"
 
-	log "github.com/luxfi/log/logger"
-	"github.com/luxfi/log/level"
+	log "github.com/luxfi/log"
 	"github.com/luxfi/threshold/pkg/math/curve"
 	"github.com/luxfi/threshold/pkg/party"
 	"github.com/luxfi/threshold/pkg/pool"
@@ -30,7 +29,7 @@ type FROSTProtocol struct {
 func NewFROSTProtocol() *FROSTProtocol {
 	return &FROSTProtocol{
 		pool:   pool.NewPool(0), // Use max threads
-		logger: log.NewTestLogger(level.Info),
+		logger: log.NewTestLogger(log.InfoLevel),
 	}
 }
 
