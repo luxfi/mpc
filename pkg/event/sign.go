@@ -4,7 +4,8 @@ const (
 	SigningPublisherStream     = "mpc-signing"
 	SigningConsumerStream      = "mpc-signing-consumer"
 	SigningRequestTopic        = "mpc.signing_request.*"
-	SigningResultTopic         = "mpc.mpc_signing_result.*"
+	SigningResultTopic         = "mpc.mpc_signing_result.*"     // Pattern for subscribing (with wildcard)
+	SigningResultTopicBase     = "mpc.mpc_signing_result"       // Base topic for publishing (no wildcard)
 	SigningResultCompleteTopic = "mpc.mpc_signing_result.complete"
 )
 
@@ -27,14 +28,15 @@ type SigningResultEvent struct {
 	Signature []byte `json:"signature"`
 }
 
-func CreateSignSuccess(sessionID, walletID, r, s string, metadata map[string]any) SigningResultEvent {
+func CreateSignSuccess(sessionID, walletID string, r, s []byte, recoveryByte byte, metadata map[string]any) SigningResultEvent {
 	return SigningResultEvent{
 		ResultType:          ResultTypeSuccess,
 		ErrorCode:           "",
 		WalletID:            walletID,
 		TxID:                sessionID,
-		R:                   []byte(r),
-		S:                   []byte(s),
+		R:                   r,
+		S:                   s,
+		SignatureRecovery:   []byte{recoveryByte},
 		NetworkInternalCode: "",
 	}
 }

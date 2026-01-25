@@ -2,6 +2,7 @@ package mpc
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"sync"
@@ -10,12 +11,11 @@ import (
 	"github.com/nats-io/nats.go"
 
 	"github.com/luxfi/threshold/pkg/ecdsa"
-	"github.com/luxfi/threshold/pkg/math/curve"
 	"github.com/luxfi/threshold/pkg/party"
 	"github.com/luxfi/threshold/pkg/pool"
 	"github.com/luxfi/threshold/pkg/protocol"
-	"github.com/luxfi/threshold/protocols/cmp"
-	"github.com/luxfi/threshold/protocols/cmp/config"
+	"github.com/luxfi/threshold/protocols/lss"
+	lssConfig "github.com/luxfi/threshold/protocols/lss/config"
 	"github.com/rs/zerolog"
 
 	"github.com/luxfi/mpc/pkg/encoding"
@@ -28,15 +28,13 @@ import (
 	"github.com/luxfi/mpc/pkg/utils"
 )
 
-type SignSession interface {
-	Session
-}
-
-type cggmp21SigningSession struct {
+// lssSigningSession implements SignSession using LSS protocol
+// LSS supports dynamic resharing (changing participants), unlike CGGMP21
+type lssSigningSession struct {
 	session
 	handler        *protocol.Handler
 	pool           *pool.Pool
-	config         *config.Config
+	config         *lssConfig.Config
 	signature      *ecdsa.Signature
 	messagesCh     chan *protocol.Message
 	resultMutex    sync.Mutex
@@ -48,7 +46,7 @@ type cggmp21SigningSession struct {
 	protocolLogger log.Logger
 }
 
-func newCGGMP21SigningSession(
+func newLSSSigningSession(
 	sessionID string,
 	walletID string,
 	messageHash []byte,
@@ -60,24 +58,31 @@ func newCGGMP21SigningSession(
 	resultQueue messaging.MessageQueue,
 	identityStore identity.Store,
 	useBroadcast bool,
-) (*cggmp21SigningSession, error) {
+) (*lssSigningSession, error) {
 	// Load config from kvstore
 	shareBytes, err := kvstore.Get(walletID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get key share: %w", err)
 	}
 
-	// Create empty config with the correct group - REQUIRED for unmarshalling
-	config := config.EmptyConfig(curve.Secp256k1{})
-	// Use UnmarshalBinary (CBOR) instead of JSON - required for curve.Curve interface
-	if err := config.UnmarshalBinary(shareBytes); err != nil {
+	// Unmarshal config using CBOR (not JSON) to preserve curve types
+	config, err := UnmarshalLSSConfig(shareBytes)
+	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal key share: %w", err)
+	}
+
+	// Normalize message hash to 32 bytes (LSS requires exactly 32 bytes)
+	// If the input is not 32 bytes, hash it with SHA-256
+	normalizedHash := messageHash
+	if len(messageHash) != 32 {
+		hash := sha256.Sum256(messageHash)
+		normalizedHash = hash[:]
 	}
 
 	// Create thread pool
 	threadPool := pool.NewPool(0) // Use max threads
 
-	return &cggmp21SigningSession{
+	return &lssSigningSession{
 		session: session{
 			walletID:           walletID,
 			sessionID:          sessionID,
@@ -85,7 +90,7 @@ func newCGGMP21SigningSession(
 			selfPartyID:        selfPartyID,
 			partyIDs:           signerIDs,
 			subscriberList:     []messaging.Subscription{},
-			rounds:             5, // CGGMP21 signing has 5 rounds
+			rounds:             4, // LSS signing has 4 rounds
 			outCh:              make(chan msg, 100),
 			errCh:              make(chan error, 10),
 			finishCh:           make(chan bool, 1),
@@ -99,10 +104,10 @@ func newCGGMP21SigningSession(
 			processingLock:     sync.Mutex{},
 			topicComposer: &TopicComposer{
 				ComposeBroadcastTopic: func() string {
-					return fmt.Sprintf("sign:broadcast:cggmp21:%s", sessionID)
+					return fmt.Sprintf("sign:broadcast:lss:%s", sessionID)
 				},
 				ComposeDirectTopic: func(nodeID string) string {
-					return fmt.Sprintf("sign:direct:cggmp21:%s:%s", nodeID, sessionID)
+					return fmt.Sprintf("sign:direct:lss:%s:%s", nodeID, sessionID)
 				},
 			},
 			identityStore: identityStore,
@@ -110,27 +115,27 @@ func newCGGMP21SigningSession(
 		pool:         threadPool,
 		config:       config,
 		messagesCh:   make(chan *protocol.Message, 100),
-		messageHash:  messageHash,
+		messageHash:  normalizedHash,
 		signerIDs:    signerIDs,
 		useBroadcast: useBroadcast,
 		done:         false,
 	}, nil
 }
 
-// ListenToIncomingMessageAsync overrides the base session's method to call the correct ProcessInboundMessage
-func (s *cggmp21SigningSession) ListenToIncomingMessageAsync() {
+// ListenToIncomingMessageAsync subscribes to LSS signing messages
+func (s *lssSigningSession) ListenToIncomingMessageAsync() {
 	// Subscribe to broadcast messages
 	broadcastTopic := s.topicComposer.ComposeBroadcastTopic()
 	broadcastSub, err := s.pubSub.Subscribe(broadcastTopic, func(m *nats.Msg) {
 		s.logger.Debug().
 			Str("topic", broadcastTopic).
 			Int("size", len(m.Data)).
-			Msg("Received broadcast message")
-		s.ProcessInboundMessage(m.Data) // Calls cggmp21SigningSession's implementation
+			Msg("LSS: Received broadcast message")
+		s.ProcessInboundMessage(m.Data)
 	})
 
 	if err != nil {
-		s.logger.Error().Err(err).Msgf("Failed to subscribe to broadcast topic %s", broadcastTopic)
+		s.logger.Error().Err(err).Msgf("LSS: Failed to subscribe to broadcast topic %s", broadcastTopic)
 		s.errCh <- err
 		return
 	}
@@ -138,18 +143,18 @@ func (s *cggmp21SigningSession) ListenToIncomingMessageAsync() {
 	s.subscriberList = append(s.subscriberList, broadcastSub)
 
 	// Subscribe to direct messages
-	// Use extractNodeID to match the routing done in sendMsg
+	// Use extractNodeID to match how sendMsg publishes (strips any suffix)
 	directTopic := s.topicComposer.ComposeDirectTopic(extractNodeID(string(s.selfPartyID)))
 	directSub, err := s.pubSub.Subscribe(directTopic, func(m *nats.Msg) {
 		s.logger.Debug().
 			Str("topic", directTopic).
 			Int("size", len(m.Data)).
-			Msg("Received direct message")
-		s.ProcessInboundMessage(m.Data) // Calls cggmp21SigningSession's implementation
+			Msg("LSS: Received direct message")
+		s.ProcessInboundMessage(m.Data)
 	})
 
 	if err != nil {
-		s.logger.Error().Err(err).Msgf("Failed to subscribe to direct topic %s", directTopic)
+		s.logger.Error().Err(err).Msgf("LSS: Failed to subscribe to direct topic %s", directTopic)
 		s.errCh <- err
 		return
 	}
@@ -159,23 +164,25 @@ func (s *cggmp21SigningSession) ListenToIncomingMessageAsync() {
 	s.logger.Info().
 		Str("broadcast", broadcastTopic).
 		Str("direct", directTopic).
-		Msg("Listening to incoming messages")
+		Msg("LSS: Listening to incoming signing messages")
 }
 
-func (s *cggmp21SigningSession) Init() {
+func (s *lssSigningSession) Init() {
 	s.logger.Info().
 		Str("sessionID", s.sessionID).
 		Str("walletID", s.walletID).
 		Hex("messageHash", s.messageHash).
 		Interface("signerIDs", s.signerIDs).
 		Bool("useBroadcast", s.useBroadcast).
-		Msg("Initializing CGGMP21 signing session")
+		Msg("Initializing LSS signing session")
 
 	// Create protocol logger
 	s.protocolLogger = log.NewTestLogger(log.InfoLevel)
 
-	// Create CGGMP21 signing protocol
-	startFunc := cmp.Sign(s.config, s.signerIDs, s.messageHash, s.pool)
+	// Create LSS signing protocol with blinding for ECDSA signatures
+	// Note: lss.Sign() returns SchnorrSignature, but we need ecdsa.Signature
+	// SignWithBlinding() returns *ecdsa.Signature which is what we need
+	startFunc := lss.SignWithBlinding(s.config, s.signerIDs, s.messageHash, lss.BlindingProtocolI, s.pool)
 
 	// Create handler with proper context, logging, and session ID
 	ctx := context.Background()
@@ -188,7 +195,7 @@ func (s *cggmp21SigningSession) Init() {
 		protocol.DefaultConfig(),
 	)
 	if err != nil {
-		s.logger.Fatal().Err(err).Msg("Failed to create signing handler")
+		s.logger.Fatal().Err(err).Msg("Failed to create LSS signing handler")
 		return
 	}
 
@@ -201,10 +208,10 @@ func (s *cggmp21SigningSession) Init() {
 		Str("sessionID", s.sessionID).
 		Str("partyID", string(s.selfPartyID)).
 		Interface("signerIDs", s.signerIDs).
-		Msg("[INITIALIZED] CGGMP21 signing session initialized successfully")
+		Msg("[INITIALIZED] LSS signing session initialized successfully")
 }
 
-func (s *cggmp21SigningSession) handleProtocolMessages() {
+func (s *lssSigningSession) handleProtocolMessages() {
 	for {
 		select {
 		case protoMsg, ok := <-s.handler.Listen():
@@ -227,7 +234,7 @@ func (s *cggmp21SigningSession) handleProtocolMessages() {
 			// Serialize the full protocol message to preserve all fields (SSID, RoundNumber, etc.)
 			protoBytes, err := protoMsg.MarshalBinary()
 			if err != nil {
-				s.logger.Error().Err(err).Msg("Failed to marshal protocol message")
+				s.logger.Error().Err(err).Msg("LSS: Failed to marshal protocol message")
 				continue
 			}
 
@@ -244,7 +251,7 @@ func (s *cggmp21SigningSession) handleProtocolMessages() {
 				Int("round", int(protoMsg.RoundNumber)).
 				Int("recipients", len(toPartyIDs)).
 				Int("dataLen", len(protoBytes)).
-				Msg("Protocol emitted message")
+				Msg("LSS: Protocol emitted message")
 
 			outMsg := msg{
 				FromPartyID: protoMsg.From,
@@ -262,32 +269,32 @@ func (s *cggmp21SigningSession) handleProtocolMessages() {
 				Bool("broadcast", protoMsg.Broadcast).
 				Int("round", int(protoMsg.RoundNumber)).
 				Int("dataLen", len(protoMsg.Data)).
-				Msg("Received protocol message, checking CanAccept")
+				Msg("LSS: Received protocol message, checking CanAccept")
 
 			if !s.handler.CanAccept(protoMsg) {
 				s.logger.Warn().
 					Str("from", string(protoMsg.From)).
 					Bool("broadcast", protoMsg.Broadcast).
-					Msg("Handler cannot accept message")
+					Msg("LSS: Handler cannot accept message")
 				continue
 			}
 
 			s.logger.Debug().
 				Str("from", string(protoMsg.From)).
-				Msg("Handler accepted message")
+				Msg("LSS: Handler accepted message")
 			s.handler.Accept(protoMsg)
 		}
 	}
 }
 
-func (s *cggmp21SigningSession) ProcessInboundMessage(msgBytes []byte) {
+func (s *lssSigningSession) ProcessInboundMessage(msgBytes []byte) {
 	s.processingLock.Lock()
 	defer s.processingLock.Unlock()
 
 	// First, unmarshal the wire format to get routing info
 	inboundMessage := &types.Message{}
 	if err := encoding.JsonBytesToStruct(msgBytes, inboundMessage); err != nil {
-		s.logger.Error().Err(err).Msg("ProcessInboundMessage unmarshal error")
+		s.logger.Error().Err(err).Msg("LSS: ProcessInboundMessage unmarshal error")
 		return
 	}
 
@@ -301,7 +308,7 @@ func (s *cggmp21SigningSession) ProcessInboundMessage(msgBytes []byte) {
 	// Deserialize the full protocol message from the body
 	protoMsg := &protocol.Message{}
 	if err := protoMsg.UnmarshalBinary(inboundMessage.Body); err != nil {
-		s.logger.Error().Err(err).Msg("Failed to unmarshal protocol message")
+		s.logger.Error().Err(err).Msg("LSS: Failed to unmarshal protocol message")
 		return
 	}
 
@@ -310,14 +317,14 @@ func (s *cggmp21SigningSession) ProcessInboundMessage(msgBytes []byte) {
 		Bool("broadcast", protoMsg.Broadcast).
 		Int("round", int(protoMsg.RoundNumber)).
 		Int("dataLen", len(protoMsg.Data)).
-		Msg("Received protocol message")
+		Msg("LSS: Received protocol message")
 
 	// Send to handler
 	s.messagesCh <- protoMsg
 }
 
-func (s *cggmp21SigningSession) ProcessOutboundMessage() {
-	s.logger.Info().Msgf("ProcessOutboundMessage started: %s", s.sessionID)
+func (s *lssSigningSession) ProcessOutboundMessage() {
+	s.logger.Info().Msgf("LSS ProcessOutboundMessage started: %s", s.sessionID)
 	for {
 		select {
 		case m := <-s.outCh:
@@ -338,17 +345,17 @@ func (s *cggmp21SigningSession) ProcessOutboundMessage() {
 			s.sendMsg(msgWireBytes)
 
 		case err := <-s.errCh:
-			s.logger.Error().Err(err).Msg("Received error during ProcessOutboundMessage")
+			s.logger.Error().Err(err).Msg("LSS: Received error during ProcessOutboundMessage")
 
 		case <-s.finishCh:
-			s.logger.Info().Msg("Received finish message during ProcessOutboundMessage")
+			s.logger.Info().Msg("LSS: Received finish message during ProcessOutboundMessage")
 			s.publishResult()
 			return
 		}
 	}
 }
 
-func (s *cggmp21SigningSession) publishResult() {
+func (s *lssSigningSession) publishResult() {
 	s.resultMutex.Lock()
 	defer s.resultMutex.Unlock()
 
@@ -357,12 +364,13 @@ func (s *cggmp21SigningSession) publishResult() {
 			s.sessionID,
 			s.walletID,
 			map[string]any{
-				"error": s.resultErr.Error(),
+				"error":    s.resultErr.Error(),
+				"protocol": "LSS",
 			},
 		)
 		evtData, _ := encoding.StructToJsonBytes(failureEvent)
 		if err := s.resultQueue.Enqueue(fmt.Sprintf("%s.%s", event.SigningResultTopicBase, s.walletID), evtData, nil); err != nil {
-			s.logger.Error().Err(err).Msg("failed to publish sign failure event")
+			s.logger.Error().Err(err).Msg("LSS: failed to publish sign failure event")
 		}
 		// IMPORTANT: Always send to externalFinishChan so WaitForFinish() doesn't block forever
 		s.externalFinishChan <- ""
@@ -370,25 +378,34 @@ func (s *cggmp21SigningSession) publishResult() {
 	}
 
 	if s.signature == nil {
-		s.logger.Error().Msg("No signature available after signing completion")
+		s.logger.Error().Msg("LSS: No signature available after signing completion")
 		// IMPORTANT: Always send to externalFinishChan so WaitForFinish() doesn't block forever
 		s.externalFinishChan <- ""
 		return
 	}
 
 	// Verify signature
-	if !s.signature.Verify(s.config.PublicPoint(), s.messageHash) {
-		s.logger.Error().Msg("Failed to verify signature")
+	pubPoint, err := s.config.PublicPoint()
+	if err != nil {
+		s.logger.Error().Err(err).Msg("LSS: Failed to get public point for verification")
+		// IMPORTANT: Always send to externalFinishChan so WaitForFinish() doesn't block forever
+		s.externalFinishChan <- ""
+		return
+	}
+
+	if !s.signature.Verify(pubPoint, s.messageHash) {
+		s.logger.Error().Msg("LSS: Failed to verify signature")
 		failureEvent := event.CreateSignFailure(
 			s.sessionID,
 			s.walletID,
 			map[string]any{
-				"error": "signature verification failed",
+				"error":    "signature verification failed",
+				"protocol": "LSS",
 			},
 		)
 		evtData, _ := encoding.StructToJsonBytes(failureEvent)
 		if err := s.resultQueue.Enqueue(fmt.Sprintf("%s.%s", event.SigningResultTopicBase, s.walletID), evtData, nil); err != nil {
-			s.logger.Error().Err(err).Msg("failed to publish sign failure event")
+			s.logger.Error().Err(err).Msg("LSS: failed to publish sign failure event")
 		}
 		// IMPORTANT: Always send to externalFinishChan so WaitForFinish() doesn't block forever
 		s.externalFinishChan <- ""
@@ -407,9 +424,9 @@ func (s *cggmp21SigningSession) publishResult() {
 	sigSBytes, _ := s.signature.S.MarshalBinary()
 
 	// Get public key bytes for recovery calculation
-	pubPointBytes, err := s.config.PublicPoint().MarshalBinary()
+	pubPointBytes, err := pubPoint.MarshalBinary()
 	if err != nil {
-		s.logger.Error().Err(err).Msg("Failed to marshal public point for recovery calculation")
+		s.logger.Error().Err(err).Msg("LSS: Failed to marshal public point for recovery calculation")
 		s.externalFinishChan <- ""
 		return
 	}
@@ -417,7 +434,7 @@ func (s *cggmp21SigningSession) publishResult() {
 	// Calculate recovery byte
 	recoveryByte, err := CalculateRecoveryByte(sigRBytes, sigSBytes, s.messageHash, pubPointBytes)
 	if err != nil {
-		s.logger.Warn().Err(err).Msg("Failed to calculate recovery byte, using 0")
+		s.logger.Warn().Err(err).Msg("LSS: Failed to calculate recovery byte, using 0")
 		recoveryByte = 0
 	}
 
@@ -426,7 +443,7 @@ func (s *cggmp21SigningSession) publishResult() {
 		Int("pubKeyLen", len(pubPointBytes)).
 		Hex("sigR", sigRBytes).
 		Hex("sigS", sigSBytes).
-		Msg("Calculated signature recovery byte")
+		Msg("LSS: Calculated signature recovery byte")
 
 	// Publish success event with raw bytes
 	successEvent := event.CreateSignSuccess(
@@ -438,13 +455,13 @@ func (s *cggmp21SigningSession) publishResult() {
 		map[string]any{
 			"messageHash": hex.EncodeToString(s.messageHash),
 			"signers":     len(s.signerIDs),
-			"protocol":    "CGGMP21",
+			"protocol":    "LSS",
 		},
 	)
 
 	evtData, _ := encoding.StructToJsonBytes(successEvent)
 	if err := s.resultQueue.Enqueue(fmt.Sprintf("%s.%s", event.SigningResultTopicBase, s.walletID), evtData, nil); err != nil {
-		s.logger.Error().Err(err).Msg("failed to publish sign success event")
+		s.logger.Error().Err(err).Msg("LSS: failed to publish sign success event")
 	}
 
 	s.logger.Info().
@@ -453,13 +470,13 @@ func (s *cggmp21SigningSession) publishResult() {
 		Hex("sigR", sigRBytes).
 		Hex("sigS", sigSBytes).
 		Uint8("recoveryByte", recoveryByte).
-		Msg("CGGMP21 signing completed successfully")
+		Msg("LSS signing completed successfully")
 
 	// IMPORTANT: Send to externalFinishChan so WaitForFinish() unblocks
 	s.externalFinishChan <- hex.EncodeToString(sigRBytes)
 }
 
-func (s *cggmp21SigningSession) Stop() {
+func (s *lssSigningSession) Stop() {
 	if s.pool != nil {
 		s.pool.TearDown()
 	}
@@ -468,6 +485,6 @@ func (s *cggmp21SigningSession) Stop() {
 	close(s.messagesCh)
 }
 
-func (s *cggmp21SigningSession) WaitForFinish() string {
+func (s *lssSigningSession) WaitForFinish() string {
 	return <-s.externalFinishChan
 }
