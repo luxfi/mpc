@@ -4,8 +4,8 @@ const (
 	SigningPublisherStream     = "mpc-signing"
 	SigningConsumerStream      = "mpc-signing-consumer"
 	SigningRequestTopic        = "mpc.signing_request.*"
-	SigningResultTopic         = "mpc.mpc_signing_result.*"     // Pattern for subscribing (with wildcard)
-	SigningResultTopicBase     = "mpc.mpc_signing_result"       // Base topic for publishing (no wildcard)
+	SigningResultTopic         = "mpc.mpc_signing_result.*" // Pattern for subscribing (with wildcard)
+	SigningResultTopicBase     = "mpc.mpc_signing_result"   // Base topic for publishing (no wildcard)
 	SigningResultCompleteTopic = "mpc.mpc_signing_result.complete"
 )
 
