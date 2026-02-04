@@ -63,41 +63,62 @@ Hanzo MPC is designed as a **pluggable signer backend** for Hanzo KMS:
 # Build binaries
 make build
 
-# Or install directly
-go install ./cmd/hanzo-mpc
-go install ./cmd/hanzo-mpc-cli
+# Or install directly (for consensus-embedded mode)
+go install ./cmd/mpcd
+
+# Or for legacy NATS/Consul mode
+go install ./cmd/lux-mpc-cli
 ```
 
-### Basic Usage
+### Consensus Mode (NEW - Recommended)
+```bash
+# Start MPC node in consensus mode (no external dependencies)
+mpcd start --mode consensus \
+  --node-id node0 \
+  --listen :9651 \
+  --api :9800 \
+  --data /data/mpc/node0 \
+  --threshold 2 \
+  --peer node1@127.0.0.1:9652 \
+  --peer node2@127.0.0.1:9653
+
+# Or via lux CLI
+lux mpc init --threshold 2 --nodes 3
+lux mpc start
+```
+
+### Legacy Mode (NATS + Consul)
 ```bash
 # Generate peers configuration
-hanzo-mpc-cli generate-peers -n 3
+lux-mpc-cli generate-peers -n 3
 
 # Register peers to Consul
-hanzo-mpc-cli register-peers
+lux-mpc-cli register-peers
 
 # Generate event initiator
-hanzo-mpc-cli generate-initiator
+lux-mpc-cli generate-initiator
 
 # Generate node identity
-hanzo-mpc-cli generate-identity --node node0
+lux-mpc-cli generate-identity --node node0
 
-# Start MPC node
-hanzo-mpc start -n node0
+# Start MPC node in legacy mode
+mpcd start --mode legacy -n node0
 ```
 
 ## 📁 Project Structure
 
 ```
-/Users/z/work/hanzo/mpc/
+/Users/z/work/lux/mpc/
 ├── cmd/                    # Command-line applications
-│   ├── hanzo-mpc/         # Main MPC node binary
-│   └── hanzo-mpc-cli/     # CLI tools for configuration
+│   ├── mpcd/              # Main MPC daemon (consensus-embedded)
+│   └── lux-mpc-cli/       # CLI tools for configuration
 ├── pkg/                    # Core packages
 │   ├── client/            # Go client library
 │   ├── mpc/               # MPC implementation (TSS)
 │   ├── kvstore/           # BadgerDB storage
-│   ├── messaging/         # NATS messaging
+│   ├── transport/         # Consensus-embedded transport (ZAP + PoA)
+│   ├── messaging/         # NATS messaging (DEPRECATED - use transport)
+│   ├── infra/             # Consul integration (DEPRECATED - use transport)
 │   ├── identity/          # Ed25519 identity management
 │   └── eventconsumer/     # Event processing
 ├── e2e/                    # End-to-end tests
@@ -119,15 +140,74 @@ Based on threshold cryptography:
 - Session data persistence
 - Automatic backups
 
-### 3. Messaging: NATS JetStream
+### 3. Transport Layer (NEW - Jan 2026)
+
+The MPC daemon now supports **consensus-embedded transport** that eliminates external dependencies:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                 MPC Node (Consensus-Embedded)                   │
+│  ┌──────────┬─────────────┬──────────────┬─────────────────┐    │
+│  │ PubSub   │ MessageQ    │  Registry    │  KeyInfoStore   │    │
+│  └────┬─────┴──────┬──────┴───────┬──────┴───────┬─────────┘    │
+│       │            │              │              │              │
+│  ┌────▼────────────▼──────────────▼──────────────▼─────────┐    │
+│  │              ZAP Transport (Wire Protocol)               │    │
+│  └────┬────────────────────────────────────────────────────┘    │
+│       │                                                         │
+│  ┌────▼─────────────────────────────────────────────────────┐   │
+│  │           Membership (Ed25519 PoA Validators)            │   │
+│  └──────────────────────────────────────────────────────────┘   │
+│       │                                                         │
+│  ┌────▼─────────────────────────────────────────────────────┐   │
+│  │              StateStore (BadgerDB + Replication)          │   │
+│  └──────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**What was replaced:**
+- **NATS** → ZAP Transport with `Broadcast()`/`Query()`
+- **Consul** → Consensus `Membership` with Ed25519 keys as PoA validators
+- **PostgreSQL** → `StateStore` + BadgerDB for replicated state
+- **Redis** → Consensus state queries via `Transport.Query()`
+
+**What remains:**
+- **BadgerDB** → Local encrypted key share storage (unchanged)
+- **Ed25519 identities** → Now serve as PoA validator keys
+
+**Usage (pkg/transport):**
+```go
+factory, err := transport.NewFactory(transport.FactoryConfig{
+    NodeID:         "node0",
+    ListenAddr:     ":9651",
+    Peers:          map[string]string{"node0": ":9651", "node1": ":9652", "node2": ":9653"},
+    PrivateKey:     privateKey,
+    PublicKey:      publicKey,
+    BadgerPath:     "/data/mpc/node0",
+    BadgerPassword: "secure-password",
+})
+
+ctx := context.Background()
+factory.Start(ctx)
+
+// Use these instead of NATS/Consul:
+pubSub := factory.PubSub()         // replaces messaging.PubSub
+registry := factory.Registry()     // replaces mpc.PeerRegistry
+kvstore := factory.KVStore()       // local BadgerDB
+keyinfo := factory.KeyInfoStore()  // replaces Consul-based keyinfo.Store
+```
+
+### 3b. Messaging: NATS JetStream (DEPRECATED)
 - Pub/sub for broadcasts
 - Direct messaging for P2P
 - Message persistence
+- **⚠️ Use `pkg/transport` instead for new deployments**
 
-### 4. Service Discovery: Consul
+### 4. Service Discovery: Consul (DEPRECATED)
 - Node registration
 - Health checking
 - Configuration management
+- **⚠️ Use `pkg/transport` Membership instead for new deployments**
 
 ### 5. Identity: Ed25519 keypairs
 - Node authentication
@@ -135,6 +215,28 @@ Based on threshold cryptography:
 - Encrypted with Age
 
 ## 🔧 Configuration
+
+### Consensus-Embedded Mode (NEW - Jan 2026)
+
+```yaml
+# config.yaml
+environment: development
+transport:
+  listen_addr: ":9651"
+  peers:
+    node0: "10.0.0.1:9651"
+    node1: "10.0.0.2:9651"
+    node2: "10.0.0.3:9651"
+badger:
+  path: "/data/mpc"
+  password: "secure-password"
+  backup_dir: "/data/mpc/backups"
+identity:
+  key_file: "node0_identity.json"
+event_initiator_pubkey: "hex-encoded-pubkey"
+```
+
+### Legacy Mode (NATS + Consul)
 
 ```yaml
 # config.yaml
@@ -148,8 +250,9 @@ event_initiator_pubkey: "hex-encoded-pubkey"
 ```
 
 ### Environment Variables
-- `HANZO_MPC_CONFIG` - Path to config.yaml
-- `HANZO_MPC_BACKUP` - Backup file identifier
+- `LUX_MPC_CONFIG` - Path to config.yaml
+- `LUX_MPC_BACKUP` - Backup file identifier
+- `LUX_MPC_MODE` - "consensus" (new) or "legacy" (NATS/Consul)
 
 ## 🔐 Security Model
 
@@ -265,6 +368,21 @@ make e2e-test
 18. **Deduplication map cleanup**: The `processing` map used for deduplication grows unbounded. Recommend adding TTL-based cleanup for long-running sessions.
 
 19. **Protocol timeouts**: No timeout enforcement on protocol handlers. Recommend adding context with timeout to prevent indefinite hangs from stalling parties.
+
+### Consensus-Embedded Transport (Jan 2026)
+
+20. **ZAP Message Types**: MPC uses ZAP wire protocol message types 60-79:
+    - `MsgMPCBroadcast (60)` - Pub/sub broadcasts
+    - `MsgMPCDirect (61)` - Point-to-point messaging
+    - `MsgMPCReady (62)` - Peer registry readiness
+    - `MsgMPCKeygen (64)` - DKG protocol messages
+    - `MsgMPCSign (65)` - Signing protocol messages
+    - `MsgMPCReshare (66)` - Key resharing messages
+    - `MsgMPCResult (67)` - Session result messages
+
+21. **PoA Membership**: Ed25519 public keys are used as Proof-of-Authority validators. VoterIDs are derived via `SHA256("MPC/Ed25519" || pubkey)`.
+
+22. **State Replication**: Key metadata is replicated via consensus transport. Local BadgerDB stores encrypted key shares (not replicated for security).
 
 ## 🌐 Blockchain Support
 
