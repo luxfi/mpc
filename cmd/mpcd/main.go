@@ -559,7 +559,7 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 	listenAddr := c.String("listen")
 	dataDir := c.String("data")
 	keysDir := c.String("keys")
-	threshold := int(c.Int("threshold"))
+	threshold := c.Int("threshold")
 	peers := c.StringSlice("peer")
 	logLevel := c.String("log-level")
 	debug := c.Bool("debug")
