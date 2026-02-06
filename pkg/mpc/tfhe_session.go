@@ -13,14 +13,15 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/luxfi/fhe"
+	"github.com/luxfi/threshold/pkg/party"
+	"github.com/luxfi/threshold/protocols/tfhe"
+
 	"github.com/luxfi/mpc/pkg/identity"
 	"github.com/luxfi/mpc/pkg/keyinfo"
 	"github.com/luxfi/mpc/pkg/kvstore"
 	"github.com/luxfi/mpc/pkg/messaging"
 	"github.com/luxfi/mpc/pkg/types"
 	"github.com/luxfi/mpc/pkg/utils"
-	"github.com/luxfi/threshold/pkg/party"
-	"github.com/luxfi/threshold/protocols/tfhe"
 )
 
 // TFHESession interface for threshold FHE operations

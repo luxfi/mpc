@@ -4,9 +4,10 @@ import (
 	"crypto/rand"
 	"testing"
 
-	"github.com/luxfi/mpc/pkg/threshold"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/luxfi/mpc/pkg/threshold"
 )
 
 func TestManager(t *testing.T) {
