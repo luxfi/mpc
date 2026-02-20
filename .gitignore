@@ -35,6 +35,7 @@ logs/
 # Dashboard build
 dashboard/node_modules/
 dashboard/.next/
+dashboard/package-lock.json
 
 # Environment
 .env
