@@ -8,7 +8,7 @@ metadata:
     app.kubernetes.io/part-of: lux-mpc
 spec:
   serviceName: mpc-node-headless
-  replicas: 3
+  replicas: 5
   podManagementPolicy: Parallel
   selector:
     matchLabels:
@@ -35,7 +35,7 @@ spec:
 
               # Build peer list (all other nodes)
               PEERS=""
-              for i in 0 1 2; do
+              for i in 0 1 2 3 4; do
                 if [ "$i" != "$INDEX" ]; then
                   PEERS="${PEERS}node${i}@mpc-node-${i}.mpc-node-headless.lux-mpc.svc:9651,"
                 fi
@@ -66,14 +66,14 @@ spec:
               NODE_ID="node${INDEX}"
 
               PEERS=""
-              for i in 0 1 2; do
+              for i in 0 1 2 3 4; do
                 if [ "$i" != "$INDEX" ]; then
                   PEERS="${PEERS} --peer node${i}@mpc-node-${i}.mpc-node-headless.lux-mpc.svc:9651"
                 fi
               done
 
               # Build command
-              CMD="mpcd start --mode consensus --node-id ${NODE_ID} --listen :9651 --api :9800 --data /data/mpc --threshold 2 ${PEERS}"
+              CMD="mpcd start --mode consensus --node-id ${NODE_ID} --listen :9651 --api :9800 --data /data/mpc --threshold 3 ${PEERS}"
 
               # Node 0 also serves the Dashboard API
               if [ "$INDEX" = "0" ]; then
