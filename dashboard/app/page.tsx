@@ -75,7 +75,7 @@ export default function LandingPage() {
             </Link>
             <Link
               href="/register"
-              className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
+              className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
             >
               Get started
             </Link>
@@ -101,13 +101,13 @@ export default function LandingPage() {
           <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
             <Link
               href="/register"
-              className="w-full rounded-md bg-primary px-6 py-3 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 sm:w-auto"
+              className="w-full rounded-lg bg-primary px-6 py-3 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 sm:w-auto"
             >
               Create account
             </Link>
             <Link
               href="/login"
-              className="w-full rounded-md border border-border bg-card px-6 py-3 text-sm font-medium transition-colors hover:bg-muted sm:w-auto"
+              className="w-full rounded-lg border border-border bg-card px-6 py-3 text-sm font-medium transition-colors hover:bg-muted sm:w-auto"
             >
               Open dashboard
             </Link>
@@ -199,7 +199,7 @@ curl -X POST https://mpc.lux.network/api/v1/transactions \\
           </p>
           <Link
             href="/register"
-            className="inline-flex rounded-md bg-primary px-8 py-3 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
+            className="inline-flex rounded-lg bg-primary px-8 py-3 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
           >
             Get started for free
           </Link>
