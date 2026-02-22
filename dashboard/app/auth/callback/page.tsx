@@ -2,15 +2,15 @@
 
 import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { setTokens } from '@/lib/auth'
-
-const IAM_URL = process.env.NEXT_PUBLIC_IAM_URL ?? 'https://lux.id'
-const IAM_CLIENT_ID = process.env.NEXT_PUBLIC_IAM_CLIENT_ID ?? 'lux-mpc'
+import { setTokens, setUserEmail } from '@/lib/auth'
+import { getBranding } from '@/lib/branding'
+import { api } from '@/lib/api'
 
 function OidcCallbackInner() {
   const router = useRouter()
   const params = useSearchParams()
   const [error, setError] = useState<string | null>(null)
+  const [status, setStatus] = useState('Completing sign in…')
 
   useEffect(() => {
     const code = params.get('code')
@@ -32,16 +32,20 @@ function OidcCallbackInner() {
     }
     sessionStorage.removeItem('oidc_state')
 
+    const branding = getBranding(window.location.hostname)
     const redirectUri = `${window.location.origin}/auth/callback`
 
-    fetch(`${IAM_URL}/oauth/token`, {
+    setStatus('Exchanging authorization code…')
+
+    // Step 1: Exchange code for Lux ID access token
+    fetch(`${branding.iamUrl}/api/login/oauth/access_token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
         grant_type: 'authorization_code',
         code,
         redirect_uri: redirectUri,
-        client_id: IAM_CLIENT_ID,
+        client_id: branding.iamClientId,
       }),
     })
       .then(async (res) => {
@@ -54,8 +58,18 @@ function OidcCallbackInner() {
           refresh_token?: string
         }>
       })
-      .then((data) => {
-        setTokens(data.access_token, data.refresh_token ?? '')
+      .then(async (oidcData) => {
+        setStatus('Authenticating with MPC API…')
+
+        // Step 2: Exchange the OIDC token for a local MPC API JWT
+        const mpcAuth = await api.oidcExchange(oidcData.access_token, branding.iamUrl)
+
+        // Store the MPC API tokens (NOT the Lux ID token)
+        setTokens(mpcAuth.access_token, mpcAuth.refresh_token)
+        if (mpcAuth.email) {
+          setUserEmail(mpcAuth.email)
+        }
+
         router.replace('/dashboard')
       })
       .catch((err: unknown) => {
@@ -83,7 +97,7 @@ function OidcCallbackInner() {
   return (
     <div className="flex min-h-screen items-center justify-center px-4">
       <div className="w-full max-w-sm text-center">
-        <p className="text-sm text-muted-foreground">Completing sign in…</p>
+        <p className="text-sm text-muted-foreground">{status}</p>
       </div>
     </div>
   )

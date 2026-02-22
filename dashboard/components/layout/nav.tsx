@@ -2,7 +2,8 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useBranding } from '@/lib/branding'
+import { useEffect, useState } from 'react'
+import { getBranding } from '@/lib/branding'
 import { UserMenu } from './user-menu'
 
 const navLinks = [
@@ -16,7 +17,8 @@ const navLinks = [
 
 export function Nav() {
   const pathname = usePathname()
-  const { logoText } = useBranding()
+  const [logoText, setLogoText] = useState('MPC')
+  useEffect(() => { setLogoText(getBranding(window.location.hostname).logoText) }, [])
 
   return (
     <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
