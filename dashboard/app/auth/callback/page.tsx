@@ -6,25 +6,33 @@ import { setTokens, setUserEmail } from '@/lib/auth'
 import { getBranding } from '@/lib/branding'
 import { api } from '@/lib/api'
 
-function OidcCallbackInner() {
+function CallbackInner() {
   const router = useRouter()
-  const params = useSearchParams()
+  const searchParams = useSearchParams()
   const [error, setError] = useState<string | null>(null)
   const [status, setStatus] = useState('Completing sign in…')
 
   useEffect(() => {
-    const code = params.get('code')
-    const state = params.get('state')
-    const oauthError = params.get('error')
-    const oauthErrorDesc = params.get('error_description')
-
+    // Check for error in query params (OAuth error redirects)
+    const oauthError = searchParams.get('error')
+    const oauthErrorDesc = searchParams.get('error_description')
     if (oauthError) {
       setError(oauthErrorDesc ?? oauthError)
       return
     }
 
-    if (!code) return
+    // Implicit flow: access_token is in the URL hash fragment
+    const hash = window.location.hash.substring(1)
+    const params = new URLSearchParams(hash)
+    const accessToken = params.get('access_token')
+    const state = params.get('state')
 
+    if (!accessToken) {
+      setError('No access token received from identity provider')
+      return
+    }
+
+    // Validate state to prevent CSRF
     const savedState = sessionStorage.getItem('oidc_state')
     if (savedState && state !== savedState) {
       setError('Invalid state parameter — possible CSRF attack')
@@ -33,49 +41,23 @@ function OidcCallbackInner() {
     sessionStorage.removeItem('oidc_state')
 
     const branding = getBranding(window.location.hostname)
-    const redirectUri = `${window.location.origin}/auth/callback`
 
-    setStatus('Exchanging authorization code…')
+    setStatus('Authenticating with MPC API…')
 
-    // Step 1: Exchange code for Lux ID access token
-    fetch(`${branding.iamUrl}/api/login/oauth/access_token`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        grant_type: 'authorization_code',
-        code,
-        redirect_uri: redirectUri,
-        client_id: branding.iamClientId,
-      }),
-    })
-      .then(async (res) => {
-        if (!res.ok) {
-          const body = await res.text()
-          throw new Error(`Token exchange failed: ${body}`)
-        }
-        return res.json() as Promise<{
-          access_token: string
-          refresh_token?: string
-        }>
-      })
-      .then(async (oidcData) => {
-        setStatus('Authenticating with MPC API…')
-
-        // Step 2: Exchange the OIDC token for a local MPC API JWT
-        const mpcAuth = await api.oidcExchange(oidcData.access_token, branding.iamUrl)
-
-        // Store the MPC API tokens (NOT the Lux ID token)
+    // Exchange the OIDC access token for a local MPC API JWT
+    api
+      .oidcExchange(accessToken, branding.iamUrl)
+      .then((mpcAuth) => {
         setTokens(mpcAuth.access_token, mpcAuth.refresh_token)
         if (mpcAuth.email) {
           setUserEmail(mpcAuth.email)
         }
-
         router.replace('/dashboard')
       })
       .catch((err: unknown) => {
         setError(err instanceof Error ? err.message : 'Authentication failed')
       })
-  }, [params, router])
+  }, [searchParams, router])
 
   if (error) {
     return (
@@ -114,7 +96,7 @@ export default function OidcCallbackPage() {
         </div>
       }
     >
-      <OidcCallbackInner />
+      <CallbackInner />
     </Suspense>
   )
 }
