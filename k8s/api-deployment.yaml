@@ -23,17 +23,15 @@ spec:
         - name: mpc-api
           image: ghcr.io/luxfi/mpc-api:latest
           args:
-            - start
-            - --mode
-            - consensus
-            - --api-db
+            - api
+            - --db
             - $(DATABASE_URL)
-            - --api-kv
-            - $(KV_URL)
-            - --api-listen
+            - --listen
             - ":8081"
             - --jwt-secret
             - $(JWT_SECRET)
+            - --cluster-url
+            - http://mpc-node-0.mpc-node-headless.lux-mpc.svc:8081
           ports:
             - containerPort: 8081
               name: api
@@ -49,11 +47,6 @@ spec:
                 secretKeyRef:
                   name: mpc-secrets
                   key: jwt-secret
-            - name: KV_URL
-              valueFrom:
-                secretKeyRef:
-                  name: mpc-secrets
-                  key: KV_URL
           livenessProbe:
             httpGet:
               path: /healthz
