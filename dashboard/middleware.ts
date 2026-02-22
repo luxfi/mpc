@@ -2,17 +2,17 @@ import { NextResponse, type NextRequest } from 'next/server'
 
 // Public paths — accessible without authentication
 const PUBLIC_PATHS = [
-  '/',           // marketing landing page
   '/login',
-  '/register',
   '/auth/callback',
+  '/api',
+  '/healthz',
 ]
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   // Allow public paths without auth check
-  if (PUBLIC_PATHS.includes(pathname) || PUBLIC_PATHS.some((p) => p !== '/' && pathname.startsWith(p))) {
+  if (PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + '/'))) {
     return NextResponse.next()
   }
 
