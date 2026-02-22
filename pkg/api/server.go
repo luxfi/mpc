@@ -44,18 +44,28 @@ type ClusterStatus struct {
 }
 
 type Server struct {
-	db        *db.Database
-	mpc       MPCBackend
-	jwtSecret []byte
-	router    chi.Router
-	server    *http.Server
+	db          *db.Database
+	mpc         MPCBackend
+	jwtSecret   []byte
+	oidcIssuers []string
+	router      chi.Router
+	server      *http.Server
 }
 
-func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, listenAddr string) *Server {
+func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, listenAddr string, oidcIssuers ...string) *Server {
+	// Default allowed issuers if none provided
+	if len(oidcIssuers) == 0 {
+		oidcIssuers = []string{
+			"https://lux.id",
+			"https://pars.id",
+			"https://id.zoo.network",
+		}
+	}
 	s := &Server{
-		db:        database,
-		mpc:       mpcBackend,
-		jwtSecret: []byte(jwtSecret),
+		db:          database,
+		mpc:         mpcBackend,
+		jwtSecret:   []byte(jwtSecret),
+		oidcIssuers: oidcIssuers,
 	}
 
 	r := chi.NewRouter()
@@ -84,6 +94,7 @@ func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, l
 		r.Post("/auth/register", s.handleRegister)
 		r.Post("/auth/login", s.handleLogin)
 		r.Post("/auth/refresh", s.handleRefresh)
+		r.Post("/auth/oidc", s.handleOIDCExchange)
 
 		// Public payment page
 		r.Get("/pay/{token}", s.handlePublicPay)

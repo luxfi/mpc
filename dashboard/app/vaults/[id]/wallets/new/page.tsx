@@ -4,17 +4,11 @@ import { useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Nav } from '@/components/layout/nav'
+import { api } from '@/lib/api'
+import type { Wallet } from '@/lib/types'
 
 type KeyType = 'secp256k1' | 'ed25519'
 type Step = 'type' | 'name' | 'generate' | 'result'
-
-interface KeygenResult {
-  wallet_id: string
-  eth_address: string
-  btc_address: string
-  sol_address: string
-  public_key: string
-}
 
 export default function NewWalletPage() {
   const params = useParams<{ id: string }>()
@@ -25,7 +19,7 @@ export default function NewWalletPage() {
   const [walletName, setWalletName] = useState('')
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState('')
-  const [result, setResult] = useState<KeygenResult | null>(null)
+  const [result, setResult] = useState<Wallet | null>(null)
 
   async function handleGenerate() {
     if (!walletName.trim()) return
@@ -34,22 +28,11 @@ export default function NewWalletPage() {
     setStep('generate')
 
     try {
-      const res = await fetch(`/api/vaults/${params.id}/wallets`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('access_token')}`,
-        },
-        body: JSON.stringify({ name: walletName, key_type: keyType }),
+      const wallet = await api.createWallet(params.id, {
+        name: walletName,
+        key_type: keyType,
       })
-
-      const data = await res.json()
-
-      if (!res.ok) {
-        throw new Error(data.error || 'Key generation failed')
-      }
-
-      setResult(data)
+      setResult(wallet)
       setStep('result')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Key generation failed')
@@ -208,10 +191,18 @@ export default function NewWalletPage() {
                     <p className="font-mono text-sm break-all">{result.sol_address}</p>
                   </div>
                 )}
-                <div>
-                  <p className="text-xs text-muted-foreground">Public Key</p>
-                  <p className="font-mono text-xs break-all">{result.public_key}</p>
-                </div>
+                {result.ecdsa_pubkey && (
+                  <div>
+                    <p className="text-xs text-muted-foreground">ECDSA Public Key</p>
+                    <p className="font-mono text-xs break-all">{result.ecdsa_pubkey}</p>
+                  </div>
+                )}
+                {result.eddsa_pubkey && (
+                  <div>
+                    <p className="text-xs text-muted-foreground">EdDSA Public Key</p>
+                    <p className="font-mono text-xs break-all">{result.eddsa_pubkey}</p>
+                  </div>
+                )}
               </div>
 
               <div className="flex justify-end">

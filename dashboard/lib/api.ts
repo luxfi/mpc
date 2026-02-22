@@ -168,6 +168,13 @@ export class APIClient {
     return this.post<AuthResponse>('/auth/register', req)
   }
 
+  async oidcExchange(accessToken: string, providerUrl: string): Promise<AuthResponse & { email: string }> {
+    return this.request<AuthResponse & { email: string }>('POST', '/auth/oidc', {
+      access_token: accessToken,
+      provider_url: providerUrl,
+    }, false)
+  }
+
   async login(req: LoginRequest): Promise<AuthResponse | MFARequiredResponse> {
     return this.post<AuthResponse | MFARequiredResponse>('/auth/login', req)
   }
