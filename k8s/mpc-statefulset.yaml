@@ -19,6 +19,13 @@ spec:
         app: mpc-node
         app.kubernetes.io/part-of: lux-mpc
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       imagePullSecrets:
         - name: registry-hanzo
       initContainers:
@@ -58,6 +65,11 @@ spec:
         - name: mpc-node
           image: ghcr.io/luxfi/mpc-api:latest
           imagePullPolicy: Always
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
           command:
             - sh
             - -c
@@ -173,9 +185,14 @@ spec:
               mountPath: /data/mpc
             - name: config
               mountPath: /config
+            - name: tmp
+              mountPath: /tmp
       volumes:
         - name: config
           emptyDir: {}
+        - name: tmp
+          emptyDir:
+            sizeLimit: 50Mi
   volumeClaimTemplates:
     - metadata:
         name: data
