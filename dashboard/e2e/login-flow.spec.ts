@@ -32,44 +32,41 @@ test.describe('Lux ID Login Flow', () => {
     await expect(continueBtn).toContainText(/Lux ID/i)
   })
 
-  test('Continue button redirects to Lux ID authorize endpoint', async ({ page }) => {
+  test('Continue button redirects to Lux ID login page', async ({ page }) => {
     await page.goto('/login')
 
     const continueBtn = page.getByRole('button', { name: /Continue with/i })
     await continueBtn.click()
 
-    await page.waitForURL(/lux\.id\/oauth\/authorize/, { timeout: 15_000 })
+    await page.waitForURL(/lux\.id\/login/, { timeout: 15_000 })
 
     const url = new URL(page.url())
     expect(url.hostname).toBe('lux.id')
-    expect(url.pathname).toBe('/oauth/authorize')
+    expect(url.pathname).toBe('/login')
     expect(url.searchParams.get('response_type')).toBe('token')
     expect(url.searchParams.get('client_id')).toBe('lux-mpc')
     expect(url.searchParams.get('scope')).toContain('openid')
   })
 
   test('Lux ID login page loads with email and password fields', async ({ page }) => {
-    const authorizeUrl = new URL(`${IAM_URL}/login/oauth/authorize`)
-    authorizeUrl.searchParams.set('response_type', 'token')
-    authorizeUrl.searchParams.set('client_id', 'lux-mpc')
-    authorizeUrl.searchParams.set('redirect_uri', 'https://mpc.lux.network/auth/callback')
-    authorizeUrl.searchParams.set('scope', 'openid profile email')
-    authorizeUrl.searchParams.set('state', 'e2e-test')
+    const loginUrl = new URL(`${IAM_URL}/login`)
+    loginUrl.searchParams.set('response_type', 'token')
+    loginUrl.searchParams.set('client_id', 'lux-mpc')
+    loginUrl.searchParams.set('redirect_uri', 'https://mpc.lux.network/auth/callback')
+    loginUrl.searchParams.set('scope', 'openid profile email')
+    loginUrl.searchParams.set('state', 'e2e-test')
 
-    await page.goto(authorizeUrl.toString())
+    await page.goto(loginUrl.toString())
 
-    // The Lux ID login form has "Sign in to Lux" heading
-    await expect(page.getByText('Sign in to Lux')).toBeVisible({ timeout: 15_000 })
+    // Email and Password fields
+    const emailInput = page.getByPlaceholder('Email')
+    const passwordInput = page.getByPlaceholder('Password')
 
-    // Email address and Password fields
-    const emailInput = page.getByPlaceholder('you@company.com')
-    const passwordInput = page.getByPlaceholder('Enter your password')
-
-    await expect(emailInput).toBeVisible()
+    await expect(emailInput).toBeVisible({ timeout: 15_000 })
     await expect(passwordInput).toBeVisible()
 
-    // Sign in button
-    const signInBtn = page.getByRole('button', { name: /Sign in/i })
+    // Sign In button
+    const signInBtn = page.getByRole('button', { name: /Sign In/i })
     await expect(signInBtn).toBeVisible()
   })
 
@@ -83,15 +80,14 @@ test.describe('Lux ID Login Flow', () => {
     await page.getByRole('button', { name: /Continue with/i }).click()
 
     // Wait for Lux ID login page
-    await page.waitForURL(/lux\.id/, { timeout: 15_000 })
-    await expect(page.getByText('Sign in to Lux')).toBeVisible({ timeout: 15_000 })
+    await page.waitForURL(/lux\.id\/login/, { timeout: 15_000 })
 
     // Fill in credentials
-    await page.getByPlaceholder('you@company.com').fill('z@lux.network')
-    await page.getByPlaceholder('Enter your password').fill(password!)
+    await page.getByPlaceholder('Email').fill('z@lux.network')
+    await page.getByPlaceholder('Password').fill(password!)
 
-    // Click Sign in
-    await page.getByRole('button', { name: /Sign in/i }).click()
+    // Click Sign In
+    await page.getByRole('button', { name: /Sign In/i }).click()
 
     // Should redirect back to MPC dashboard
     await page.waitForURL(/mpc\.lux\.network/, { timeout: 30_000 })
@@ -111,13 +107,12 @@ test.describe('Lux ID Login Flow', () => {
     await page.goto('/login')
     await page.getByRole('button', { name: /Continue with/i }).click()
 
-    await page.waitForURL(/lux\.id/, { timeout: 15_000 })
-    await expect(page.getByText('Sign in to Lux')).toBeVisible({ timeout: 15_000 })
+    await page.waitForURL(/lux\.id\/login/, { timeout: 15_000 })
 
-    await page.getByPlaceholder('you@company.com').fill('a@lux.network')
-    await page.getByPlaceholder('Enter your password').fill(password!)
+    await page.getByPlaceholder('Email').fill('a@lux.network')
+    await page.getByPlaceholder('Password').fill(password!)
 
-    await page.getByRole('button', { name: /Sign in/i }).click()
+    await page.getByRole('button', { name: /Sign In/i }).click()
 
     await page.waitForURL(/mpc\.lux\.network/, { timeout: 30_000 })
 
@@ -137,7 +132,7 @@ test.describe('IAM OIDC Discovery', () => {
 
     const config = await response.json()
     expect(config.issuer).toBeTruthy()
-    expect(config.authorization_endpoint).toContain('/login/oauth/authorize')
+    expect(config.authorization_endpoint).toContain('/oauth/authorize')
     expect(config.token_endpoint).toContain('/oauth/token')
     expect(config.userinfo_endpoint).toContain('/oauth/userinfo')
     expect(config.jwks_uri).toContain('/.well-known/jwks')
