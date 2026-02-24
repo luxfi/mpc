@@ -97,6 +97,11 @@ func RateLimitMiddleware(requestsPerMinute int) func(http.Handler) http.Handler 
 	rl := NewRateLimiter(requestsPerMinute)
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Exempt health probes from rate limiting (K8s liveness/readiness).
+			if r.URL.Path == "/healthz" {
+				next.ServeHTTP(w, r)
+				return
+			}
 			ip := clientIP(r)
 			if !rl.allow(ip) {
 				writeError(w, http.StatusTooManyRequests, "rate limit exceeded")
