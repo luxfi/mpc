@@ -43,7 +43,7 @@ spec:
             - --jwt-secret
             - $(JWT_SECRET)
             - --cluster-url
-            - http://mpc-node-0.mpc-node-headless.lux-mpc.svc:8081
+            - http://mpc-node-0.mpc-node-headless.lux-mpc.svc:9800
           ports:
             - containerPort: 8081
               name: api

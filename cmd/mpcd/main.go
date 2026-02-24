@@ -805,14 +805,14 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(httpCode)
 			resp := map[string]interface{}{
-				"status":         status,
-				"nodeID":         nodeID,
-				"mode":           "consensus",
-				"expectedPeers":  len(peerIDs),
-				"connectedPeers": connected,
-				"ready":          ready,
-				"threshold":      threshold,
-				"version":        Version,
+				"status":          status,
+				"node_id":         nodeID,
+				"mode":            "consensus",
+				"expected_peers":  len(peerIDs),
+				"connected_peers": connected,
+				"ready":           ready,
+				"threshold":       threshold,
+				"version":         Version,
 			}
 			json.NewEncoder(w).Encode(resp)
 		})
@@ -898,9 +898,11 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 			}
 			defer unsub.Unsubscribe()
 
-			// Create and publish GenerateKeyMessage
+			// Create and publish GenerateKeyMessage, signed by this node
+			sig := consensusIdentity.SignMessage([]byte(walletID))
 			msg := types.GenerateKeyMessage{
-				WalletID: walletID,
+				WalletID:  walletID,
+				Signature: sig,
 			}
 			msgData, _ := json.Marshal(msg)
 
@@ -995,6 +997,7 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 					peerRegistry: peerRegistry,
 					factory:      factory,
 					keyInfoStore: factory.KeyInfoStore(),
+					identity:     consensusIdentity,
 					nodeID:       nodeID,
 					threshold:    threshold,
 				}
@@ -1031,6 +1034,7 @@ type ConsensusMPCBackend struct {
 	peerRegistry *ConsensusPeerRegistry
 	factory      *transport.Factory
 	keyInfoStore *transport.KeyInfoStore
+	identity     *ConsensusIdentityStore
 	nodeID       string
 	threshold    int
 }
@@ -1057,7 +1061,8 @@ func (b *ConsensusMPCBackend) TriggerKeygen(walletID string) (*mpcapi.KeygenResu
 	}
 	defer unsub.Unsubscribe()
 
-	msg := types.GenerateKeyMessage{WalletID: walletID}
+	sig := b.identity.SignMessage([]byte(walletID))
+	msg := types.GenerateKeyMessage{WalletID: walletID, Signature: sig}
 	msgData, _ := json.Marshal(msg)
 	if err := b.pubSub.Publish("mpc:generate", msgData); err != nil {
 		return nil, fmt.Errorf("failed to publish keygen: %w", err)
@@ -1119,6 +1124,9 @@ func (b *ConsensusMPCBackend) TriggerSign(walletID string, payload []byte) (*mpc
 		TxID:     txID,
 		Tx:       payload,
 	}
+	// Sign the message with the node's private key
+	raw, _ := msg.Raw()
+	msg.Signature = b.identity.SignMessage(raw)
 	msgData, _ := json.Marshal(msg)
 	if err := b.pubSub.Publish("mpc:sign", msgData); err != nil {
 		return nil, fmt.Errorf("failed to publish sign request: %w", err)
@@ -1252,7 +1260,21 @@ func NewConsensusIdentityStore(nodeID string, privKey ed25519.PrivateKey, pubKey
 		}
 	}
 
+	// In consensus mode, if no explicit initiator key is configured,
+	// use the node's own public key. This allows the node's /keygen
+	// and /sign HTTP endpoints to self-sign event messages.
+	if s.initiatorPubKey == nil {
+		s.initiatorPubKey = pubKey
+		logger.Info("Using node's own public key as initiator key (consensus mode)")
+	}
+
 	return s
+}
+
+// SignMessage signs a message payload with the node's private key.
+// Used by HTTP endpoints to sign event messages before publishing.
+func (s *ConsensusIdentityStore) SignMessage(payload []byte) []byte {
+	return ed25519.Sign(s.privateKey, payload)
 }
 
 func (s *ConsensusIdentityStore) GetPublicKey(nodeID string) ([]byte, error) {
@@ -1682,7 +1704,8 @@ func (a *apiOnlyMPCBackend) doRequest(method, path string, reqBody interface{}, 
 func (a *apiOnlyMPCBackend) TriggerKeygen(walletID string) (*mpcapi.KeygenResult, error) {
 	reqBody := map[string]string{"wallet_id": walletID}
 	var result mpcapi.KeygenResult
-	if err := a.doRequest("POST", "/api/v1/keygen", reqBody, &result); err != nil {
+	// Internal MPC API on port 9800 uses /keygen (not /api/v1/keygen)
+	if err := a.doRequest("POST", "/keygen", reqBody, &result); err != nil {
 		return nil, fmt.Errorf("keygen forwarding failed: %w", err)
 	}
 	return &result, nil
@@ -1714,7 +1737,8 @@ func (a *apiOnlyMPCBackend) TriggerReshare(walletID string, newThreshold int, ne
 
 func (a *apiOnlyMPCBackend) GetClusterStatus() *mpcapi.ClusterStatus {
 	var status mpcapi.ClusterStatus
-	if err := a.doRequest("GET", "/api/v1/status", nil, &status); err != nil {
+	// Internal MPC API on port 9800 uses /health (not /api/v1/status)
+	if err := a.doRequest("GET", "/health", nil, &status); err != nil {
 		logger.Warn("Failed to get cluster status", "err", err, "url", a.clusterURL)
 		return &mpcapi.ClusterStatus{
 			NodeID:  "api-only",
