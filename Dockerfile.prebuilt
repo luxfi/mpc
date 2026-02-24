@@ -1,0 +1,34 @@
+# Dockerfile.prebuilt - package pre-compiled binaries (no Go build step)
+# Usage: cross-compile locally, then build this image
+#   GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o mpcd-linux-amd64 ./cmd/mpcd
+#   docker build -f Dockerfile.prebuilt -t ghcr.io/luxfi/mpc:latest .
+FROM alpine:latest
+
+RUN apk add --no-cache ca-certificates curl bash
+
+WORKDIR /app
+
+# Copy pre-built binaries
+COPY mpcd-linux-amd64 /usr/local/bin/mpcd
+COPY lux-mpc-cli-linux-amd64 /usr/local/bin/lux-mpc-cli
+
+# Symlink for backward compatibility (StatefulSet runs /usr/local/bin/lux-mpc)
+RUN ln -s /usr/local/bin/mpcd /usr/local/bin/lux-mpc && \
+    chmod +x /usr/local/bin/mpcd /usr/local/bin/lux-mpc-cli
+
+# Copy config templates
+COPY config.yaml.template /app/
+COPY peers.json /app/
+
+# Create data and log directories
+RUN mkdir -p /data/mpc /app/logs /app/identity
+
+# Expose ports
+EXPOSE 6000 8080 9090
+
+# Health check
+HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:8080/health || exit 1
+
+# Default command
+CMD ["mpcd", "start", "--config", "/app/config.yaml"]
