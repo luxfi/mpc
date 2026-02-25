@@ -112,6 +112,63 @@ func ListenTLS(addr string, nodeID string, privKey ed25519.PrivateKey, pubKey ed
 	return tls.Listen("tcp", addr, tlsConfig)
 }
 
+// DualModeListener accepts both TLS and plaintext connections by sniffing the
+// first byte. TLS records start with 0x16 (ContentType handshake). This enables
+// rolling upgrades where some peers are TLS-enabled and others aren't yet.
+type DualModeListener struct {
+	inner     net.Listener
+	tlsConfig *tls.Config
+}
+
+// NewDualModeListener wraps a net.Listener to auto-detect TLS vs plaintext.
+func NewDualModeListener(inner net.Listener, tlsConfig *tls.Config) net.Listener {
+	return &DualModeListener{inner: inner, tlsConfig: tlsConfig}
+}
+
+func (l *DualModeListener) Accept() (net.Conn, error) {
+	conn, err := l.inner.Accept()
+	if err != nil {
+		return nil, err
+	}
+
+	// Peek at the first byte to detect TLS
+	peek := make([]byte, 1)
+	n, err := conn.Read(peek)
+	if err != nil || n == 0 {
+		conn.Close()
+		return nil, fmt.Errorf("dual-mode: failed to peek: %w", err)
+	}
+
+	// Prepend the peeked byte back
+	pconn := &prependConn{Conn: conn, buf: peek[:n]}
+
+	if peek[0] == 0x16 {
+		// TLS ClientHello — upgrade to TLS
+		return tls.Server(pconn, l.tlsConfig), nil
+	}
+
+	// Plaintext connection — pass through
+	return pconn, nil
+}
+
+func (l *DualModeListener) Close() error   { return l.inner.Close() }
+func (l *DualModeListener) Addr() net.Addr { return l.inner.Addr() }
+
+// prependConn prepends buffered bytes before the underlying connection data.
+type prependConn struct {
+	net.Conn
+	buf []byte
+}
+
+func (c *prependConn) Read(b []byte) (int, error) {
+	if len(c.buf) > 0 {
+		n := copy(b, c.buf)
+		c.buf = c.buf[n:]
+		return n, nil
+	}
+	return c.Conn.Read(b)
+}
+
 // DialTLS connects to a peer using TLS 1.3 with PQ key exchange.
 func DialTLS(addr string, nodeID string, privKey ed25519.PrivateKey, pubKey ed25519.PublicKey, timeout time.Duration) (net.Conn, error) {
 	tlsConfig, err := NewClientTLSConfig(nodeID, privKey, pubKey)
