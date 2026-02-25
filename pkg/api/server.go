@@ -228,6 +228,13 @@ func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, l
 				r.Post("/smart-wallets/{id}/user-operation", s.handleUserOperation)
 			})
 
+			// WebAuthn/Biometric — any authenticated user can register devices and approve with biometrics
+			r.Post("/webauthn/register/begin", s.handleRegisterWebAuthnBegin)
+			r.Post("/webauthn/register/complete", s.handleRegisterWebAuthnComplete)
+			r.Post("/webauthn/verify", s.handleVerifyWebAuthn) // Biometric approval of transactions
+			r.Get("/webauthn/credentials", s.handleListWebAuthnCredentials)
+			r.Delete("/webauthn/credentials/{id}", s.handleDeleteWebAuthnCredential)
+
 			// Audit — owner/admin only
 			r.Group(func(r chi.Router) {
 				r.Use(requireRole("owner", "admin"))
