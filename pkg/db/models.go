@@ -201,6 +201,20 @@ type PaymentRequest struct {
 
 func init() { orm.Register[PaymentRequest]("payment-request") }
 
+// WebAuthnCredential stores a FIDO2/WebAuthn credential for biometric signing.
+type WebAuthnCredential struct {
+	orm.Model[WebAuthnCredential]
+	OrgID      string  `json:"orgId"`
+	UserID     string  `json:"userId"`
+	WebAuthnID string  `json:"webAuthnId,omitempty"`
+	PublicKey  string  `json:"publicKey,omitempty"`
+	Challenge  string  `json:"challenge,omitempty"`
+	DeviceName *string `json:"deviceName,omitempty"`
+	Status     string  `json:"status"` // pending_registration, active, revoked
+}
+
+func init() { orm.Register[WebAuthnCredential]("webauthn-credential") }
+
 // SmartWallet is an on-chain smart contract wallet (Safe/ERC-4337).
 type SmartWallet struct {
 	orm.Model[SmartWallet]

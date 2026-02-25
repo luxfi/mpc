@@ -12,9 +12,10 @@ import (
 )
 
 type PolicyDecision struct {
-	Action            string `json:"action"`
-	Reason            string `json:"reason"`
-	RequiredApprovers int    `json:"required_approvers"`
+	Action            string   `json:"action"`
+	Reason            string   `json:"reason"`
+	RequiredApprovers int      `json:"required_approvers"`
+	ApproverRoles     []string `json:"approver_roles,omitempty"`
 }
 
 type PolicyConditions struct {
@@ -53,6 +54,7 @@ func evaluateTransaction(amount, chain, toAddress string, policies []*db.Policy)
 				Action:            "require_approval",
 				Reason:            policy.Name,
 				RequiredApprovers: policy.RequiredApprovers,
+				ApproverRoles:     policy.ApproverRoles,
 			}
 		}
 	}
