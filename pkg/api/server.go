@@ -25,6 +25,8 @@ type KeygenResult struct {
 	ECDSAPubKey string `json:"ecdsa_pub_key"`
 	EDDSAPubKey string `json:"eddsa_pub_key"`
 	EthAddress  string `json:"eth_address"`
+	BtcAddress  string `json:"btc_address,omitempty"`
+	SolAddress  string `json:"sol_address,omitempty"`
 }
 
 type SignResult struct {
