@@ -36,10 +36,17 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleInfo(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"name":             "Lux MPC",
-		"version":          "0.3.3",
-		"supported_chains": []string{"ethereum", "bitcoin", "solana", "lux"},
-		"key_types":        []string{"secp256k1", "ed25519"},
-		"protocols":        []string{"CGGMP21", "FROST", "LSS"},
+		"name":    "Lux MPC",
+		"version": "0.3.3",
+		"supported_chains": []map[string]interface{}{
+			{"id": "ethereum", "curve": "secp256k1", "protocol": "CGGMP21", "address_type": "eth"},
+			{"id": "bitcoin", "curve": "secp256k1", "protocol": "CGGMP21", "address_type": "btc_p2pkh"},
+			{"id": "lux", "curve": "secp256k1", "protocol": "CGGMP21", "address_type": "eth"},
+			{"id": "xrp", "curve": "secp256k1", "protocol": "CGGMP21", "address_type": "xrp"},
+			{"id": "solana", "curve": "ed25519", "protocol": "FROST", "address_type": "sol"},
+			{"id": "ton", "curve": "ed25519", "protocol": "FROST", "address_type": "ton"},
+		},
+		"key_types": []string{"secp256k1", "ed25519"},
+		"protocols": []string{"CGGMP21", "FROST", "LSS"},
 	})
 }

@@ -18,7 +18,10 @@ import (
 	"syscall"
 	"time"
 
+	"golang.org/x/crypto/ripemd160"
 	"golang.org/x/crypto/sha3"
+
+	"github.com/mr-tron/base58"
 
 	"github.com/hashicorp/consul/api"
 	"github.com/nats-io/nats.go"
@@ -924,9 +927,12 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 				if result.ResultType == event.ResultTypeSuccess {
 					resp["ecdsa_pub_key"] = hex.EncodeToString(result.ECDSAPubKey)
 					resp["eddsa_pub_key"] = hex.EncodeToString(result.EDDSAPubKey)
-					// Derive Ethereum address from ECDSA pubkey (32, 33, or 65 bytes)
 					if len(result.ECDSAPubKey) >= 32 {
 						resp["eth_address"] = pubKeyToEthAddress(result.ECDSAPubKey)
+						resp["btc_address"] = pubKeyToBtcAddress(result.ECDSAPubKey)
+					}
+					if len(result.EDDSAPubKey) == 32 {
+						resp["sol_address"] = eddsaPubKeyToSolAddress(result.EDDSAPubKey)
 					}
 				} else {
 					resp["error"] = result.ErrorReason
@@ -1074,14 +1080,22 @@ func (b *ConsensusMPCBackend) TriggerKeygen(walletID string) (*mpcapi.KeygenResu
 			return nil, fmt.Errorf("keygen failed: %s", result.ErrorReason)
 		}
 		ethAddr := ""
+		btcAddr := ""
+		solAddr := ""
 		if len(result.ECDSAPubKey) >= 32 {
 			ethAddr = pubKeyToEthAddress(result.ECDSAPubKey)
+			btcAddr = pubKeyToBtcAddress(result.ECDSAPubKey)
+		}
+		if len(result.EDDSAPubKey) == 32 {
+			solAddr = eddsaPubKeyToSolAddress(result.EDDSAPubKey)
 		}
 		return &mpcapi.KeygenResult{
 			WalletID:    result.WalletID,
 			ECDSAPubKey: hex.EncodeToString(result.ECDSAPubKey),
 			EDDSAPubKey: hex.EncodeToString(result.EDDSAPubKey),
 			EthAddress:  ethAddr,
+			BtcAddress:  btcAddr,
+			SolAddress:  solAddr,
 		}, nil
 	case <-time.After(120 * time.Second):
 		return nil, fmt.Errorf("keygen timed out after 120s")
@@ -1546,6 +1560,57 @@ func ellipticUnmarshalCompressed(compressed []byte) (*big.Int, *big.Int) {
 	}
 	_ = curve // suppress unused
 	return x, y
+}
+
+// pubKeyToBtcAddress derives a Bitcoin P2PKH address from a secp256k1 public key.
+// Accepts compressed (33 bytes), uncompressed (65 bytes), or raw x-coordinate (32 bytes).
+func pubKeyToBtcAddress(pubKey []byte) string {
+	var compressed []byte
+	switch len(pubKey) {
+	case 33:
+		compressed = pubKey
+	case 65:
+		// Compress: take X coordinate, prefix with 0x02 or 0x03 based on Y parity
+		prefix := byte(0x02)
+		if pubKey[64]&1 == 1 {
+			prefix = 0x03
+		}
+		compressed = append([]byte{prefix}, pubKey[1:33]...)
+	case 32:
+		// Raw x-coordinate — use even y (0x02)
+		compressed = append([]byte{0x02}, pubKey...)
+	default:
+		return ""
+	}
+	// SHA256(compressed pubkey)
+	sha := sha256.Sum256(compressed)
+	// RIPEMD160(SHA256)
+	rip := ripemd160.New()
+	rip.Write(sha[:])
+	pubKeyHash := rip.Sum(nil) // 20 bytes
+
+	// Base58Check encode with version byte 0x00 (mainnet P2PKH)
+	return base58CheckEncode(0x00, pubKeyHash)
+}
+
+// base58CheckEncode encodes data with a version byte using Base58Check encoding.
+func base58CheckEncode(version byte, payload []byte) string {
+	versioned := append([]byte{version}, payload...)
+	// Double SHA256 checksum
+	first := sha256.Sum256(versioned)
+	second := sha256.Sum256(first[:])
+	checksum := second[:4]
+	full := append(versioned, checksum...)
+	return base58.Encode(full)
+}
+
+// eddsaPubKeyToSolAddress derives a Solana address from an Ed25519 public key.
+// The address is simply the base58 encoding of the 32-byte public key.
+func eddsaPubKeyToSolAddress(pubKey []byte) string {
+	if len(pubKey) != 32 {
+		return ""
+	}
+	return base58.Encode(pubKey)
 }
 
 // runAPIOnly starts only the Dashboard API server without any MPC transport.

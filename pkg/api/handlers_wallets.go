@@ -80,6 +80,8 @@ func (s *Server) handleCreateWallet(w http.ResponseWriter, r *http.Request) {
 	wal.ECDSAPubkey = nilIfEmpty(result.ECDSAPubKey)
 	wal.EDDSAPubkey = nilIfEmpty(result.EDDSAPubKey)
 	wal.EthAddress = nilIfEmpty(result.EthAddress)
+	wal.BtcAddress = nilIfEmpty(result.BtcAddress)
+	wal.SolAddress = nilIfEmpty(result.SolAddress)
 	wal.Threshold = status.Threshold
 	wal.Participants = participants
 	wal.Version = 1
@@ -120,12 +122,15 @@ func (s *Server) handleGetWalletAddresses(w http.ResponseWriter, r *http.Request
 	addresses := map[string]interface{}{}
 	if wallet.EthAddress != nil {
 		addresses["ethereum"] = *wallet.EthAddress
+		addresses["lux"] = *wallet.EthAddress   // EVM-compatible
+		addresses["xrp"] = *wallet.EthAddress    // secp256k1-derived (simplified)
 	}
 	if wallet.BtcAddress != nil {
 		addresses["bitcoin"] = *wallet.BtcAddress
 	}
 	if wallet.SolAddress != nil {
 		addresses["solana"] = *wallet.SolAddress
+		addresses["ton"] = *wallet.SolAddress // Ed25519-based
 	}
 	writeJSON(w, http.StatusOK, addresses)
 }
