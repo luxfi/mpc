@@ -11,6 +11,7 @@ const navLinks = [
   { href: '/vaults' as const, label: 'Vaults' },
   { href: '/transactions' as const, label: 'Transactions' },
   { href: '/policies' as const, label: 'Policies' },
+  { href: '/bridge' as const, label: 'Bridge' },
   { href: '/team' as const, label: 'Team' },
   { href: '/settings' as const, label: 'Settings' },
 ]

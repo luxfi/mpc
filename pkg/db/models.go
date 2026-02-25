@@ -60,6 +60,7 @@ type Wallet struct {
 	WalletID     string   `json:"walletId"`
 	Name         *string  `json:"name,omitempty"`
 	KeyType      string   `json:"keyType"`
+	Protocol     string   `json:"protocol,omitempty"` // cggmp21, frost, lss
 	ECDSAPubkey  *string  `json:"ecdsaPubkey,omitempty"`
 	EDDSAPubkey  *string  `json:"eddsaPubkey,omitempty"`
 	EthAddress   *string  `json:"ethAddress,omitempty"`
@@ -214,6 +215,21 @@ type WebAuthnCredential struct {
 }
 
 func init() { orm.Register[WebAuthnCredential]("webauthn-credential") }
+
+// BridgeConfig stores org-scoped bridge configuration.
+type BridgeConfig struct {
+	orm.Model[BridgeConfig]
+	OrgID              string `json:"orgId"`
+	SigningWalletID    string `json:"signingWalletId,omitempty"`
+	FeeCollector       string `json:"feeCollector,omitempty"`
+	FeeRateBps         int    `json:"feeRateBps"`          // basis points, e.g., 100 = 1%
+	MinFeeBps          int    `json:"minFeeBps,omitempty"`  // minimum fee in basis points
+	MaxFeeBps          int    `json:"maxFeeBps,omitempty"`  // maximum fee in basis points
+	DepositsEnabled    bool   `json:"depositsEnabled"`
+	WithdrawalsEnabled bool   `json:"withdrawalsEnabled"`
+}
+
+func init() { orm.Register[BridgeConfig]("bridge-config") }
 
 // SmartWallet is an on-chain smart contract wallet (Safe/ERC-4337).
 type SmartWallet struct {

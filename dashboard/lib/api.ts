@@ -430,6 +430,42 @@ export class APIClient {
     return this.get<AuditEntry[]>('/audit')
   }
 
+  // --- WebAuthn / Biometric ---
+
+  async webauthnRegisterBegin(): Promise<any> {
+    return this.post('/webauthn/register/begin')
+  }
+
+  async webauthnRegisterComplete(data: any): Promise<any> {
+    return this.post('/webauthn/register/complete', data)
+  }
+
+  async webauthnVerify(txId: string, assertion: any): Promise<any> {
+    return this.post('/webauthn/verify', { tx_id: txId, ...assertion })
+  }
+
+  async listWebAuthnCredentials(): Promise<any[]> {
+    return this.get('/webauthn/credentials')
+  }
+
+  async deleteWebAuthnCredential(id: string): Promise<void> {
+    return this.del(`/webauthn/credentials/${id}`)
+  }
+
+  // --- Bridge Admin ---
+
+  async getBridgeConfig(): Promise<any> {
+    return this.get('/bridge/config')
+  }
+
+  async updateBridgeConfig(config: any): Promise<any> {
+    return this.patch('/bridge/config', config)
+  }
+
+  async listBridgeNetworks(): Promise<any[]> {
+    return this.get('/bridge/networks')
+  }
+
   // --- Status & Info ---
 
   async getStatus(): Promise<ClusterStatus> {
