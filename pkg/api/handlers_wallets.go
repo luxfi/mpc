@@ -35,8 +35,9 @@ func (s *Server) handleCreateWallet(w http.ResponseWriter, r *http.Request) {
 	vaultID := urlParam(r, "id")
 
 	var req struct {
-		Name    string `json:"name"`
-		KeyType string `json:"key_type"`
+		Name     string `json:"name"`
+		KeyType  string `json:"key_type"`
+		Protocol string `json:"protocol"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -44,6 +45,13 @@ func (s *Server) handleCreateWallet(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.KeyType == "" {
 		req.KeyType = "secp256k1"
+	}
+	if req.Protocol == "" {
+		req.Protocol = "cggmp21"
+	}
+	if req.Protocol != "cggmp21" && req.Protocol != "frost" && req.Protocol != "lss" {
+		writeError(w, http.StatusBadRequest, "invalid protocol: must be cggmp21, frost, or lss")
+		return
 	}
 
 	// Verify vault belongs to org
@@ -77,6 +85,7 @@ func (s *Server) handleCreateWallet(w http.ResponseWriter, r *http.Request) {
 	wal.WalletID = result.WalletID
 	wal.Name = nilIfEmpty(name)
 	wal.KeyType = req.KeyType
+	wal.Protocol = req.Protocol
 	wal.ECDSAPubkey = nilIfEmpty(result.ECDSAPubKey)
 	wal.EDDSAPubkey = nilIfEmpty(result.EDDSAPubKey)
 	wal.EthAddress = nilIfEmpty(result.EthAddress)
