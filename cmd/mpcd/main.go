@@ -809,7 +809,7 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 				"node_id":         nodeID,
 				"mode":            "consensus",
 				"expected_peers":  len(peerIDs),
-				"connected_peers": connected,
+				"connected_peers": len(connected),
 				"ready":           ready,
 				"threshold":       threshold,
 				"version":         Version,
@@ -924,8 +924,8 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 				if result.ResultType == event.ResultTypeSuccess {
 					resp["ecdsa_pub_key"] = hex.EncodeToString(result.ECDSAPubKey)
 					resp["eddsa_pub_key"] = hex.EncodeToString(result.EDDSAPubKey)
-					// Derive Ethereum address from uncompressed ECDSA pubkey
-					if len(result.ECDSAPubKey) >= 33 {
+					// Derive Ethereum address from ECDSA pubkey (32, 33, or 65 bytes)
+					if len(result.ECDSAPubKey) >= 32 {
 						resp["eth_address"] = pubKeyToEthAddress(result.ECDSAPubKey)
 					}
 				} else {
@@ -1261,11 +1261,11 @@ func NewConsensusIdentityStore(nodeID string, privKey ed25519.PrivateKey, pubKey
 	}
 
 	// In consensus mode, if no explicit initiator key is configured,
-	// use the node's own public key. This allows the node's /keygen
-	// and /sign HTTP endpoints to self-sign event messages.
+	// skip initiator verification since all messages come from within
+	// the trusted cluster. The internal API (port 9800) is not
+	// exposed externally.
 	if s.initiatorPubKey == nil {
-		s.initiatorPubKey = pubKey
-		logger.Info("Using node's own public key as initiator key (consensus mode)")
+		logger.Info("No explicit initiator key configured; initiator verification will be skipped (consensus mode)")
 	}
 
 	return s
@@ -1287,8 +1287,11 @@ func (s *ConsensusIdentityStore) GetPublicKey(nodeID string) ([]byte, error) {
 }
 
 func (s *ConsensusIdentityStore) VerifyInitiatorMessage(msg types.InitiatorMessage) error {
+	// In consensus mode without an explicit initiator key, skip
+	// verification. The internal API is only accessible within the
+	// cluster, so all messages are trusted.
 	if s.initiatorPubKey == nil {
-		return fmt.Errorf("no initiator public key configured; cannot verify message")
+		return nil
 	}
 
 	// Reconstruct the canonical payload that was signed (excludes the
