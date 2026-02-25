@@ -133,6 +133,7 @@ func (s *Server) handleGetTransaction(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleApproveTransaction(w http.ResponseWriter, r *http.Request) {
 	orgID := getOrgID(r.Context())
 	userID := getUserID(r.Context())
+	role := getRole(r.Context())
 	txID := urlParam(r, "id")
 
 	tx, err := orm.Get[db.Transaction](s.db.ORM, txID)
@@ -155,18 +156,35 @@ func (s *Server) handleApproveTransaction(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// Enforce approver role requirements from policies
+	policies, _ := s.loadPolicies(r.Context(), orgID, nil)
+	decision := evaluateTransaction(
+		strFromPtr(tx.Amount), tx.Chain, strFromPtr(tx.ToAddress), policies,
+	)
+	requiredApprovers := decision.RequiredApprovers
+	if requiredApprovers < 1 {
+		requiredApprovers = 1
+	}
+
+	// Check if user's role is allowed to approve for the matching policy
+	if len(decision.ApproverRoles) > 0 {
+		allowed := false
+		for _, r := range decision.ApproverRoles {
+			if r == role {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			writeError(w, http.StatusForbidden, "your role ("+role+") is not authorized to approve this transaction")
+			return
+		}
+	}
+
 	tx.ApprovedBy = append(tx.ApprovedBy, userID)
 	if err := tx.Update(); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to approve transaction")
 		return
-	}
-
-	policies, _ := s.loadPolicies(r.Context(), orgID, nil)
-	requiredApprovers := 1
-	for _, p := range policies {
-		if p.RequiredApprovers > requiredApprovers {
-			requiredApprovers = p.RequiredApprovers
-		}
 	}
 
 	if len(tx.ApprovedBy) >= requiredApprovers {
@@ -251,4 +269,11 @@ func (s *Server) signAndBroadcast(txID, orgID string) {
 	tx.Update()
 
 	s.fireWebhook(ctx, orgID, "tx.signed", map[string]string{"tx_id": txID})
+}
+
+func strFromPtr(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
