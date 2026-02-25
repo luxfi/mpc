@@ -8,7 +8,8 @@ import { api } from '@/lib/api'
 import type { Wallet } from '@/lib/types'
 
 type KeyType = 'secp256k1' | 'ed25519'
-type Step = 'type' | 'name' | 'generate' | 'result'
+type Protocol = 'cggmp21' | 'frost' | 'lss'
+type Step = 'type' | 'protocol' | 'name' | 'generate' | 'result'
 
 export default function NewWalletPage() {
   const params = useParams<{ id: string }>()
@@ -16,6 +17,7 @@ export default function NewWalletPage() {
 
   const [step, setStep] = useState<Step>('type')
   const [keyType, setKeyType] = useState<KeyType>('secp256k1')
+  const [protocol, setProtocol] = useState<Protocol>('cggmp21')
   const [walletName, setWalletName] = useState('')
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState('')
@@ -31,6 +33,7 @@ export default function NewWalletPage() {
       const wallet = await api.createWallet(params.id, {
         name: walletName,
         key_type: keyType,
+        protocol,
       })
       setResult(wallet)
       setStep('result')
@@ -59,20 +62,20 @@ export default function NewWalletPage() {
         <div className="mx-auto max-w-lg">
           {/* Step indicator */}
           <div className="mb-8 flex items-center justify-between">
-            {(['type', 'name', 'generate', 'result'] as Step[]).map((s, i) => (
+            {(['type', 'protocol', 'name', 'generate', 'result'] as Step[]).map((s, i) => (
               <div key={s} className="flex items-center gap-2">
                 <div
                   className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold ${
                     step === s
                       ? 'bg-primary text-primary-foreground'
-                      : i < ['type', 'name', 'generate', 'result'].indexOf(step)
+                      : i < ['type', 'protocol', 'name', 'generate', 'result'].indexOf(step)
                         ? 'bg-emerald-500/20 text-emerald-400'
                         : 'bg-muted text-muted-foreground'
                   }`}
                 >
                   {i + 1}
                 </div>
-                {i < 3 && <div className="h-px w-12 bg-border sm:w-16" />}
+                {i < 4 && <div className="h-px w-8 bg-border sm:w-12" />}
               </div>
             ))}
           </div>
@@ -103,6 +106,47 @@ export default function NewWalletPage() {
               </div>
               <div className="flex justify-end">
                 <button
+                  onClick={() => setStep('protocol')}
+                  className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Step: Choose protocol */}
+          {step === 'protocol' && (
+            <div className="space-y-4">
+              <h2 className="text-lg font-semibold">Choose Protocol</h2>
+              <div className="space-y-3">
+                {([
+                  { id: 'cggmp21' as Protocol, name: 'CGGMP21', desc: 'Standard ECDSA threshold signatures. Battle-tested, recommended for most wallets.' },
+                  { id: 'lss' as Protocol, name: 'LSS (Dynamic Resharing)', desc: 'ECDSA with dynamic resharing — change threshold and participants without regenerating keys.' },
+                  { id: 'frost' as Protocol, name: 'FROST (EdDSA/Taproot)', desc: 'EdDSA and BIP-340 Taproot signatures. Use for Solana, TON, or Bitcoin Taproot.' },
+                ]).map((p) => (
+                  <button
+                    key={p.id}
+                    onClick={() => setProtocol(p.id)}
+                    className={`w-full rounded-lg border p-4 text-left transition-colors ${
+                      protocol === p.id
+                        ? 'border-primary bg-primary/5'
+                        : 'border-border hover:border-foreground/20'
+                    }`}
+                  >
+                    <p className="font-semibold text-sm">{p.name}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{p.desc}</p>
+                  </button>
+                ))}
+              </div>
+              <div className="flex justify-between">
+                <button
+                  onClick={() => setStep('type')}
+                  className="rounded-md border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent"
+                >
+                  Back
+                </button>
+                <button
                   onClick={() => setStep('name')}
                   className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
                 >
@@ -131,7 +175,7 @@ export default function NewWalletPage() {
               {error && <p className="text-sm text-destructive">{error}</p>}
               <div className="flex justify-between">
                 <button
-                  onClick={() => setStep('type')}
+                  onClick={() => setStep('protocol')}
                   className="rounded-md border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent"
                 >
                   Back
