@@ -18,7 +18,7 @@ function buildLoginUrl(branding: Branding): string {
     state,
   })
 
-  return `${branding.iamUrl}/login?${params.toString()}`
+  return `${branding.iamUrl}/oauth/authorize?${params.toString()}`
 }
 
 export default function LoginPage() {
