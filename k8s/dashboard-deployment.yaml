@@ -17,6 +17,8 @@ spec:
         app: mpc-dashboard
         app.kubernetes.io/part-of: lux-mpc
     spec:
+      imagePullSecrets:
+        - name: registry-hanzo
       containers:
         - name: dashboard
           image: ghcr.io/luxfi/mpc-dashboard:latest

@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useBranding } from '@/lib/branding'
 import { UserMenu } from './user-menu'
 
 const navLinks = [
@@ -15,13 +16,14 @@ const navLinks = [
 
 export function Nav() {
   const pathname = usePathname()
+  const { logoText } = useBranding()
 
   return (
     <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
         <div className="flex items-center gap-8">
           <Link href="/" className="flex items-center gap-2">
-            <span className="text-lg font-semibold tracking-tight">Lux MPC</span>
+            <span className="text-lg font-semibold tracking-tight">{logoText}</span>
           </Link>
           <nav className="hidden items-center gap-1 md:flex">
             {navLinks.map((link) => {
