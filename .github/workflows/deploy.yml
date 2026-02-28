@@ -105,12 +105,11 @@ jobs:
           token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
 
       - name: Configure kubectl
-        run: doctl kubernetes cluster kubeconfig save lux-k8s
+        run: doctl kubernetes cluster kubeconfig save hanzo-k8s
 
       - name: Apply K8s manifests
         run: |
           kubectl apply -f k8s/namespace.yaml
-          kubectl apply -f k8s/secrets.yaml
           kubectl apply -f k8s/certificate.yaml
           kubectl apply -f k8s/postgres.yaml
           kubectl apply -f k8s/api-service.yaml
