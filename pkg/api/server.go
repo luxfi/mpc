@@ -86,6 +86,12 @@ func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, l
 	}))
 	r.Use(RateLimitMiddleware(100))
 
+	// Landing page
+	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Write([]byte(landingHTML))
+	})
+
 	// Health check (public, outside /api/v1, for K8s probes)
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -285,3 +291,52 @@ func (s *Server) Start() (*http.Server, <-chan error) {
 func (s *Server) Shutdown(ctx context.Context) error {
 	return s.server.Shutdown(ctx)
 }
+
+const landingHTML = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lux MPC — Threshold Signing Service</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0a0a0a;color:#e5e5e5;display:flex;align-items:center;justify-content:center;min-height:100vh}
+.c{max-width:720px;padding:3rem 2rem;text-align:center}
+h1{font-size:2.5rem;font-weight:700;margin-bottom:.5rem;background:linear-gradient(135deg,#7c3aed,#2563eb);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.tag{color:#a1a1aa;font-size:1.1rem;margin-bottom:2.5rem}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem;margin:2rem 0;text-align:left}
+.card{background:#18181b;border:1px solid #27272a;border-radius:12px;padding:1.25rem}
+.card h3{font-size:.95rem;margin-bottom:.5rem;color:#a78bfa}
+.card p{font-size:.85rem;color:#a1a1aa;line-height:1.5}
+.chains{display:flex;flex-wrap:wrap;gap:.5rem;justify-content:center;margin:1.5rem 0}
+.chip{background:#1e1b4b;border:1px solid #312e81;color:#c4b5fd;padding:.35rem .75rem;border-radius:999px;font-size:.8rem}
+.links{margin-top:2rem;display:flex;gap:1rem;justify-content:center;flex-wrap:wrap}
+.links a{color:#818cf8;text-decoration:none;font-size:.9rem;padding:.5rem 1rem;border:1px solid #312e81;border-radius:8px;transition:all .2s}
+.links a:hover{background:#1e1b4b;border-color:#4f46e5}
+.status{margin-top:2rem;font-size:.8rem;color:#52525b}
+</style>
+</head>
+<body>
+<div class="c">
+<h1>Lux MPC</h1>
+<p class="tag">Threshold Signing Service &bull; 3-of-5 Consensus</p>
+<div class="cards">
+<div class="card"><h3>CGGMP21</h3><p>5-round threshold ECDSA (secp256k1) for Bitcoin, Ethereum, Lux, XRPL, and all EVM chains.</p></div>
+<div class="card"><h3>FROST</h3><p>2-round threshold EdDSA (Ed25519) for Solana, TON. BIP-340 Schnorr for Bitcoin Taproot.</p></div>
+<div class="card"><h3>Bridge</h3><p>Cross-chain asset bridge with MPC-signed transactions. Multi-network, policy-driven approvals.</p></div>
+</div>
+<div class="chains">
+<span class="chip">Bitcoin</span><span class="chip">Ethereum</span><span class="chip">Lux</span>
+<span class="chip">Solana</span><span class="chip">XRPL</span><span class="chip">TON</span>
+<span class="chip">Polygon</span><span class="chip">Arbitrum</span><span class="chip">Base</span><span class="chip">BNB</span>
+</div>
+<div class="links">
+<a href="/healthz">API Status</a>
+<a href="/health">Cluster Health</a>
+<a href="https://bridge.lux.network">Bridge Dashboard</a>
+<a href="/api/v1/bridge/networks">Networks</a>
+</div>
+<p class="status">v0.3.3 &bull; Post-Quantum TLS 1.3 &bull; ZapDB Encrypted Storage</p>
+</div>
+</body>
+</html>`
