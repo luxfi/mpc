@@ -148,6 +148,34 @@ func main() {
 				},
 			},
 			{
+				Name:  "api",
+				Usage: "Start Dashboard API server only (no MPC transport)",
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:    "db",
+						Usage:   "PostgreSQL connection URL",
+						Sources: cli.EnvVars("DATABASE_URL", "MPC_API_DB"),
+					},
+					&cli.StringFlag{
+						Name:  "listen",
+						Usage: "API listen address",
+						Value: ":8081",
+					},
+					&cli.StringFlag{
+						Name:    "jwt-secret",
+						Usage:   "JWT signing secret",
+						Sources: cli.EnvVars("JWT_SECRET", "MPC_JWT_SECRET"),
+					},
+					&cli.BoolFlag{
+						Name:  "debug",
+						Usage: "Enable debug logging",
+					},
+				},
+				Action: func(ctx context.Context, c *cli.Command) error {
+					return runAPIOnly(ctx, c)
+				},
+			},
+			{
 				Name:  "version",
 				Usage: "Display detailed version information",
 				Action: func(ctx context.Context, c *cli.Command) error {
@@ -1334,4 +1362,85 @@ func pubKeyToEthAddress(pubKey []byte) string {
 	hash.Write(uncompressed)
 	addrBytes := hash.Sum(nil)[12:]
 	return "0x" + hex.EncodeToString(addrBytes)
+}
+
+// runAPIOnly starts only the Dashboard API server without any MPC transport.
+// This is used for the cloud dashboard deployment where MPC operations are
+// forwarded to the MPC nodes separately.
+func runAPIOnly(ctx context.Context, c *cli.Command) error {
+	debug := c.Bool("debug")
+	logger.Init("api", debug)
+
+	dbURL := c.String("db")
+	if dbURL == "" {
+		return fmt.Errorf("--db (or DATABASE_URL env) is required")
+	}
+	listenAddr := c.String("listen")
+	jwtSecret := c.String("jwt-secret")
+	if jwtSecret == "" {
+		return fmt.Errorf("--jwt-secret (or JWT_SECRET env) is required")
+	}
+
+	logger.Info("Starting Dashboard API server (standalone)", "addr", listenAddr)
+
+	database, err := db.New(ctx, dbURL)
+	if err != nil {
+		return fmt.Errorf("failed to connect to database: %w", err)
+	}
+	defer database.Close()
+
+	if err := database.Migrate(ctx); err != nil {
+		return fmt.Errorf("failed to run database migrations: %w", err)
+	}
+	logger.Info("Database connected and migrated")
+
+	// Stub MPC backend that returns errors for MPC operations
+	mpcBackend := &stubMPCBackend{}
+
+	apiServer := mpcapi.NewServer(database, mpcBackend, jwtSecret, listenAddr)
+	apiServer.StartScheduler(ctx)
+
+	_, apiErrCh := apiServer.Start()
+	logger.Info("Dashboard API ready", "addr", listenAddr)
+
+	// Wait for shutdown signal or server error
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+
+	select {
+	case sig := <-sigChan:
+		logger.Warn("Shutdown signal received", "signal", sig)
+	case err := <-apiErrCh:
+		if err != nil {
+			return fmt.Errorf("API server failed: %w", err)
+		}
+	}
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return apiServer.Shutdown(shutdownCtx)
+}
+
+// stubMPCBackend returns errors for MPC operations when running in API-only mode.
+type stubMPCBackend struct{}
+
+func (s *stubMPCBackend) TriggerKeygen(walletID string) (*mpcapi.KeygenResult, error) {
+	return nil, fmt.Errorf("MPC operations not available in API-only mode")
+}
+
+func (s *stubMPCBackend) TriggerSign(walletID string, payload []byte) (*mpcapi.SignResult, error) {
+	return nil, fmt.Errorf("MPC operations not available in API-only mode")
+}
+
+func (s *stubMPCBackend) TriggerReshare(walletID string, newThreshold int, newParticipants []string) error {
+	return fmt.Errorf("MPC operations not available in API-only mode")
+}
+
+func (s *stubMPCBackend) GetClusterStatus() *mpcapi.ClusterStatus {
+	return &mpcapi.ClusterStatus{
+		NodeID:  "api-only",
+		Mode:    "api-only",
+		Ready:   true,
+		Version: Version,
+	}
 }
