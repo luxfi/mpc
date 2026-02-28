@@ -56,7 +56,7 @@ type Config struct {
 // DefaultConfig returns sensible defaults
 func DefaultConfig() *Config {
 	return &Config{
-		ReadTimeout:  30 * time.Second,
+		ReadTimeout:  5 * time.Minute,
 		WriteTimeout: 10 * time.Second,
 		BufferSize:   64 * 1024,
 	}
@@ -210,6 +210,15 @@ func (t *Transport) connectToPeer(ctx context.Context, nodeID, addr string) {
 		default:
 		}
 
+		// Check if we already have a connection (e.g., inbound)
+		t.peersMu.RLock()
+		_, exists := t.peers[nodeID]
+		t.peersMu.RUnlock()
+		if exists {
+			time.Sleep(5 * time.Second)
+			continue
+		}
+
 		conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
 		if err != nil {
 			logger.Warn("Failed to connect to peer", "nodeID", nodeID, "addr", addr, "err", err)
@@ -220,7 +229,13 @@ func (t *Transport) connectToPeer(ctx context.Context, nodeID, addr string) {
 
 		backoff = time.Second // Reset backoff on success
 
-		peer := t.addPeer(nodeID, addr, conn)
+		peer, accepted := t.addPeerTieBreak(nodeID, addr, conn, true)
+		if !accepted {
+			conn.Close()
+			logger.Debug("Outbound connection rejected (tie-break)", "nodeID", nodeID)
+			time.Sleep(5 * time.Second)
+			continue
+		}
 		logger.Info("Connected to peer", "nodeID", nodeID, "addr", addr)
 
 		// Send our identity
@@ -229,8 +244,8 @@ func (t *Transport) connectToPeer(ctx context.Context, nodeID, addr string) {
 		// Handle messages from this peer
 		t.handlePeer(ctx, peer)
 
-		// Connection closed, remove peer
-		t.removePeer(nodeID)
+		// Connection closed, remove only THIS connection
+		t.removePeerConn(nodeID, peer)
 		logger.Warn("Disconnected from peer", "nodeID", nodeID)
 	}
 }
@@ -238,37 +253,68 @@ func (t *Transport) connectToPeer(ctx context.Context, nodeID, addr string) {
 // handleIncoming handles an incoming connection
 func (t *Transport) handleIncoming(ctx context.Context, conn net.Conn) {
 	defer t.wg.Done()
-	defer conn.Close()
 
 	// Read identity message first
 	msgType, payload, err := ReadMessage(conn)
 	if err != nil {
 		logger.Error("Failed to read identity", err)
+		conn.Close()
 		return
 	}
 
 	if msgType != MsgMPCReady {
 		logger.Warn("Expected identity message, got", "type", msgType)
+		conn.Close()
 		return
 	}
 
 	var ready ReadySignal
 	if err := json.Unmarshal(payload, &ready); err != nil {
 		logger.Error("Failed to unmarshal identity", err)
+		conn.Close()
 		return
 	}
 
-	peer := t.addPeer(ready.NodeID, conn.RemoteAddr().String(), conn)
+	peer, accepted := t.addPeerTieBreak(ready.NodeID, conn.RemoteAddr().String(), conn, false)
+	if !accepted {
+		logger.Debug("Inbound connection rejected (tie-break)", "nodeID", ready.NodeID)
+		conn.Close()
+		return
+	}
 	logger.Info("Incoming connection from peer", "nodeID", ready.NodeID)
 
 	// Handle messages from this peer
 	t.handlePeer(ctx, peer)
 
-	t.removePeer(ready.NodeID)
+	t.removePeerConn(ready.NodeID, peer)
 }
 
 // handlePeer reads messages from a peer connection
 func (t *Transport) handlePeer(ctx context.Context, peer *peerConn) {
+	// Send keepalive pings every 30s to prevent idle timeout
+	pingDone := make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-pingDone:
+				return
+			case <-ctx.Done():
+				return
+			case <-t.done:
+				return
+			case <-ticker.C:
+				msg := Message{Type: MsgMPCPing, From: t.config.NodeID}
+				payload, _ := json.Marshal(msg)
+				if err := peer.send(MsgMPCPing, payload); err != nil {
+					return
+				}
+			}
+		}
+	}()
+	defer close(pingDone)
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -536,8 +582,10 @@ func (t *Transport) sendPong(to string) {
 	}
 }
 
-// addPeer adds a peer connection
-func (t *Transport) addPeer(nodeID, addr string, conn net.Conn) *peerConn {
+// addPeerTieBreak adds a peer connection with tie-breaking for simultaneous connections.
+// When both sides connect simultaneously, the node with the lower ID keeps its outbound connection.
+// Returns the peer and true if accepted, or nil and false if rejected.
+func (t *Transport) addPeerTieBreak(nodeID, addr string, conn net.Conn, isOutbound bool) (*peerConn, bool) {
 	peer := &peerConn{
 		nodeID: nodeID,
 		addr:   addr,
@@ -547,20 +595,32 @@ func (t *Transport) addPeer(nodeID, addr string, conn net.Conn) *peerConn {
 	}
 
 	t.peersMu.Lock()
-	// Close existing connection if any
+	defer t.peersMu.Unlock()
+
 	if existing, ok := t.peers[nodeID]; ok {
+		// Tie-break: lower ID wins outbound
+		var keepNew bool
+		if isOutbound {
+			keepNew = t.config.NodeID < nodeID
+		} else {
+			keepNew = nodeID < t.config.NodeID
+		}
+
+		if !keepNew {
+			return nil, false
+		}
 		existing.close()
 	}
-	t.peers[nodeID] = peer
-	t.peersMu.Unlock()
 
-	return peer
+	t.peers[nodeID] = peer
+	return peer, true
 }
 
-// removePeer removes a peer connection
-func (t *Transport) removePeer(nodeID string) {
+// removePeerConn removes a peer connection only if it matches the given pointer.
+// This prevents a replaced connection's cleanup from removing the new connection.
+func (t *Transport) removePeerConn(nodeID string, peer *peerConn) {
 	t.peersMu.Lock()
-	if peer, ok := t.peers[nodeID]; ok {
+	if current, ok := t.peers[nodeID]; ok && current == peer {
 		peer.close()
 		delete(t.peers, nodeID)
 	}
