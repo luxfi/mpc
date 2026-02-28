@@ -1,20 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
+import { api, APIError } from '@/lib/api'
 import { SafeTxQueue } from '@/components/smart-wallets/safe-tx-queue'
 import { TxTable } from '@/components/transactions/tx-table'
-
-interface SmartWalletDetail {
-  id: string
-  type: 'safe' | 'erc4337'
-  chain: string
-  chainId: number
-  contractAddress: string
-  threshold: number
-  owners: string[]
-  mpcWalletId: string
-}
+import type { SmartWallet, Transaction } from '@/lib/types'
 
 interface PendingSafeTx {
   id: string
@@ -31,64 +22,148 @@ interface PendingSafeTx {
 export default function SmartWalletDetailPage() {
   const params = useParams<{ id: string }>()
 
-  // TODO: fetch from API
-  const [wallet] = useState<SmartWalletDetail>({
-    id: params.id,
-    type: 'safe',
-    chain: 'Ethereum',
-    chainId: 1,
-    contractAddress: '0x1234567890abcdef1234567890abcdef12345678',
-    threshold: 2,
-    owners: [
-      '0xaaa1111111111111111111111111111111111111',
-      '0xbbb2222222222222222222222222222222222222',
-      '0xccc3333333333333333333333333333333333333',
-    ],
-    mpcWalletId: 'wallet-abc',
-  })
+  const [wallet, setWallet] = useState<SmartWallet | null>(null)
+  const [txHistory, setTxHistory] = useState<Transaction[]>([])
+  const [loading, setLoading] = useState(true)
+  const [fetchError, setFetchError] = useState('')
 
-  const [pendingTxs] = useState<PendingSafeTx[]>([
-    {
-      id: 'stx-1',
-      to: '0xddd4444444444444444444444444444444444444',
-      value: '1.5 ETH',
-      data: '0x',
-      nonce: 0,
-      confirmations: 1,
-      required: 2,
-      submittedBy: '0xaaa...111',
-      createdAt: '2026-02-28T10:00:00Z',
-    },
-  ])
+  // Pending Safe transactions (from wallet history with pending status)
+  const [pendingTxs, setPendingTxs] = useState<PendingSafeTx[]>([])
 
   // Safe: propose new transaction
   const [proposeTo, setProposeTo] = useState('')
   const [proposeValue, setProposeValue] = useState('')
   const [proposeData, setProposeData] = useState('')
+  const [proposeLoading, setProposeLoading] = useState(false)
+  const [proposeError, setProposeError] = useState('')
 
   // ERC-4337: submit UserOperation
   const [userOpTarget, setUserOpTarget] = useState('')
   const [userOpValue, setUserOpValue] = useState('')
   const [userOpCalldata, setUserOpCalldata] = useState('')
+  const [userOpLoading, setUserOpLoading] = useState(false)
+  const [userOpError, setUserOpError] = useState('')
+
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        const sw = await api.getSmartWallet(params.id)
+        setWallet(sw)
+
+        // Fetch transaction history for the parent MPC wallet
+        try {
+          const history = await api.getWalletHistory(sw.wallet_id)
+          setTxHistory(history)
+
+          // Derive pending Safe txs from pending transactions
+          const pending: PendingSafeTx[] = history
+            .filter((tx) => tx.status === 'pending' || tx.status === 'pending_approval')
+            .map((tx, i) => ({
+              id: tx.id,
+              to: tx.to_address ?? '',
+              value: tx.amount ?? '0',
+              data: '0x',
+              nonce: i,
+              confirmations: tx.approved_by?.length ?? 0,
+              required: sw.threshold,
+              submittedBy: tx.initiated_by ?? 'unknown',
+              createdAt: tx.created_at,
+            }))
+          setPendingTxs(pending)
+        } catch {
+          // tx history fetch failed, non-fatal
+        }
+      } catch (err) {
+        setFetchError(err instanceof APIError ? err.message : 'Failed to load smart wallet')
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchData()
+  }, [params.id])
 
   async function handleProposeSafeTx() {
-    // TODO: call API to propose Safe transaction
-    alert(`Propose tx to ${proposeTo} for ${proposeValue}`)
+    if (!wallet) return
+    setProposeLoading(true)
+    setProposeError('')
+    try {
+      await api.proposeSafeTx(params.id, {
+        to: proposeTo,
+        value: proposeValue,
+        data: proposeData || undefined,
+      })
+      setProposeTo('')
+      setProposeValue('')
+      setProposeData('')
+      // Refresh wallet data
+      const history = await api.getWalletHistory(wallet.wallet_id).catch(() => [])
+      setTxHistory(history)
+    } catch (err) {
+      setProposeError(err instanceof APIError ? err.message : 'Failed to propose transaction')
+    } finally {
+      setProposeLoading(false)
+    }
   }
 
   async function handleSubmitUserOp() {
-    // TODO: call API to submit UserOperation
-    alert(`Submit UserOp to ${userOpTarget} for ${userOpValue}`)
+    if (!wallet) return
+    setUserOpLoading(true)
+    setUserOpError('')
+    try {
+      await api.userOperation(params.id, {
+        call_data: userOpCalldata,
+        value: userOpValue || undefined,
+      })
+      setUserOpTarget('')
+      setUserOpValue('')
+      setUserOpCalldata('')
+    } catch (err) {
+      setUserOpError(err instanceof APIError ? err.message : 'Failed to submit UserOperation')
+    } finally {
+      setUserOpLoading(false)
+    }
   }
+
+  if (loading) {
+    return (
+      <div className="mx-auto max-w-4xl px-4 py-8">
+        <p className="text-sm text-muted-foreground">Loading smart wallet...</p>
+      </div>
+    )
+  }
+
+  if (fetchError || !wallet) {
+    return (
+      <div className="mx-auto max-w-4xl px-4 py-8">
+        <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
+          {fetchError || 'Smart wallet not found'}
+        </div>
+      </div>
+    )
+  }
+
+  // Map API transactions to TxTable format
+  const tableTransactions = txHistory.map((tx) => ({
+    id: tx.id,
+    type: tx.tx_type,
+    status: (tx.status === 'pending_approval' ? 'awaiting_approval' : tx.status) as
+      'pending' | 'confirmed' | 'failed' | 'awaiting_approval',
+    chain: tx.chain,
+    from: wallet.contract_address,
+    to: tx.to_address ?? '',
+    value: tx.amount ?? '0',
+    hash: tx.tx_hash ?? undefined,
+    timestamp: tx.created_at,
+  }))
 
   return (
     <div className="mx-auto max-w-4xl space-y-8 px-4 py-8">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">
-          {wallet.type === 'safe' ? 'Safe' : 'ERC-4337'} Wallet
+          {wallet.wallet_type === 'safe' ? 'Safe' : 'ERC-4337'} Wallet
         </h1>
         <p className="mt-1 truncate font-mono text-sm text-muted-foreground">
-          {wallet.contractAddress}
+          {wallet.contract_address}
         </p>
       </div>
 
@@ -101,14 +176,12 @@ export default function SmartWalletDetailPage() {
           <div>
             <dt className="text-muted-foreground">Type</dt>
             <dd className="mt-1">
-              {wallet.type === 'safe' ? 'Gnosis Safe' : 'ERC-4337 Account'}
+              {wallet.wallet_type === 'safe' ? 'Gnosis Safe' : 'ERC-4337 Account'}
             </dd>
           </div>
           <div>
             <dt className="text-muted-foreground">Chain</dt>
-            <dd className="mt-1">
-              {wallet.chain} ({wallet.chainId})
-            </dd>
+            <dd className="mt-1">{wallet.chain}</dd>
           </div>
           <div>
             <dt className="text-muted-foreground">Threshold</dt>
@@ -118,8 +191,18 @@ export default function SmartWalletDetailPage() {
           </div>
           <div>
             <dt className="text-muted-foreground">MPC Wallet</dt>
-            <dd className="mt-1 font-mono text-xs">{wallet.mpcWalletId}</dd>
+            <dd className="mt-1 font-mono text-xs">{wallet.wallet_id}</dd>
           </div>
+          <div>
+            <dt className="text-muted-foreground">Status</dt>
+            <dd className="mt-1 capitalize">{wallet.status}</dd>
+          </div>
+          {wallet.deployed_at && (
+            <div>
+              <dt className="text-muted-foreground">Deployed</dt>
+              <dd className="mt-1 text-xs">{new Date(wallet.deployed_at).toLocaleString()}</dd>
+            </div>
+          )}
           <div className="col-span-2">
             <dt className="text-muted-foreground">Owners</dt>
             <dd className="mt-1 space-y-1">
@@ -134,7 +217,7 @@ export default function SmartWalletDetailPage() {
       </section>
 
       {/* Safe: pending transactions */}
-      {wallet.type === 'safe' && (
+      {wallet.wallet_type === 'safe' && (
         <>
           <section className="space-y-4">
             <h2 className="text-lg font-semibold">Pending Transactions</h2>
@@ -145,6 +228,9 @@ export default function SmartWalletDetailPage() {
             <h2 className="text-sm font-medium uppercase tracking-wider text-muted-foreground">
               Propose Transaction
             </h2>
+            {proposeError && (
+              <p className="text-sm text-destructive">{proposeError}</p>
+            )}
             <div className="space-y-3">
               <input
                 type="text"
@@ -169,10 +255,10 @@ export default function SmartWalletDetailPage() {
               />
               <button
                 onClick={handleProposeSafeTx}
-                disabled={!proposeTo}
+                disabled={!proposeTo || proposeLoading}
                 className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
               >
-                Propose Transaction
+                {proposeLoading ? 'Proposing...' : 'Propose Transaction'}
               </button>
             </div>
           </section>
@@ -180,11 +266,14 @@ export default function SmartWalletDetailPage() {
       )}
 
       {/* ERC-4337: UserOperation */}
-      {wallet.type === 'erc4337' && (
+      {wallet.wallet_type === 'erc4337' && (
         <section className="rounded-lg border border-border bg-card p-6 space-y-4">
           <h2 className="text-sm font-medium uppercase tracking-wider text-muted-foreground">
             Submit UserOperation
           </h2>
+          {userOpError && (
+            <p className="text-sm text-destructive">{userOpError}</p>
+          )}
           <div className="space-y-3">
             <input
               type="text"
@@ -209,10 +298,10 @@ export default function SmartWalletDetailPage() {
             />
             <button
               onClick={handleSubmitUserOp}
-              disabled={!userOpTarget}
+              disabled={!userOpTarget || userOpLoading}
               className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
             >
-              Submit UserOperation
+              {userOpLoading ? 'Submitting...' : 'Submit UserOperation'}
             </button>
           </div>
         </section>
@@ -221,21 +310,7 @@ export default function SmartWalletDetailPage() {
       {/* Transaction history */}
       <section className="space-y-4">
         <h2 className="text-lg font-semibold">Transaction History</h2>
-        <TxTable
-          transactions={[
-            {
-              id: 'tx-1',
-              type: 'send',
-              status: 'confirmed',
-              chain: wallet.chain,
-              from: wallet.contractAddress,
-              to: '0xddd...444',
-              value: '0.5 ETH',
-              hash: '0xabc...123',
-              timestamp: '2026-02-27T15:30:00Z',
-            },
-          ]}
-        />
+        <TxTable transactions={tableTransactions} />
       </section>
     </div>
   )

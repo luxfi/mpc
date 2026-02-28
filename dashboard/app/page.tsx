@@ -1,31 +1,70 @@
 'use client'
 
+import { useState, useEffect } from 'react'
 import { Nav } from '@/components/layout/nav'
 import { StatusBadge } from '@/components/common/status-badge'
 import { ChainIcon } from '@/components/common/chain-icon'
+import { api, APIError } from '@/lib/api'
+import type { Vault, Transaction, ClusterStatus } from '@/lib/types'
 
-const stats = [
-  { label: 'Vaults', value: '--', description: 'Total vaults' },
-  { label: 'Wallets', value: '--', description: 'Total wallets' },
-  { label: 'Pending TX', value: '--', description: 'Awaiting approval' },
-]
-
-const recentTx: {
-  id: string
-  type: string
-  chain: string
-  amount: string
-  status: string
-  created_at: string
-}[] = []
-
-const clusterNodes = [
-  { id: 'node0', status: 'running', uptime: '99.9%' },
-  { id: 'node1', status: 'running', uptime: '99.8%' },
-  { id: 'node2', status: 'running', uptime: '99.7%' },
-]
+interface DashboardStats {
+  vaults: number
+  wallets: number
+  pendingTx: number
+}
 
 export default function DashboardPage() {
+  const [stats, setStats] = useState<DashboardStats>({ vaults: 0, wallets: 0, pendingTx: 0 })
+  const [vaults, setVaults] = useState<Vault[]>([])
+  const [recentTx, setRecentTx] = useState<Transaction[]>([])
+  const [cluster, setCluster] = useState<ClusterStatus | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    async function fetchDashboard() {
+      try {
+        const [vaultList, txList, clusterStatus] = await Promise.all([
+          api.listVaults().catch(() => [] as Vault[]),
+          api.listTransactions().catch(() => [] as Transaction[]),
+          api.getStatus().catch(() => null),
+        ])
+
+        setVaults(vaultList)
+
+        // Count wallets across all vaults
+        let walletCount = 0
+        try {
+          const walletLists = await Promise.all(
+            vaultList.map((v) => api.listWallets(v.id).catch(() => []))
+          )
+          walletCount = walletLists.reduce((sum, wl) => sum + wl.length, 0)
+        } catch {
+          // wallet count stays 0
+        }
+
+        const pendingCount = txList.filter(
+          (tx) => tx.status === 'pending' || tx.status === 'pending_approval'
+        ).length
+
+        setStats({ vaults: vaultList.length, wallets: walletCount, pendingTx: pendingCount })
+        setRecentTx(txList.slice(0, 10))
+        setCluster(clusterStatus)
+      } catch (err) {
+        setError(err instanceof APIError ? err.message : 'Failed to load dashboard')
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchDashboard()
+  }, [])
+
+  const statCards = [
+    { label: 'Vaults', value: stats.vaults, description: 'Total vaults' },
+    { label: 'Wallets', value: stats.wallets, description: 'Total wallets' },
+    { label: 'Pending TX', value: stats.pendingTx, description: 'Awaiting approval' },
+  ]
+
   return (
     <>
       <Nav />
@@ -38,18 +77,20 @@ export default function DashboardPage() {
           </p>
         </div>
 
-        {/* Total value */}
-        <div className="mb-8 rounded-lg border border-border bg-card p-6">
-          <p className="text-sm text-muted-foreground">Total Portfolio Value</p>
-          <p className="mt-1 text-3xl font-semibold tracking-tight font-mono">$--,---.--</p>
-        </div>
+        {error && (
+          <div className="mb-8 rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
+            {error}
+          </div>
+        )}
 
         {/* Stats cards */}
         <div className="mb-8 grid gap-4 sm:grid-cols-3">
-          {stats.map((stat) => (
+          {statCards.map((stat) => (
             <div key={stat.label} className="rounded-lg border border-border bg-card p-6">
               <p className="text-sm text-muted-foreground">{stat.label}</p>
-              <p className="mt-1 text-2xl font-semibold tracking-tight font-mono">{stat.value}</p>
+              <p className="mt-1 text-2xl font-semibold tracking-tight font-mono">
+                {loading ? '--' : stat.value}
+              </p>
               <p className="mt-1 text-xs text-muted-foreground">{stat.description}</p>
             </div>
           ))}
@@ -70,7 +111,13 @@ export default function DashboardPage() {
                 </tr>
               </thead>
               <tbody>
-                {recentTx.length === 0 ? (
+                {loading ? (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
+                      Loading...
+                    </td>
+                  </tr>
+                ) : recentTx.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
                       No recent transactions.
@@ -79,15 +126,17 @@ export default function DashboardPage() {
                 ) : (
                   recentTx.map((tx) => (
                     <tr key={tx.id} className="border-b border-border last:border-0">
-                      <td className="px-4 py-3 capitalize">{tx.type}</td>
+                      <td className="px-4 py-3 capitalize">{tx.tx_type}</td>
                       <td className="px-4 py-3">
                         <ChainIcon chain={tx.chain} />
                       </td>
-                      <td className="px-4 py-3 font-mono">{tx.amount}</td>
+                      <td className="px-4 py-3 font-mono">{tx.amount ?? '--'}</td>
                       <td className="px-4 py-3">
                         <StatusBadge status={tx.status} />
                       </td>
-                      <td className="px-4 py-3 text-muted-foreground">{tx.created_at}</td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        {new Date(tx.created_at).toLocaleString()}
+                      </td>
                     </tr>
                   ))
                 )}
@@ -100,9 +149,27 @@ export default function DashboardPage() {
         <div className="mb-8">
           <h2 className="mb-4 text-lg font-semibold">Vault Summary</h2>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <div className="rounded-lg border border-border bg-card p-6 text-center text-muted-foreground">
-              No vaults created yet.
-            </div>
+            {loading ? (
+              <div className="rounded-lg border border-border bg-card p-6 text-center text-muted-foreground">
+                Loading...
+              </div>
+            ) : vaults.length === 0 ? (
+              <div className="rounded-lg border border-border bg-card p-6 text-center text-muted-foreground">
+                No vaults created yet.
+              </div>
+            ) : (
+              vaults.map((vault) => (
+                <div key={vault.id} className="rounded-lg border border-border bg-card p-6">
+                  <p className="font-medium">{vault.name}</p>
+                  {vault.description && (
+                    <p className="mt-1 text-xs text-muted-foreground">{vault.description}</p>
+                  )}
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Created {new Date(vault.created_at).toLocaleDateString()}
+                  </p>
+                </div>
+              ))
+            )}
           </div>
         </div>
 
@@ -110,30 +177,42 @@ export default function DashboardPage() {
         <div>
           <h2 className="mb-4 text-lg font-semibold">MPC Cluster Status</h2>
           <div className="rounded-lg border border-border bg-card p-6">
-            <div className="mb-4 flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Threshold</p>
-                <p className="text-lg font-semibold font-mono">2 of 3</p>
-              </div>
-              <StatusBadge status="running" />
-            </div>
-            <div className="space-y-3">
-              {clusterNodes.map((node) => (
-                <div
-                  key={node.id}
-                  className="flex items-center justify-between rounded-md bg-muted/50 px-4 py-3"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="h-2 w-2 rounded-full bg-emerald-400" />
-                    <span className="text-sm font-medium font-mono">{node.id}</span>
+            {loading ? (
+              <p className="text-sm text-muted-foreground">Loading cluster status...</p>
+            ) : cluster ? (
+              <>
+                <div className="mb-4 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Threshold</p>
+                    <p className="text-lg font-semibold font-mono">
+                      {cluster.threshold} of {cluster.expected_peers}
+                    </p>
                   </div>
-                  <div className="flex items-center gap-4">
-                    <span className="text-xs text-muted-foreground">Uptime: {node.uptime}</span>
-                    <StatusBadge status={node.status} />
+                  <StatusBadge status={cluster.ready ? 'running' : 'degraded'} />
+                </div>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between rounded-md bg-muted/50 px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <div className={`h-2 w-2 rounded-full ${cluster.ready ? 'bg-emerald-400' : 'bg-yellow-400'}`} />
+                      <span className="text-sm font-medium font-mono">{cluster.node_id}</span>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <span className="text-xs text-muted-foreground">
+                        Peers: {cluster.connected_peers}/{cluster.expected_peers}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        v{cluster.version}
+                      </span>
+                      <StatusBadge status={cluster.ready ? 'running' : 'degraded'} />
+                    </div>
                   </div>
                 </div>
-              ))}
-            </div>
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Cluster status unavailable.
+              </p>
+            )}
           </div>
         </div>
       </main>

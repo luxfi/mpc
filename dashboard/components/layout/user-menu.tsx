@@ -2,11 +2,16 @@
 
 import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
-import { clearTokens } from '@/lib/auth'
+import { clearTokens, getUserEmail } from '@/lib/auth'
 
 export function UserMenu() {
   const [open, setOpen] = useState(false)
+  const [email, setEmail] = useState<string | null>(null)
   const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    setEmail(getUserEmail())
+  }, [])
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -23,6 +28,8 @@ export function UserMenu() {
     window.location.href = '/login'
   }
 
+  const initial = email ? email.charAt(0).toUpperCase() : 'U'
+
   return (
     <div ref={ref} className="relative">
       <button
@@ -30,9 +37,9 @@ export function UserMenu() {
         className="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
       >
         <div className="flex h-7 w-7 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">
-          U
+          {initial}
         </div>
-        <span className="hidden sm:inline">user@example.com</span>
+        <span className="hidden sm:inline">{email ?? 'Account'}</span>
         <svg
           className={`h-4 w-4 transition-transform ${open ? 'rotate-180' : ''}`}
           fill="none"
