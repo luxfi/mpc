@@ -73,6 +73,11 @@ func NewServer(database *db.DB, mpcBackend MPCBackend, jwtSecret string, listenA
 	}))
 	r.Use(RateLimitMiddleware(100))
 
+	// Health check (public, outside /api/v1, for K8s probes)
+	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	})
+
 	// Public routes
 	r.Route("/api/v1", func(r chi.Router) {
 		// Auth (no middleware)
