@@ -23,12 +23,10 @@ spec:
         - name: mpc-api
           image: ghcr.io/luxfi/mpc-api:latest
           args:
-            - start
-            - --mode
-            - consensus
-            - --api-db
+            - api
+            - --db
             - $(DATABASE_URL)
-            - --api-listen
+            - --listen
             - ":8081"
             - --jwt-secret
             - $(JWT_SECRET)
