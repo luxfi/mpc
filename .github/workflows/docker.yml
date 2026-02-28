@@ -15,7 +15,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: luxfi/lux-mpc
+  IMAGE_NAME: luxfi/mpc
 
 jobs:
   build-and-push:
