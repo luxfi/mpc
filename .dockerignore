@@ -1,0 +1,6 @@
+.git
+*.md
+dashboard/node_modules
+dashboard/.next
+node_modules
+.env
