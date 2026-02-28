@@ -1,19 +1,13 @@
 import type { Metadata } from 'next'
-import { headers } from 'next/headers'
-import { GeistSans } from 'geist/font/sans'
-import { GeistMono } from 'geist/font/mono'
-import { getBranding } from '@/lib/branding'
+import { Inter } from 'next/font/google'
 import { Providers } from './providers'
 import './globals.css'
 
-export async function generateMetadata(): Promise<Metadata> {
-  const headersList = await headers()
-  const host = headersList.get('host') ?? 'localhost'
-  const { brand, description } = getBranding(host)
-  return {
-    title: brand,
-    description,
-  }
+const inter = Inter({ subsets: ['latin'], variable: '--font-sans' })
+
+export const metadata: Metadata = {
+  title: 'Lux MPC',
+  description: 'Multi-Party Computation Wallet Platform by Lux Network',
 }
 
 export default function RootLayout({
@@ -22,7 +16,7 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" className={`dark ${GeistSans.variable} ${GeistMono.variable}`}>
+    <html lang="en" className={`dark ${inter.variable}`}>
       <body className="font-sans min-h-screen bg-background text-foreground antialiased">
         <Providers>
           {children}
