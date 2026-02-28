@@ -17,6 +17,8 @@ spec:
         app: mpc-api
         app.kubernetes.io/part-of: lux-mpc
     spec:
+      imagePullSecrets:
+        - name: registry-hanzo
       containers:
         - name: mpc-api
           image: ghcr.io/luxfi/mpc-api:latest
