@@ -118,6 +118,7 @@ func (s *Server) handleGetSmartWallet(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleProposeSafeTx(w http.ResponseWriter, r *http.Request) {
 	orgID := getOrgID(r.Context())
+	userID := getUserID(r.Context())
 	swID := urlParam(r, "id")
 
 	var req struct {
@@ -129,8 +130,12 @@ func (s *Server) handleProposeSafeTx(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
+	if req.To == "" {
+		writeError(w, http.StatusBadRequest, "to address is required")
+		return
+	}
 
-	// Verify smart wallet
+	// Verify smart wallet and get associated wallet ID + chain
 	var walletID, chain string
 	err := s.db.Pool.QueryRow(r.Context(),
 		`SELECT wallet_id, chain FROM smart_wallets WHERE id = $1 AND org_id = $2`,
@@ -140,13 +145,21 @@ func (s *Server) handleProposeSafeTx(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: Create Safe transaction proposal, sign with MPC
-	writeJSON(w, http.StatusOK, map[string]string{
-		"status":          "proposed",
-		"smart_wallet_id": swID,
-		"to":              req.To,
-		"value":           req.Value,
-	})
+	// Create a transaction record for the Safe proposal
+	var tx db.Transaction
+	err = s.db.Pool.QueryRow(r.Context(),
+		`INSERT INTO transactions (org_id, wallet_id, tx_type, chain, to_address, amount, raw_tx, status, initiated_by)
+		 VALUES ($1, $2, 'safe_proposal', $3, $4, $5, $6, 'pending', $7)
+		 RETURNING id, org_id, wallet_id, tx_type, chain, to_address, amount, status, initiated_by, created_at`,
+		orgID, walletID, chain, req.To, req.Value, []byte(req.Data), nilIfEmpty(userID)).
+		Scan(&tx.ID, &tx.OrgID, &tx.WalletID, &tx.TxType, &tx.Chain,
+			&tx.ToAddress, &tx.Amount, &tx.Status, &tx.InitiatedBy, &tx.CreatedAt)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to create transaction: "+err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, tx)
 }
 
 func (s *Server) handleExecuteSafeTx(w http.ResponseWriter, r *http.Request) {
@@ -160,25 +173,43 @@ func (s *Server) handleExecuteSafeTx(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
+	if req.SafeTxHash == "" {
+		writeError(w, http.StatusBadRequest, "safe_tx_hash is required")
+		return
+	}
 
-	var contractAddress string
+	// Verify smart wallet exists
+	var walletID string
 	err := s.db.Pool.QueryRow(r.Context(),
-		`SELECT contract_address FROM smart_wallets WHERE id = $1 AND org_id = $2`,
-		swID, orgID).Scan(&contractAddress)
+		`SELECT wallet_id FROM smart_wallets WHERE id = $1 AND org_id = $2`,
+		swID, orgID).Scan(&walletID)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "smart wallet not found")
 		return
 	}
 
-	// TODO: Execute Safe transaction
-	writeJSON(w, http.StatusOK, map[string]string{
-		"status":        "executing",
-		"safe_tx_hash":  req.SafeTxHash,
-	})
+	// Update the matching pending transaction to "executing" status
+	var tx db.Transaction
+	err = s.db.Pool.QueryRow(r.Context(),
+		`UPDATE transactions SET status = 'executing', tx_hash = $1
+		 WHERE wallet_id = $2 AND org_id = $3 AND tx_type = 'safe_proposal' AND status = 'pending'
+		 AND id = (SELECT id FROM transactions WHERE wallet_id = $2 AND org_id = $3
+		           AND tx_type = 'safe_proposal' AND status = 'pending' ORDER BY created_at DESC LIMIT 1)
+		 RETURNING id, org_id, wallet_id, tx_type, chain, to_address, amount, tx_hash, status, created_at`,
+		req.SafeTxHash, walletID, orgID).
+		Scan(&tx.ID, &tx.OrgID, &tx.WalletID, &tx.TxType, &tx.Chain,
+			&tx.ToAddress, &tx.Amount, &tx.TxHash, &tx.Status, &tx.CreatedAt)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "no pending safe proposal found for this wallet")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, tx)
 }
 
 func (s *Server) handleUserOperation(w http.ResponseWriter, r *http.Request) {
 	orgID := getOrgID(r.Context())
+	userID := getUserID(r.Context())
 	swID := urlParam(r, "id")
 
 	var req struct {
@@ -189,11 +220,15 @@ func (s *Server) handleUserOperation(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
+	if req.CallData == "" {
+		writeError(w, http.StatusBadRequest, "call_data is required")
+		return
+	}
 
-	var walletType string
+	var walletType, walletID, chain string
 	err := s.db.Pool.QueryRow(r.Context(),
-		`SELECT wallet_type FROM smart_wallets WHERE id = $1 AND org_id = $2`,
-		swID, orgID).Scan(&walletType)
+		`SELECT wallet_type, wallet_id, chain FROM smart_wallets WHERE id = $1 AND org_id = $2`,
+		swID, orgID).Scan(&walletType, &walletID, &chain)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "smart wallet not found")
 		return
@@ -203,9 +238,19 @@ func (s *Server) handleUserOperation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: Build and submit UserOperation
-	writeJSON(w, http.StatusOK, map[string]string{
-		"status":          "submitted",
-		"smart_wallet_id": swID,
-	})
+	// Create a transaction record for the UserOperation
+	var tx db.Transaction
+	err = s.db.Pool.QueryRow(r.Context(),
+		`INSERT INTO transactions (org_id, wallet_id, tx_type, chain, amount, raw_tx, status, initiated_by)
+		 VALUES ($1, $2, 'user_operation', $3, $4, $5, 'submitted', $6)
+		 RETURNING id, org_id, wallet_id, tx_type, chain, amount, status, initiated_by, created_at`,
+		orgID, walletID, chain, req.Value, []byte(req.CallData), nilIfEmpty(userID)).
+		Scan(&tx.ID, &tx.OrgID, &tx.WalletID, &tx.TxType, &tx.Chain,
+			&tx.Amount, &tx.Status, &tx.InitiatedBy, &tx.CreatedAt)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to create user operation: "+err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, tx)
 }
