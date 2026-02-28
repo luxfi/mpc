@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/ed25519"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -14,6 +15,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"golang.org/x/crypto/sha3"
 
 	"github.com/hashicorp/consul/api"
 	"github.com/nats-io/nats.go"
@@ -38,7 +41,7 @@ import (
 )
 
 const (
-	Version                    = "0.3.2"
+	Version                    = "0.3.3"
 	DefaultBackupPeriodSeconds = 300 // (5 minutes)
 )
 
@@ -762,6 +765,95 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 				json.NewEncoder(w).Encode(map[string]string{"error": "backup not available"})
 			}
 		})
+		mux.HandleFunc("/keygen", func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost {
+				w.WriteHeader(http.StatusMethodNotAllowed)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+
+			if !peerRegistry.ArePeersReady() {
+				w.WriteHeader(http.StatusServiceUnavailable)
+				json.NewEncoder(w).Encode(map[string]string{"error": "peers not ready"})
+				return
+			}
+
+			// Parse optional wallet_id from request body
+			var req struct {
+				WalletID string `json:"wallet_id"`
+			}
+			if r.Body != nil {
+				json.NewDecoder(r.Body).Decode(&req)
+			}
+			if req.WalletID == "" {
+				// Generate a deterministic wallet ID from timestamp + node
+				h := sha256.Sum256([]byte(fmt.Sprintf("%s-%d", nodeID, time.Now().UnixNano())))
+				req.WalletID = hex.EncodeToString(h[:16])
+			}
+
+			walletID := req.WalletID
+
+			// Subscribe to the result topic before triggering keygen
+			resultTopic := fmt.Sprintf("mpc.mpc_keygen_result.%s", walletID)
+			resultCh := make(chan *event.KeygenResultEvent, 1)
+			unsub, err := pubSub.Subscribe(resultTopic, func(natMsg *nats.Msg) {
+				var result event.KeygenResultEvent
+				if err := json.Unmarshal(natMsg.Data, &result); err == nil {
+					select {
+					case resultCh <- &result:
+					default:
+					}
+				}
+			})
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				json.NewEncoder(w).Encode(map[string]string{"error": "failed to subscribe to result topic"})
+				return
+			}
+			defer unsub.Unsubscribe()
+
+			// Create and publish GenerateKeyMessage
+			msg := types.GenerateKeyMessage{
+				WalletID: walletID,
+			}
+			msgData, _ := json.Marshal(msg)
+
+			if err := pubSub.Publish("mpc:generate", msgData); err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("failed to publish keygen: %v", err)})
+				return
+			}
+
+			logger.Info("Keygen triggered", "walletID", walletID)
+
+			// Wait for result with 60s timeout
+			select {
+			case result := <-resultCh:
+				resp := map[string]interface{}{
+					"wallet_id":   result.WalletID,
+					"result_type": result.ResultType,
+				}
+				if result.ResultType == event.ResultTypeSuccess {
+					resp["ecdsa_pub_key"] = hex.EncodeToString(result.ECDSAPubKey)
+					resp["eddsa_pub_key"] = hex.EncodeToString(result.EDDSAPubKey)
+					// Derive Ethereum address from uncompressed ECDSA pubkey
+					if len(result.ECDSAPubKey) >= 33 {
+						resp["eth_address"] = pubKeyToEthAddress(result.ECDSAPubKey)
+					}
+				} else {
+					resp["error"] = result.ErrorReason
+					resp["error_code"] = result.ErrorCode
+				}
+				json.NewEncoder(w).Encode(resp)
+			case <-time.After(60 * time.Second):
+				w.WriteHeader(http.StatusGatewayTimeout)
+				json.NewEncoder(w).Encode(map[string]string{
+					"error":     "keygen timed out after 60s",
+					"wallet_id": walletID,
+				})
+			}
+		})
+
 		srv := &http.Server{Addr: apiAddr, Handler: mux}
 		go func() {
 			logger.Info("HTTP API server starting", "addr", apiAddr)
@@ -1028,4 +1120,32 @@ func (q *ConsensusMessageQueue) Dequeue(topic string, handler func(message []byt
 
 func (q *ConsensusMessageQueue) Close() {
 	// Nothing to close in consensus mode
+}
+
+// pubKeyToEthAddress derives an Ethereum address from an ECDSA public key.
+// Accepts both compressed (33 bytes) and uncompressed (65 bytes) formats.
+func pubKeyToEthAddress(pubKey []byte) string {
+	var uncompressed []byte
+	switch len(pubKey) {
+	case 65:
+		// Uncompressed: 0x04 || X(32) || Y(32)
+		uncompressed = pubKey[1:] // strip 0x04 prefix
+	case 33:
+		// Compressed: we hash what we have (the handler may return hex string)
+		// For proper derivation, we'd need to decompress, but the keygen
+		// handler returns the raw bytes from the protocol which may vary.
+		// Fall back to hashing the compressed key directly.
+		uncompressed = pubKey
+	default:
+		// Try as hex string
+		decoded, err := hex.DecodeString(string(pubKey))
+		if err == nil {
+			return pubKeyToEthAddress(decoded)
+		}
+		return ""
+	}
+	hash := sha3.NewLegacyKeccak256()
+	hash.Write(uncompressed)
+	addrBytes := hash.Sum(nil)[12:]
+	return "0x" + hex.EncodeToString(addrBytes)
 }

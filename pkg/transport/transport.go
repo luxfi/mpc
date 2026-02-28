@@ -419,7 +419,7 @@ func (t *Transport) deliverToSubscribers(topic string, msg *Message) {
 	}
 }
 
-// Publish sends a message to all peers (broadcast)
+// Publish sends a message to all peers (broadcast) and delivers to local subscribers
 func (t *Transport) Publish(topic string, data []byte) error {
 	msg := Message{
 		Type:  MsgMPCBroadcast,
@@ -427,6 +427,9 @@ func (t *Transport) Publish(topic string, data []byte) error {
 		From:  t.config.NodeID,
 		Data:  data,
 	}
+
+	// Deliver to local subscribers (self-delivery)
+	t.deliverToSubscribers(topic, &msg)
 
 	payload, err := json.Marshal(msg)
 	if err != nil {
@@ -446,6 +449,9 @@ func (t *Transport) PublishWithReply(topic, reply string, data []byte, headers m
 		Headers: headers,
 		Data:    data,
 	}
+
+	// Deliver to local subscribers (self-delivery)
+	t.deliverToSubscribers(topic, &msg)
 
 	payload, err := json.Marshal(msg)
 	if err != nil {
