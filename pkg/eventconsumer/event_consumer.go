@@ -29,7 +29,7 @@ const (
 	DefaultConcurrentKeygen    = 2
 	DefaultSessionStartupDelay = 500
 
-	KeyGenTimeOut = 30 * time.Second
+	KeyGenTimeOut = 120 * time.Second
 )
 
 type EventConsumer interface {
