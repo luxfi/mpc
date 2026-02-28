@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mpc-api
+  namespace: lux-mpc
+  labels:
+    app: mpc-api
+    app.kubernetes.io/part-of: lux-mpc
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mpc-api
+  template:
+    metadata:
+      labels:
+        app: mpc-api
+        app.kubernetes.io/part-of: lux-mpc
+    spec:
+      containers:
+        - name: mpc-api
+          image: ghcr.io/luxfi/mpc-api:latest
+          args:
+            - start
+            - --mode
+            - consensus
+            - --api-db
+            - $(DATABASE_URL)
+            - --api-listen
+            - ":8081"
+            - --jwt-secret
+            - $(JWT_SECRET)
+          ports:
+            - containerPort: 8081
+              name: api
+              protocol: TCP
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: mpc-secrets
+                  key: DATABASE_URL
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: mpc-secrets
+                  key: jwt-secret
+          # NOTE: /api/v1/status requires auth and returns 401 for unauthenticated
+          # requests. If the probe fails, add a public /healthz endpoint to the API
+          # or switch to tcpSocket probe.
+          livenessProbe:
+            httpGet:
+              path: /api/v1/status
+              port: 8081
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /api/v1/status
+              port: 8081
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi

@@ -1,0 +1,27 @@
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: mpc-cloud
+  namespace: lux-mpc
+  labels:
+    app.kubernetes.io/part-of: lux-mpc
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    # API routes - both domains
+    - match: (Host(`mpc.lux.network`) || Host(`cloud.lux.network`)) && PathPrefix(`/api/v1`)
+      kind: Rule
+      services:
+        - name: mpc-api-svc
+          port: 8081
+          passHostHeader: false
+    # Dashboard - catch-all for both domains
+    - match: Host(`mpc.lux.network`) || Host(`cloud.lux.network`)
+      kind: Rule
+      services:
+        - name: mpc-dashboard-svc
+          port: 3000
+          passHostHeader: false
+  tls:
+    secretName: mpc-lux-network-tls

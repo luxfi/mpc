@@ -1,6 +1,6 @@
-db/
-tmp/
-bin/
+/db/
+/tmp/
+/bin/
 identity/
 event_initiator.identity.json
 event_initiator.key
@@ -20,10 +20,25 @@ e2e/config.test.yaml
 logs/
 
 # Built binaries
-lux-mpc
-lux-mpc-bridge
-lux-mpc-cli
-mpcd
+/lux-mpc
+/lux-mpc-bridge
+/lux-mpc-cli
+/mpcd
+*-linux-amd64
+*-linux-arm64
+*-darwin-amd64
+*-darwin-arm64
+
+# Docker build artifacts
+.docker-build/
+
+# Dashboard build
+dashboard/node_modules/
+dashboard/.next/
+
+# Environment
+.env
+.env.local
 
 
 

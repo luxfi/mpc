@@ -1,0 +1,101 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mpc-postgres
+  namespace: lux-mpc
+  labels:
+    app: mpc-postgres
+    app.kubernetes.io/part-of: lux-mpc
+spec:
+  type: ClusterIP
+  ports:
+    - port: 5432
+      targetPort: 5432
+      protocol: TCP
+      name: postgres
+  selector:
+    app: mpc-postgres
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mpc-postgres
+  namespace: lux-mpc
+  labels:
+    app: mpc-postgres
+    app.kubernetes.io/part-of: lux-mpc
+spec:
+  serviceName: mpc-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mpc-postgres
+  template:
+    metadata:
+      labels:
+        app: mpc-postgres
+        app.kubernetes.io/part-of: lux-mpc
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports:
+            - containerPort: 5432
+              name: postgres
+          env:
+            - name: POSTGRES_USER
+              value: mpc
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mpc-secrets
+                  key: postgres-password
+            - name: POSTGRES_DB
+              value: mpc_api
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - mpc
+                - -d
+                - mpc_api
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - mpc
+                - -d
+                - mpc_api
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 5
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: postgres-data
+        labels:
+          app: mpc-postgres
+          app.kubernetes.io/part-of: lux-mpc
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 10Gi
