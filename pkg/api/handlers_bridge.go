@@ -6,24 +6,26 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/hanzoai/orm"
+	"github.com/luxfi/mpc/pkg/db"
 	"golang.org/x/crypto/sha3"
 )
 
 // Bridge signing request — matches the bridge server's expected format.
 type bridgeSignRequest struct {
-	TxID              string `json:"txId"`
-	FromNetworkID     string `json:"fromNetworkId"`
-	ToNetworkID       string `json:"toNetworkId"`
-	ToTokenAddress    string `json:"toTokenAddress"`
-	MsgSignature      string `json:"msgSignature"`
-	ReceiverAddrHash  string `json:"receiverAddressHash"`
+	TxID             string `json:"txId"`
+	FromNetworkID    string `json:"fromNetworkId"`
+	ToNetworkID      string `json:"toNetworkId"`
+	ToTokenAddress   string `json:"toTokenAddress"`
+	MsgSignature     string `json:"msgSignature"`
+	ReceiverAddrHash string `json:"receiverAddressHash"`
 }
 
 // Bridge signing response — matches the bridge server's expected format.
 type bridgeSignResponse struct {
-	Status bool                `json:"status"`
-	Msg    string              `json:"msg,omitempty"`
-	Data   *bridgeSignData     `json:"data,omitempty"`
+	Status bool            `json:"status"`
+	Msg    string          `json:"msg,omitempty"`
+	Data   *bridgeSignData `json:"data,omitempty"`
 }
 
 type bridgeSignData struct {
@@ -39,7 +41,6 @@ type bridgeSignData struct {
 }
 
 // handleBridgeSign handles POST /api/v1/generate_mpc_sig
-// This is the endpoint the bridge server calls to get MPC signatures for cross-chain transfers.
 func (s *Server) handleBridgeSign(w http.ResponseWriter, r *http.Request) {
 	var req bridgeSignRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -59,24 +60,37 @@ func (s *Server) handleBridgeSign(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Find the bridge wallet — look for a wallet named "bridge" or use the first available
-	var mpcWalletID, ecdsaPubKey, ethAddress string
-	err := s.db.Pool.QueryRow(r.Context(),
-		`SELECT wallet_id, ecdsa_pubkey, eth_address FROM wallets
-		 WHERE name ILIKE '%bridge%' AND status = 'active'
-		 ORDER BY created_at ASC LIMIT 1`).
-		Scan(&mpcWalletID, &ecdsaPubKey, &ethAddress)
-	if err != nil {
-		// Fallback: use any active wallet
-		err = s.db.Pool.QueryRow(r.Context(),
-			`SELECT wallet_id, ecdsa_pubkey, eth_address FROM wallets
-			 WHERE status = 'active' AND key_type = 'secp256k1'
-			 ORDER BY created_at ASC LIMIT 1`).
-			Scan(&mpcWalletID, &ecdsaPubKey, &ethAddress)
-		if err != nil {
-			json.NewEncoder(w).Encode(bridgeSignResponse{Status: false, Msg: "no signing wallet available"})
-			return
+	// Find a bridge wallet — look for a wallet named "bridge" or use the first active secp256k1 wallet
+	var bridgeWallet *db.Wallet
+
+	// Try to find wallet with "bridge" in name
+	wallets, err := orm.TypedQuery[db.Wallet](s.db.ORM).
+		Filter("status =", "active").
+		Filter("keyType =", "secp256k1").
+		Order("createdAt").
+		Limit(10).
+		GetAll(r.Context())
+	if err == nil {
+		for _, w := range wallets {
+			if w.Name != nil && contains(*w.Name, "bridge") {
+				bridgeWallet = w
+				break
+			}
 		}
+		if bridgeWallet == nil && len(wallets) > 0 {
+			bridgeWallet = wallets[0]
+		}
+	}
+
+	if bridgeWallet == nil {
+		json.NewEncoder(w).Encode(bridgeSignResponse{Status: false, Msg: "no signing wallet available"})
+		return
+	}
+
+	mpcWalletID := bridgeWallet.WalletID
+	ethAddress := ""
+	if bridgeWallet.EthAddress != nil {
+		ethAddress = *bridgeWallet.EthAddress
 	}
 
 	// Hash the transaction ID (keccak256)
@@ -105,10 +119,18 @@ func (s *Server) handleBridgeSign(w http.ResponseWriter, r *http.Request) {
 	// Record the bridge transaction in DB
 	orgID := getOrgID(r.Context())
 	if orgID != "" {
-		s.db.Pool.Exec(r.Context(),
-			`INSERT INTO transactions (org_id, tx_type, chain, to_address, status, tx_hash, signature_r, signature_s, signed_at)
-			 VALUES ($1, 'bridge_sign', $2, $3, 'signed', $4, $5, $6, $7)`,
-			orgID, req.ToNetworkID, req.ReceiverAddrHash, hashedTxID, result.R, result.S, time.Now())
+		now := time.Now()
+		tx := orm.New[db.Transaction](s.db.ORM)
+		tx.OrgID = orgID
+		tx.TxType = "bridge_sign"
+		tx.Chain = req.ToNetworkID
+		tx.ToAddress = nilIfEmpty(req.ReceiverAddrHash)
+		tx.Status = "signed"
+		tx.TxHash = nilIfEmpty(hashedTxID)
+		tx.SignatureR = nilIfEmpty(result.R)
+		tx.SignatureS = nilIfEmpty(result.S)
+		tx.SignedAt = &now
+		tx.Create()
 	}
 
 	toTokenAddrHash := keccak256Hex(req.ToTokenAddress)
@@ -128,7 +150,6 @@ func (s *Server) handleBridgeSign(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleBridgeComplete handles POST /api/v1/complete
-// Called by the bridge server after a swap is finalized on the destination chain.
 func (s *Server) handleBridgeComplete(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		HashedTxID string `json:"hashedTxId"`
@@ -146,10 +167,19 @@ func (s *Server) handleBridgeComplete(w http.ResponseWriter, r *http.Request) {
 	// Mark the bridge transaction as completed
 	orgID := getOrgID(r.Context())
 	if orgID != "" {
-		s.db.Pool.Exec(r.Context(),
-			`UPDATE transactions SET status = 'confirmed', broadcast_at = $1
-			 WHERE tx_hash = $2 AND org_id = $3 AND tx_type = 'bridge_sign'`,
-			time.Now(), req.HashedTxID, orgID)
+		txList, err := orm.TypedQuery[db.Transaction](s.db.ORM).
+			Filter("orgId =", orgID).
+			Filter("txType =", "bridge_sign").
+			Filter("txHash =", req.HashedTxID).
+			Limit(1).
+			GetAll(r.Context())
+		if err == nil && len(txList) > 0 {
+			now := time.Now()
+			tx := txList[0]
+			tx.Status = "confirmed"
+			tx.BroadcastAt = &now
+			tx.Update()
+		}
 	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{"status": true, "msg": "success"})
@@ -160,4 +190,15 @@ func keccak256Hex(input string) string {
 	h := sha3.NewLegacyKeccak256()
 	h.Write([]byte(input))
 	return "0x" + hex.EncodeToString(h.Sum(nil))
+}
+
+// contains checks if s contains substr (case-insensitive done simply via strings import).
+func contains(s, substr string) bool {
+	// Simple case-sensitive check; good enough for wallet name matching
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }

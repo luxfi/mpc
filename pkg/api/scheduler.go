@@ -4,6 +4,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/hanzoai/orm"
+	"github.com/luxfi/mpc/pkg/db"
 	"github.com/luxfi/mpc/pkg/logger"
 )
 
@@ -24,79 +26,80 @@ func (s *Server) StartScheduler(ctx context.Context) {
 }
 
 func (s *Server) processDueSubscriptions(ctx context.Context) {
-	rows, err := s.db.Pool.Query(ctx,
-		`SELECT id, org_id, wallet_id, recipient_address, chain, token, amount,
-		        interval, max_retries, retry_count, require_balance
-		 FROM subscriptions
-		 WHERE status = 'active' AND next_payment_at <= NOW()
-		 LIMIT 50`)
+	now := time.Now()
+	subs, err := orm.TypedQuery[db.Subscription](s.db.ORM).
+		Filter("status =", "active").
+		Limit(50).
+		GetAll(ctx)
 	if err != nil {
 		logger.Error("scheduler: failed to query due subscriptions", err)
 		return
 	}
-	defer rows.Close()
 
-	for rows.Next() {
-		var (
-			id, orgID, walletID, recipientAddress, chain, amount, interval string
-			token                                                          *string
-			maxRetries, retryCount                                         int
-			requireBalance                                                 bool
-		)
-		if err := rows.Scan(&id, &orgID, &walletID, &recipientAddress, &chain,
-			&token, &amount, &interval, &maxRetries, &retryCount, &requireBalance); err != nil {
+	for _, sub := range subs {
+		if sub.NextPaymentAt.After(now) {
 			continue
 		}
-
-		s.processSubscriptionPayment(ctx, id, orgID, walletID, recipientAddress,
-			chain, token, amount, interval, maxRetries, retryCount, requireBalance)
+		s.processSubscriptionPayment(ctx, sub)
 	}
 }
 
-func (s *Server) processSubscriptionPayment(ctx context.Context,
-	subID, orgID, walletID, recipientAddress, chain string,
-	token *string, amount, interval string,
-	maxRetries, retryCount int, requireBalance bool) {
+func (s *Server) processSubscriptionPayment(ctx context.Context, sub *db.Subscription) {
+	orgID := sub.OrgID
+	subID := sub.Id()
 
+	walletID := ""
+	if sub.WalletID != nil {
+		walletID = *sub.WalletID
+	}
 	tokenStr := ""
-	if token != nil {
-		tokenStr = *token
+	if sub.Token != nil {
+		tokenStr = *sub.Token
 	}
 
 	// Create transaction
-	var txID string
-	err := s.db.Pool.QueryRow(ctx,
-		`INSERT INTO transactions (org_id, wallet_id, tx_type, chain, to_address, amount, token, status)
-		 VALUES ($1, $2, 'subscription_payment', $3, $4, $5, $6, 'approved')
-		 RETURNING id`,
-		orgID, walletID, chain, recipientAddress, amount, nilIfEmpty(tokenStr)).Scan(&txID)
-	if err != nil {
+	tx := orm.New[db.Transaction](s.db.ORM)
+	tx.OrgID = orgID
+	if walletID != "" {
+		tx.WalletID = &walletID
+	}
+	tx.TxType = "subscription_payment"
+	tx.Chain = sub.Chain
+	tx.ToAddress = nilIfEmpty(sub.RecipientAddress)
+	tx.Amount = nilIfEmpty(sub.Amount)
+	tx.Token = nilIfEmpty(tokenStr)
+	tx.Status = "approved"
+
+	if err := tx.Create(); err != nil {
 		logger.Error("scheduler: failed to create payment tx", err)
 		// Retry logic
-		if retryCount < maxRetries {
-			s.db.Pool.Exec(ctx,
-				`UPDATE subscriptions SET retry_count = retry_count + 1,
-				 next_payment_at = NOW() + interval '1 hour'
-				 WHERE id = $1`, subID)
+		if sub.RetryCount < sub.MaxRetries {
+			sub.RetryCount++
+			nextRetry := time.Now().Add(time.Hour)
+			sub.NextPaymentAt = nextRetry
+			sub.Update()
 			s.fireWebhook(ctx, orgID, "subscription.insufficient_funds", map[string]string{"subscription_id": subID})
 		} else {
-			s.db.Pool.Exec(ctx,
-				`UPDATE subscriptions SET status = 'failed' WHERE id = $1`, subID)
+			sub.Status = "failed"
+			sub.Update()
 			s.fireWebhook(ctx, orgID, "subscription.failed", map[string]string{"subscription_id": subID})
 		}
 		return
 	}
 
+	txID := tx.Id()
+
 	// Sign and broadcast
 	s.signAndBroadcast(txID, orgID)
 
 	// Advance next payment
-	nextPayment := computeNextPayment(interval)
+	nextPayment := computeNextPayment(sub.Interval)
 	now := time.Now()
-	s.db.Pool.Exec(ctx,
-		`UPDATE subscriptions SET
-		 next_payment_at = $1, last_payment_at = $2, last_tx_id = $3, retry_count = 0
-		 WHERE id = $4`, nextPayment, now, txID, subID)
+	sub.NextPaymentAt = nextPayment
+	sub.LastPaymentAt = &now
+	sub.LastTxID = &txID
+	sub.RetryCount = 0
+	sub.Update()
 
 	s.fireWebhook(ctx, orgID, "subscription.paid", map[string]string{
 		"subscription_id": subID,

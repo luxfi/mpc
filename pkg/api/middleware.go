@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/hanzoai/orm"
+	"github.com/luxfi/mpc/pkg/db"
 )
 
 type contextKey string
@@ -120,10 +122,12 @@ func (s *Server) writeAuditLog(ctx context.Context, r *http.Request) {
 		ip = strings.Split(xff, ",")[0]
 	}
 
-	_, _ = s.db.Pool.Exec(context.Background(),
-		`INSERT INTO audit_log (org_id, user_id, action, ip_address) VALUES ($1, $2, $3, $4)`,
-		orgID, nilIfEmpty(userID), action, ip,
-	)
+	entry := orm.New[db.AuditEntry](s.db.ORM)
+	entry.OrgID = orgID
+	entry.UserID = nilIfEmpty(userID)
+	entry.Action = action
+	entry.IPAddress = nilIfEmpty(ip)
+	entry.Create()
 }
 
 func nilIfEmpty(s string) *string {

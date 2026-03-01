@@ -5,39 +5,22 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/hanzoai/orm"
 	"github.com/luxfi/mpc/pkg/db"
 )
 
 func (s *Server) handleListSubscriptions(w http.ResponseWriter, r *http.Request) {
 	orgID := getOrgID(r.Context())
-	rows, err := s.db.Pool.Query(r.Context(),
-		`SELECT id, org_id, wallet_id, name, provider_name, recipient_address,
-		        chain, token, amount, currency, interval,
-		        next_payment_at, last_payment_at, last_tx_id,
-		        status, max_retries, retry_count, require_balance,
-		        created_by, created_at
-		 FROM subscriptions WHERE org_id = $1 ORDER BY created_at DESC`, orgID)
+	subs, err := orm.TypedQuery[db.Subscription](s.db.ORM).
+		Filter("orgId =", orgID).
+		Order("-createdAt").
+		GetAll(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "database error")
 		return
 	}
-	defer rows.Close()
-
-	var subs []db.Subscription
-	for rows.Next() {
-		var sub db.Subscription
-		if err := rows.Scan(&sub.ID, &sub.OrgID, &sub.WalletID, &sub.Name,
-			&sub.ProviderName, &sub.RecipientAddress, &sub.Chain, &sub.Token,
-			&sub.Amount, &sub.Currency, &sub.Interval,
-			&sub.NextPaymentAt, &sub.LastPaymentAt, &sub.LastTxID,
-			&sub.Status, &sub.MaxRetries, &sub.RetryCount, &sub.RequireBalance,
-			&sub.CreatedBy, &sub.CreatedAt); err != nil {
-			continue
-		}
-		subs = append(subs, sub)
-	}
 	if subs == nil {
-		subs = []db.Subscription{}
+		subs = []*db.Subscription{}
 	}
 	writeJSON(w, http.StatusOK, subs)
 }
@@ -71,26 +54,25 @@ func (s *Server) handleCreateSubscription(w http.ResponseWriter, r *http.Request
 	}
 
 	nextPayment := computeNextPayment(req.Interval)
+	walletID := req.WalletID
 
-	var sub db.Subscription
-	err := s.db.Pool.QueryRow(r.Context(),
-		`INSERT INTO subscriptions (org_id, wallet_id, name, provider_name, recipient_address,
-		 chain, token, amount, currency, interval, next_payment_at, require_balance, created_by)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-		 RETURNING id, org_id, wallet_id, name, provider_name, recipient_address,
-		 chain, token, amount, currency, interval,
-		 next_payment_at, last_payment_at, last_tx_id,
-		 status, max_retries, retry_count, require_balance, created_by, created_at`,
-		orgID, req.WalletID, req.Name, req.ProviderName, req.RecipientAddress,
-		req.Chain, req.Token, req.Amount, req.Currency, req.Interval,
-		nextPayment, req.RequireBalance, userID).
-		Scan(&sub.ID, &sub.OrgID, &sub.WalletID, &sub.Name,
-			&sub.ProviderName, &sub.RecipientAddress, &sub.Chain, &sub.Token,
-			&sub.Amount, &sub.Currency, &sub.Interval,
-			&sub.NextPaymentAt, &sub.LastPaymentAt, &sub.LastTxID,
-			&sub.Status, &sub.MaxRetries, &sub.RetryCount, &sub.RequireBalance,
-			&sub.CreatedBy, &sub.CreatedAt)
-	if err != nil {
+	sub := orm.New[db.Subscription](s.db.ORM)
+	sub.OrgID = orgID
+	sub.WalletID = &walletID
+	sub.Name = req.Name
+	sub.ProviderName = req.ProviderName
+	sub.RecipientAddress = req.RecipientAddress
+	sub.Chain = req.Chain
+	sub.Token = req.Token
+	sub.Amount = req.Amount
+	sub.Currency = req.Currency
+	sub.Interval = req.Interval
+	sub.NextPaymentAt = nextPayment
+	sub.RequireBalance = req.RequireBalance
+	sub.Status = "active"
+	sub.MaxRetries = 3
+	sub.CreatedBy = nilIfEmpty(userID)
+	if err := sub.Create(); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create subscription: "+err.Error())
 		return
 	}
@@ -102,21 +84,8 @@ func (s *Server) handleGetSubscription(w http.ResponseWriter, r *http.Request) {
 	orgID := getOrgID(r.Context())
 	subID := urlParam(r, "id")
 
-	var sub db.Subscription
-	err := s.db.Pool.QueryRow(r.Context(),
-		`SELECT id, org_id, wallet_id, name, provider_name, recipient_address,
-		        chain, token, amount, currency, interval,
-		        next_payment_at, last_payment_at, last_tx_id,
-		        status, max_retries, retry_count, require_balance,
-		        created_by, created_at
-		 FROM subscriptions WHERE id = $1 AND org_id = $2`, subID, orgID).
-		Scan(&sub.ID, &sub.OrgID, &sub.WalletID, &sub.Name,
-			&sub.ProviderName, &sub.RecipientAddress, &sub.Chain, &sub.Token,
-			&sub.Amount, &sub.Currency, &sub.Interval,
-			&sub.NextPaymentAt, &sub.LastPaymentAt, &sub.LastTxID,
-			&sub.Status, &sub.MaxRetries, &sub.RetryCount, &sub.RequireBalance,
-			&sub.CreatedBy, &sub.CreatedAt)
-	if err != nil {
+	sub, err := orm.Get[db.Subscription](s.db.ORM, subID)
+	if err != nil || sub.OrgID != orgID {
 		writeError(w, http.StatusNotFound, "subscription not found")
 		return
 	}
@@ -136,25 +105,20 @@ func (s *Server) handleUpdateSubscription(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	var sub db.Subscription
-	err := s.db.Pool.QueryRow(r.Context(),
-		`UPDATE subscriptions SET
-		 status = COALESCE($1, status),
-		 amount = COALESCE($2, amount)
-		 WHERE id = $3 AND org_id = $4
-		 RETURNING id, org_id, wallet_id, name, provider_name, recipient_address,
-		 chain, token, amount, currency, interval,
-		 next_payment_at, last_payment_at, last_tx_id,
-		 status, max_retries, retry_count, require_balance, created_by, created_at`,
-		req.Status, req.Amount, subID, orgID).
-		Scan(&sub.ID, &sub.OrgID, &sub.WalletID, &sub.Name,
-			&sub.ProviderName, &sub.RecipientAddress, &sub.Chain, &sub.Token,
-			&sub.Amount, &sub.Currency, &sub.Interval,
-			&sub.NextPaymentAt, &sub.LastPaymentAt, &sub.LastTxID,
-			&sub.Status, &sub.MaxRetries, &sub.RetryCount, &sub.RequireBalance,
-			&sub.CreatedBy, &sub.CreatedAt)
-	if err != nil {
+	sub, err := orm.Get[db.Subscription](s.db.ORM, subID)
+	if err != nil || sub.OrgID != orgID {
 		writeError(w, http.StatusNotFound, "subscription not found")
+		return
+	}
+
+	if req.Status != nil {
+		sub.Status = *req.Status
+	}
+	if req.Amount != nil {
+		sub.Amount = *req.Amount
+	}
+	if err := sub.Update(); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to update subscription")
 		return
 	}
 	writeJSON(w, http.StatusOK, sub)
@@ -165,13 +129,18 @@ func (s *Server) handleDeleteSubscription(w http.ResponseWriter, r *http.Request
 	userID := getUserID(r.Context())
 	subID := urlParam(r, "id")
 
-	now := time.Now()
-	tag, err := s.db.Pool.Exec(r.Context(),
-		`UPDATE subscriptions SET status = 'cancelled', cancelled_by = $1, cancelled_at = $2
-		 WHERE id = $3 AND org_id = $4 AND status != 'cancelled'`,
-		userID, now, subID, orgID)
-	if err != nil || tag.RowsAffected() == 0 {
+	sub, err := orm.Get[db.Subscription](s.db.ORM, subID)
+	if err != nil || sub.OrgID != orgID || sub.Status == "cancelled" {
 		writeError(w, http.StatusNotFound, "subscription not found")
+		return
+	}
+
+	now := time.Now()
+	sub.Status = "cancelled"
+	sub.CancelledBy = nilIfEmpty(userID)
+	sub.CancelledAt = &now
+	if err := sub.Update(); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to cancel subscription")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -179,36 +148,38 @@ func (s *Server) handleDeleteSubscription(w http.ResponseWriter, r *http.Request
 
 func (s *Server) handlePayNow(w http.ResponseWriter, r *http.Request) {
 	orgID := getOrgID(r.Context())
+	userID := getUserID(r.Context())
 	subID := urlParam(r, "id")
 
-	var walletID, recipientAddress, chain, amount string
-	var token *string
-	err := s.db.Pool.QueryRow(r.Context(),
-		`SELECT wallet_id, recipient_address, chain, amount, token
-		 FROM subscriptions WHERE id = $1 AND org_id = $2 AND status = 'active'`,
-		subID, orgID).Scan(&walletID, &recipientAddress, &chain, &amount, &token)
-	if err != nil {
+	sub, err := orm.Get[db.Subscription](s.db.ORM, subID)
+	if err != nil || sub.OrgID != orgID || sub.Status != "active" {
 		writeError(w, http.StatusNotFound, "subscription not found or not active")
 		return
 	}
 
-	// Create transaction for immediate payment
-	var txID string
-	tokenStr := ""
-	if token != nil {
-		tokenStr = *token
+	walletID := ""
+	if sub.WalletID != nil {
+		walletID = *sub.WalletID
 	}
-	err = s.db.Pool.QueryRow(r.Context(),
-		`INSERT INTO transactions (org_id, wallet_id, tx_type, chain, to_address, amount, token, status, initiated_by)
-		 VALUES ($1, $2, 'subscription_payment', $3, $4, $5, $6, 'approved', $7)
-		 RETURNING id`,
-		orgID, walletID, chain, recipientAddress, amount, nilIfEmpty(tokenStr),
-		getUserID(r.Context())).Scan(&txID)
-	if err != nil {
+
+	tx := orm.New[db.Transaction](s.db.ORM)
+	tx.OrgID = orgID
+	if walletID != "" {
+		tx.WalletID = &walletID
+	}
+	tx.TxType = "subscription_payment"
+	tx.Chain = sub.Chain
+	tx.ToAddress = nilIfEmpty(sub.RecipientAddress)
+	tx.Amount = nilIfEmpty(sub.Amount)
+	tx.Token = sub.Token
+	tx.Status = "approved"
+	tx.InitiatedBy = nilIfEmpty(userID)
+	if err := tx.Create(); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create payment transaction")
 		return
 	}
 
+	txID := tx.Id()
 	go s.signAndBroadcast(txID, orgID)
 
 	writeJSON(w, http.StatusOK, map[string]string{

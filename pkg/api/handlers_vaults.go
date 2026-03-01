@@ -1,34 +1,26 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 
+	"github.com/hanzoai/orm"
 	"github.com/luxfi/mpc/pkg/db"
 )
 
 func (s *Server) handleListVaults(w http.ResponseWriter, r *http.Request) {
 	orgID := getOrgID(r.Context())
-	rows, err := s.db.Pool.Query(r.Context(),
-		`SELECT id, org_id, name, description, app_id, created_at
-		 FROM vaults WHERE org_id = $1 ORDER BY created_at DESC`, orgID)
+	vaults, err := orm.TypedQuery[db.Vault](s.db.ORM).
+		Filter("orgId =", orgID).
+		Order("-createdAt").
+		GetAll(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "database error")
 		return
 	}
-	defer rows.Close()
-
-	var vaults []db.Vault
-	for rows.Next() {
-		var v db.Vault
-		if err := rows.Scan(&v.ID, &v.OrgID, &v.Name, &v.Description, &v.AppID, &v.CreatedAt); err != nil {
-			writeError(w, http.StatusInternalServerError, "scan error")
-			return
-		}
-		vaults = append(vaults, v)
-	}
 	if vaults == nil {
-		vaults = []db.Vault{}
+		vaults = []*db.Vault{}
 	}
 	writeJSON(w, http.StatusOK, vaults)
 }
@@ -49,31 +41,25 @@ func (s *Server) handleCreateVault(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var vault db.Vault
-	err := s.db.Pool.QueryRow(r.Context(),
-		`INSERT INTO vaults (org_id, name, description, app_id)
-		 VALUES ($1, $2, $3, $4)
-		 RETURNING id, org_id, name, description, app_id, created_at`,
-		orgID, req.Name, req.Description, req.AppID).
-		Scan(&vault.ID, &vault.OrgID, &vault.Name, &vault.Description, &vault.AppID, &vault.CreatedAt)
-	if err != nil {
+	v := orm.New[db.Vault](s.db.ORM)
+	v.OrgID = orgID
+	v.Name = req.Name
+	v.Description = req.Description
+	v.AppID = req.AppID
+	if err := v.Create(); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create vault")
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, vault)
+	writeJSON(w, http.StatusCreated, v)
 }
 
 func (s *Server) handleGetVault(w http.ResponseWriter, r *http.Request) {
 	orgID := getOrgID(r.Context())
 	vaultID := urlParam(r, "id")
 
-	var vault db.Vault
-	err := s.db.Pool.QueryRow(r.Context(),
-		`SELECT id, org_id, name, description, app_id, created_at
-		 FROM vaults WHERE id = $1 AND org_id = $2`, vaultID, orgID).
-		Scan(&vault.ID, &vault.OrgID, &vault.Name, &vault.Description, &vault.AppID, &vault.CreatedAt)
-	if err != nil {
+	vault, err := orm.Get[db.Vault](s.db.ORM, vaultID)
+	if err != nil || vault.OrgID != orgID {
 		writeError(w, http.StatusNotFound, "vault not found")
 		return
 	}
@@ -94,17 +80,20 @@ func (s *Server) handleUpdateVault(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var vault db.Vault
-	err := s.db.Pool.QueryRow(r.Context(),
-		`UPDATE vaults SET
-		 name = COALESCE($1, name),
-		 description = COALESCE($2, description)
-		 WHERE id = $3 AND org_id = $4
-		 RETURNING id, org_id, name, description, app_id, created_at`,
-		req.Name, req.Description, vaultID, orgID).
-		Scan(&vault.ID, &vault.OrgID, &vault.Name, &vault.Description, &vault.AppID, &vault.CreatedAt)
-	if err != nil {
+	vault, err := orm.Get[db.Vault](s.db.ORM, vaultID)
+	if err != nil || vault.OrgID != orgID {
 		writeError(w, http.StatusNotFound, "vault not found")
+		return
+	}
+
+	if req.Name != nil {
+		vault.Name = *req.Name
+	}
+	if req.Description != nil {
+		vault.Description = req.Description
+	}
+	if err := vault.Update(); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to update vault")
 		return
 	}
 
@@ -115,10 +104,14 @@ func (s *Server) handleDeleteVault(w http.ResponseWriter, r *http.Request) {
 	orgID := getOrgID(r.Context())
 	vaultID := urlParam(r, "id")
 
-	tag, err := s.db.Pool.Exec(r.Context(),
-		`DELETE FROM vaults WHERE id = $1 AND org_id = $2`, vaultID, orgID)
-	if err != nil || tag.RowsAffected() == 0 {
+	vault, err := orm.Get[db.Vault](s.db.ORM, vaultID)
+	if err != nil || vault.OrgID != orgID {
 		writeError(w, http.StatusNotFound, "vault not found")
+		return
+	}
+
+	if err := vault.DeleteCtx(context.Background()); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to delete vault")
 		return
 	}
 

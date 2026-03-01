@@ -9,7 +9,6 @@ spec:
   secretName: mpc-lux-network-tls
   dnsNames:
     - mpc.lux.network
-    - cloud.lux.network
   issuerRef:
     name: letsencrypt-prod
     kind: ClusterIssuer

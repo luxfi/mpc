@@ -44,14 +44,14 @@ type ClusterStatus struct {
 }
 
 type Server struct {
-	db        *db.DB
+	db        *db.Database
 	mpc       MPCBackend
 	jwtSecret []byte
 	router    chi.Router
 	server    *http.Server
 }
 
-func NewServer(database *db.DB, mpcBackend MPCBackend, jwtSecret string, listenAddr string) *Server {
+func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, listenAddr string) *Server {
 	s := &Server{
 		db:        database,
 		mpc:       mpcBackend,

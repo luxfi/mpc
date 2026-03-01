@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/hanzoai/orm"
+	"github.com/luxfi/mpc/pkg/db"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -93,14 +95,23 @@ func (s *Server) validateAPIKey(ctx context.Context, key string) (string, error)
 		prefix = prefix[:8]
 	}
 
-	var orgID string
-	err := s.db.Pool.QueryRow(ctx,
-		`UPDATE api_keys SET last_used_at = NOW()
-		 WHERE key_hash = $1 AND key_prefix = $2
-		 AND (expires_at IS NULL OR expires_at > NOW())
-		 RETURNING org_id`, keyHash, prefix).Scan(&orgID)
+	apiKey, err := orm.TypedQuery[db.APIKey](s.db.ORM).
+		Filter("keyHash =", keyHash).
+		Filter("keyPrefix =", prefix).
+		First()
 	if err != nil {
 		return "", fmt.Errorf("invalid api key")
 	}
-	return orgID, nil
+
+	// Check expiry
+	if apiKey.ExpiresAt != nil && apiKey.ExpiresAt.Before(time.Now()) {
+		return "", fmt.Errorf("api key expired")
+	}
+
+	// Update last used
+	now := time.Now()
+	apiKey.LastUsedAt = &now
+	apiKey.Update()
+
+	return apiKey.OrgID, nil
 }

@@ -4,33 +4,22 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/hanzoai/orm"
 	"github.com/luxfi/mpc/pkg/db"
 )
 
 func (s *Server) handleListPolicies(w http.ResponseWriter, r *http.Request) {
 	orgID := getOrgID(r.Context())
-	rows, err := s.db.Pool.Query(r.Context(),
-		`SELECT id, org_id, vault_id, name, priority, action, conditions,
-		        required_approvers, approver_roles, enabled, created_at
-		 FROM policies WHERE org_id = $1 ORDER BY priority DESC`, orgID)
+	policies, err := orm.TypedQuery[db.Policy](s.db.ORM).
+		Filter("orgId =", orgID).
+		Order("-priority").
+		GetAll(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "database error")
 		return
 	}
-	defer rows.Close()
-
-	var policies []db.Policy
-	for rows.Next() {
-		var p db.Policy
-		if err := rows.Scan(&p.ID, &p.OrgID, &p.VaultID, &p.Name, &p.Priority,
-			&p.Action, &p.Conditions, &p.RequiredApprovers, &p.ApproverRoles,
-			&p.Enabled, &p.CreatedAt); err != nil {
-			continue
-		}
-		policies = append(policies, p)
-	}
 	if policies == nil {
-		policies = []db.Policy{}
+		policies = []*db.Policy{}
 	}
 	writeJSON(w, http.StatusOK, policies)
 }
@@ -38,13 +27,13 @@ func (s *Server) handleListPolicies(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleCreatePolicy(w http.ResponseWriter, r *http.Request) {
 	orgID := getOrgID(r.Context())
 	var req struct {
-		VaultID           *string  `json:"vault_id,omitempty"`
-		Name              string   `json:"name"`
-		Priority          int      `json:"priority"`
-		Action            string   `json:"action"`
+		VaultID           *string         `json:"vault_id,omitempty"`
+		Name              string          `json:"name"`
+		Priority          int             `json:"priority"`
+		Action            string          `json:"action"`
 		Conditions        json.RawMessage `json:"conditions"`
-		RequiredApprovers int      `json:"required_approvers"`
-		ApproverRoles     []string `json:"approver_roles"`
+		RequiredApprovers int             `json:"required_approvers"`
+		ApproverRoles     []string        `json:"approver_roles"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -55,18 +44,17 @@ func (s *Server) handleCreatePolicy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var policy db.Policy
-	err := s.db.Pool.QueryRow(r.Context(),
-		`INSERT INTO policies (org_id, vault_id, name, priority, action, conditions, required_approvers, approver_roles)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-		 RETURNING id, org_id, vault_id, name, priority, action, conditions,
-		 required_approvers, approver_roles, enabled, created_at`,
-		orgID, req.VaultID, req.Name, req.Priority, req.Action,
-		[]byte(req.Conditions), req.RequiredApprovers, req.ApproverRoles).
-		Scan(&policy.ID, &policy.OrgID, &policy.VaultID, &policy.Name, &policy.Priority,
-			&policy.Action, &policy.Conditions, &policy.RequiredApprovers, &policy.ApproverRoles,
-			&policy.Enabled, &policy.CreatedAt)
-	if err != nil {
+	policy := orm.New[db.Policy](s.db.ORM)
+	policy.OrgID = orgID
+	policy.VaultID = req.VaultID
+	policy.Name = req.Name
+	policy.Priority = req.Priority
+	policy.Action = req.Action
+	policy.Conditions = []byte(req.Conditions)
+	policy.RequiredApprovers = req.RequiredApprovers
+	policy.ApproverRoles = req.ApproverRoles
+	policy.Enabled = true
+	if err := policy.Create(); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create policy: "+err.Error())
 		return
 	}
@@ -91,25 +79,32 @@ func (s *Server) handleUpdatePolicy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var policy db.Policy
-	err := s.db.Pool.QueryRow(r.Context(),
-		`UPDATE policies SET
-		 name = COALESCE($1, name),
-		 priority = COALESCE($2, priority),
-		 action = COALESCE($3, action),
-		 conditions = COALESCE($4, conditions),
-		 required_approvers = COALESCE($5, required_approvers),
-		 enabled = COALESCE($6, enabled)
-		 WHERE id = $7 AND org_id = $8
-		 RETURNING id, org_id, vault_id, name, priority, action, conditions,
-		 required_approvers, approver_roles, enabled, created_at`,
-		req.Name, req.Priority, req.Action, req.Conditions,
-		req.RequiredApprovers, req.Enabled, policyID, orgID).
-		Scan(&policy.ID, &policy.OrgID, &policy.VaultID, &policy.Name, &policy.Priority,
-			&policy.Action, &policy.Conditions, &policy.RequiredApprovers, &policy.ApproverRoles,
-			&policy.Enabled, &policy.CreatedAt)
-	if err != nil {
+	policy, err := orm.Get[db.Policy](s.db.ORM, policyID)
+	if err != nil || policy.OrgID != orgID {
 		writeError(w, http.StatusNotFound, "policy not found")
+		return
+	}
+
+	if req.Name != nil {
+		policy.Name = *req.Name
+	}
+	if req.Priority != nil {
+		policy.Priority = *req.Priority
+	}
+	if req.Action != nil {
+		policy.Action = *req.Action
+	}
+	if req.Conditions != nil {
+		policy.Conditions = []byte(*req.Conditions)
+	}
+	if req.RequiredApprovers != nil {
+		policy.RequiredApprovers = *req.RequiredApprovers
+	}
+	if req.Enabled != nil {
+		policy.Enabled = *req.Enabled
+	}
+	if err := policy.Update(); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to update policy")
 		return
 	}
 
@@ -120,10 +115,14 @@ func (s *Server) handleDeletePolicy(w http.ResponseWriter, r *http.Request) {
 	orgID := getOrgID(r.Context())
 	policyID := urlParam(r, "id")
 
-	tag, err := s.db.Pool.Exec(r.Context(),
-		`DELETE FROM policies WHERE id = $1 AND org_id = $2`, policyID, orgID)
-	if err != nil || tag.RowsAffected() == 0 {
+	policy, err := orm.Get[db.Policy](s.db.ORM, policyID)
+	if err != nil || policy.OrgID != orgID {
 		writeError(w, http.StatusNotFound, "policy not found")
+		return
+	}
+
+	if err := policy.Delete(); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to delete policy")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
