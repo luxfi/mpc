@@ -18,6 +18,8 @@ export function setTokens(accessToken: string, refreshToken: string): void {
   if (typeof window === 'undefined') return
   localStorage.setItem(ACCESS_TOKEN_KEY, accessToken)
   localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken)
+  // Set session cookie so Next.js middleware can enforce auth on server side
+  document.cookie = 'lux_mpc_session=1; path=/; SameSite=Strict; Secure'
 }
 
 export function setUserEmail(email: string): void {
@@ -35,6 +37,8 @@ export function clearTokens(): void {
   localStorage.removeItem(ACCESS_TOKEN_KEY)
   localStorage.removeItem(REFRESH_TOKEN_KEY)
   localStorage.removeItem(USER_EMAIL_KEY)
+  // Clear session cookie so middleware redirects to /login immediately
+  document.cookie = 'lux_mpc_session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict'
 }
 
 export function isAuthenticated(): boolean {
