@@ -78,6 +78,9 @@ func (ec *eventConsumer) handleSigningEventCGGMP21(msg *types.SignTxMessage, nat
 	// Mark session as already processed
 	ec.addSession(msg.WalletID, msg.TxID)
 
+	// Initialize the signing session (creates protocol handler)
+	session.Init()
+
 	ctx, done := context.WithCancel(context.Background())
 
 	// Monitor for errors
