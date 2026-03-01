@@ -1044,7 +1044,7 @@ func (b *ConsensusMPCBackend) TriggerKeygen(walletID string) (*mpcapi.KeygenResu
 
 func (b *ConsensusMPCBackend) TriggerSign(walletID string, payload []byte) (*mpcapi.SignResult, error) {
 	txID := fmt.Sprintf("sign-%d", time.Now().UnixNano())
-	resultTopic := fmt.Sprintf("mpc.mpc_signing_result.%s", txID)
+	resultTopic := fmt.Sprintf("mpc.mpc_signing_result.%s", walletID)
 	resultCh := make(chan json.RawMessage, 1)
 	unsub, err := b.pubSub.Subscribe(resultTopic, func(natMsg *nats.Msg) {
 		select {
@@ -1086,12 +1086,26 @@ func (b *ConsensusMPCBackend) TriggerSign(walletID string, payload []byte) (*mpc
 	select {
 	case data := <-resultCh:
 		var result struct {
-			R         string `json:"r"`
-			S         string `json:"s"`
-			Signature string `json:"signature"`
+			ResultType        string `json:"result_type"`
+			ErrorReason       string `json:"error_reason"`
+			R                 []byte `json:"r"`
+			S                 []byte `json:"s"`
+			SignatureRecovery []byte `json:"signature_recovery"`
+			Signature         []byte `json:"signature"`
 		}
-		json.Unmarshal(data, &result)
-		return &mpcapi.SignResult{R: result.R, S: result.S, Signature: result.Signature}, nil
+		if err := json.Unmarshal(data, &result); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal signing result: %w", err)
+		}
+		if result.ResultType == "error" {
+			return nil, fmt.Errorf("MPC signing failed: %s", result.ErrorReason)
+		}
+		sigR := hex.EncodeToString(result.R)
+		sigS := hex.EncodeToString(result.S)
+		var sigHex string
+		if len(result.Signature) > 0 {
+			sigHex = hex.EncodeToString(result.Signature)
+		}
+		return &mpcapi.SignResult{R: sigR, S: sigS, Signature: sigHex}, nil
 	case <-time.After(60 * time.Second):
 		return nil, fmt.Errorf("signing timed out after 60s")
 	}
