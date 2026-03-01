@@ -3,33 +3,23 @@ package api
 import (
 	"net/http"
 
+	"github.com/hanzoai/orm"
 	"github.com/luxfi/mpc/pkg/db"
 )
 
 func (s *Server) handleListAudit(w http.ResponseWriter, r *http.Request) {
 	orgID := getOrgID(r.Context())
-	rows, err := s.db.Pool.Query(r.Context(),
-		`SELECT id, org_id, user_id, action, resource_type, resource_id,
-		        details, ip_address, created_at
-		 FROM audit_log WHERE org_id = $1 ORDER BY created_at DESC LIMIT 200`, orgID)
+	entries, err := orm.TypedQuery[db.AuditEntry](s.db.ORM).
+		Filter("orgId =", orgID).
+		Order("-createdAt").
+		Limit(200).
+		GetAll(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "database error")
 		return
 	}
-	defer rows.Close()
-
-	var entries []db.AuditEntry
-	for rows.Next() {
-		var e db.AuditEntry
-		if err := rows.Scan(&e.ID, &e.OrgID, &e.UserID, &e.Action,
-			&e.ResourceType, &e.ResourceID, &e.Details, &e.IPAddress,
-			&e.CreatedAt); err != nil {
-			continue
-		}
-		entries = append(entries, e)
-	}
 	if entries == nil {
-		entries = []db.AuditEntry{}
+		entries = []*db.AuditEntry{}
 	}
 	writeJSON(w, http.StatusOK, entries)
 }

@@ -9,17 +9,19 @@ import (
 	"encoding/json"
 	"net/http"
 	"time"
+
+	"github.com/hanzoai/orm"
+	"github.com/luxfi/mpc/pkg/db"
 )
 
 func (s *Server) fireWebhook(ctx context.Context, orgID, event string, data interface{}) {
-	rows, err := s.db.Pool.Query(ctx,
-		`SELECT url, secret FROM webhooks
-		 WHERE org_id = $1 AND enabled = true AND $2 = ANY(events)`,
-		orgID, event)
+	webhooks, err := orm.TypedQuery[db.Webhook](s.db.ORM).
+		Filter("orgId =", orgID).
+		Filter("enabled =", true).
+		GetAll(ctx)
 	if err != nil {
 		return
 	}
-	defer rows.Close()
 
 	payload := map[string]interface{}{
 		"event":     event,
@@ -27,12 +29,14 @@ func (s *Server) fireWebhook(ctx context.Context, orgID, event string, data inte
 		"timestamp": time.Now().UTC().Format(time.RFC3339),
 	}
 
-	for rows.Next() {
-		var url, secret string
-		if err := rows.Scan(&url, &secret); err != nil {
-			continue
+	for _, wh := range webhooks {
+		// Only fire for webhooks that include this event
+		for _, e := range wh.Events {
+			if e == event {
+				go deliverWebhook(wh.URL, wh.Secret, payload)
+				break
+			}
 		}
-		go deliverWebhook(url, secret, payload)
 	}
 }
 

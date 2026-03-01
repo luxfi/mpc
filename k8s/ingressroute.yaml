@@ -9,15 +9,15 @@ spec:
   entryPoints:
     - websecure
   routes:
-    # API routes - both domains
-    - match: (Host(`mpc.lux.network`) || Host(`cloud.lux.network`)) && (PathPrefix(`/api/v1`) || Path(`/healthz`))
+    # API routes
+    - match: Host(`mpc.lux.network`) && (PathPrefix(`/api/v1`) || Path(`/healthz`))
       kind: Rule
       services:
         - name: mpc-api-svc
           port: 8081
           passHostHeader: false
-    # Dashboard - catch-all for both domains
-    - match: Host(`mpc.lux.network`) || Host(`cloud.lux.network`)
+    # Dashboard - catch-all
+    - match: Host(`mpc.lux.network`)
       kind: Rule
       services:
         - name: mpc-dashboard-svc

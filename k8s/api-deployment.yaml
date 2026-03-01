@@ -23,10 +23,14 @@ spec:
         - name: mpc-api
           image: ghcr.io/luxfi/mpc-api:latest
           args:
-            - api
-            - --db
+            - start
+            - --mode
+            - consensus
+            - --api-db
             - $(DATABASE_URL)
-            - --listen
+            - --api-kv
+            - $(KV_URL)
+            - --api-listen
             - ":8081"
             - --jwt-secret
             - $(JWT_SECRET)
@@ -45,6 +49,11 @@ spec:
                 secretKeyRef:
                   name: mpc-secrets
                   key: jwt-secret
+            - name: KV_URL
+              valueFrom:
+                secretKeyRef:
+                  name: mpc-secrets
+                  key: KV_URL
           livenessProbe:
             httpGet:
               path: /healthz

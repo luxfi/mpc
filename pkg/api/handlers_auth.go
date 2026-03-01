@@ -6,6 +6,8 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/hanzoai/orm"
+	"github.com/luxfi/mpc/pkg/db"
 	"github.com/pquerna/otp/totp"
 )
 
@@ -40,33 +42,29 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tx, err := s.db.Pool.Begin(r.Context())
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "database error")
-		return
-	}
-	defer tx.Rollback(r.Context())
+	var orgID, userID string
+	err = s.db.ORM.RunInTransaction(r.Context(), func(tx orm.DB) error {
+		org := orm.New[db.Organization](tx)
+		org.Name = req.OrgName
+		org.Slug = slug
+		if err := org.Create(); err != nil {
+			return err
+		}
+		orgID = org.Id()
 
-	var orgID string
-	err = tx.QueryRow(r.Context(),
-		`INSERT INTO organizations (name, slug) VALUES ($1, $2) RETURNING id`,
-		req.OrgName, slug).Scan(&orgID)
+		user := orm.New[db.User](tx)
+		user.OrgID = orgID
+		user.Email = req.Email
+		user.PasswordHash = hash
+		user.Role = "owner"
+		if err := user.Create(); err != nil {
+			return err
+		}
+		userID = user.Id()
+		return nil
+	})
 	if err != nil {
-		writeError(w, http.StatusConflict, "organization already exists")
-		return
-	}
-
-	var userID string
-	err = tx.QueryRow(r.Context(),
-		`INSERT INTO users (org_id, email, password_hash, role) VALUES ($1, $2, $3, 'owner') RETURNING id`,
-		orgID, req.Email, hash).Scan(&userID)
-	if err != nil {
-		writeError(w, http.StatusConflict, "email already registered")
-		return
-	}
-
-	if err := tx.Commit(r.Context()); err != nil {
-		writeError(w, http.StatusInternalServerError, "database error")
+		writeError(w, http.StatusConflict, "organization or email already exists")
 		return
 	}
 
@@ -100,35 +98,36 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var userID, orgID, role, passwordHash string
-	var mfaSecret *string
-	err := s.db.Pool.QueryRow(r.Context(),
-		`SELECT u.id, u.org_id, u.role, u.password_hash, u.mfa_secret
-		 FROM users u WHERE u.email = $1`, req.Email).
-		Scan(&userID, &orgID, &role, &passwordHash, &mfaSecret)
+	user, err := orm.TypedQuery[db.User](s.db.ORM).
+		Filter("email =", req.Email).
+		First()
 	if err != nil {
 		writeError(w, http.StatusUnauthorized, "invalid credentials")
 		return
 	}
 
-	if !checkPassword(passwordHash, req.Password) {
+	if !checkPassword(user.PasswordHash, req.Password) {
 		writeError(w, http.StatusUnauthorized, "invalid credentials")
 		return
 	}
 
 	// Only enforce MFA if the secret is active (not pending setup verification)
-	if mfaSecret != nil && *mfaSecret != "" && !strings.HasPrefix(*mfaSecret, "pending:") {
+	if user.MFASecret != nil && *user.MFASecret != "" && !strings.HasPrefix(*user.MFASecret, "pending:") {
 		if req.MFACode == "" {
 			writeJSON(w, http.StatusOK, map[string]interface{}{
 				"mfa_required": true,
 			})
 			return
 		}
-		if !totp.Validate(req.MFACode, *mfaSecret) {
+		if !totp.Validate(req.MFACode, *user.MFASecret) {
 			writeError(w, http.StatusUnauthorized, "invalid MFA code")
 			return
 		}
 	}
+
+	userID := user.Id()
+	orgID := user.OrgID
+	role := user.Role
 
 	accessToken, err := s.generateJWT(userID, orgID, role)
 	if err != nil {
@@ -185,10 +184,7 @@ func (s *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleMFASetup(w http.ResponseWriter, r *http.Request) {
 	userID := getUserID(r.Context())
 
-	// Look up user email for the TOTP account name
-	var email string
-	err := s.db.Pool.QueryRow(r.Context(),
-		`SELECT email FROM users WHERE id = $1`, userID).Scan(&email)
+	user, err := orm.Get[db.User](s.db.ORM, userID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to look up user")
 		return
@@ -196,28 +192,17 @@ func (s *Server) handleMFASetup(w http.ResponseWriter, r *http.Request) {
 
 	key, err := totp.Generate(totp.GenerateOpts{
 		Issuer:      "LuxMPC",
-		AccountName: email,
+		AccountName: user.Email,
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to generate TOTP secret")
 		return
 	}
 
-	// Store the base32-encoded secret (not yet verified -- MFA not active until handleMFAVerify)
-	_, err = s.db.Pool.Exec(r.Context(),
-		`UPDATE users SET mfa_secret = NULL WHERE id = $1`, userID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "database error")
-		return
-	}
-
-	// Store pending secret in a separate column or use a convention:
-	// We store it but MFA is only active after verification confirms the user can produce codes.
-	// For simplicity, store with a "pending:" prefix; handleMFAVerify strips it on confirmation.
+	// Store pending secret (not yet verified — MFA not active until handleMFAVerify)
 	pending := "pending:" + key.Secret()
-	_, err = s.db.Pool.Exec(r.Context(),
-		`UPDATE users SET mfa_secret = $1 WHERE id = $2`, pending, userID)
-	if err != nil {
+	user.MFASecret = &pending
+	if err := user.Update(); err != nil {
 		writeError(w, http.StatusInternalServerError, "database error")
 		return
 	}
@@ -243,39 +228,32 @@ func (s *Server) handleMFAVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Retrieve the pending MFA secret
-	var mfaSecret *string
-	err := s.db.Pool.QueryRow(r.Context(),
-		`SELECT mfa_secret FROM users WHERE id = $1`, userID).Scan(&mfaSecret)
+	user, err := orm.Get[db.User](s.db.ORM, userID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "database error")
 		return
 	}
-	if mfaSecret == nil || *mfaSecret == "" {
+	if user.MFASecret == nil || *user.MFASecret == "" {
 		writeError(w, http.StatusBadRequest, "MFA setup not initiated")
 		return
 	}
 
-	// Extract secret -- may have "pending:" prefix from setup
-	secret := *mfaSecret
+	secret := *user.MFASecret
 	if strings.HasPrefix(secret, "pending:") {
 		secret = strings.TrimPrefix(secret, "pending:")
 	} else {
-		// MFA is already active, nothing to verify
 		writeError(w, http.StatusBadRequest, "MFA is already enabled")
 		return
 	}
 
-	// Validate the TOTP code
 	if !totp.Validate(req.Code, secret) {
 		writeError(w, http.StatusUnauthorized, "invalid TOTP code")
 		return
 	}
 
-	// Activate MFA by storing the secret without the "pending:" prefix
-	_, err = s.db.Pool.Exec(r.Context(),
-		`UPDATE users SET mfa_secret = $1 WHERE id = $2`, secret, userID)
-	if err != nil {
+	// Activate MFA
+	user.MFASecret = &secret
+	if err := user.Update(); err != nil {
 		writeError(w, http.StatusInternalServerError, "database error")
 		return
 	}

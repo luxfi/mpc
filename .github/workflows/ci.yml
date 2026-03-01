@@ -17,7 +17,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.25.5"
+          go-version: "1.26"
 
       - name: Cache Go modules
         uses: actions/cache@v4
@@ -29,11 +29,11 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-go-
 
-      - name: Install dependencies
-        run: go mod download
+      - name: Vendor dependencies
+        run: GOWORK=off go mod vendor
 
       - name: Run unit tests
-        run: go test -v -race -coverprofile=coverage.out ./...
+        run: GOWORK=off go test -mod=vendor -v -race -coverprofile=coverage.out ./...
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
@@ -52,7 +52,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.25.5"
+          go-version: "1.26"
 
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v6
@@ -78,7 +78,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.25.5"
+          go-version: "1.26"
 
       - name: Cache Go modules
         uses: actions/cache@v4
@@ -90,8 +90,8 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-go-
 
-      - name: Install dependencies
-        run: go mod download
+      - name: Vendor dependencies
+        run: GOWORK=off go mod vendor
 
       - name: Install govulncheck
         run: go install golang.org/x/vuln/cmd/govulncheck@latest
@@ -159,7 +159,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.25.5"
+          go-version: "1.26"
 
       - name: Cache Go modules
         uses: actions/cache@v4
@@ -171,8 +171,8 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-go-
 
-      - name: Install dependencies
-        run: go mod download
+      - name: Vendor dependencies
+        run: GOWORK=off go mod vendor
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
@@ -206,7 +206,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.25.5"
+          go-version: "1.26"
 
       - name: Cache Go modules
         uses: actions/cache@v4
@@ -218,8 +218,8 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-go-
 
-      - name: Install dependencies
-        run: go mod download
+      - name: Vendor dependencies
+        run: GOWORK=off go mod vendor
 
       - name: Build binaries
         run: |
@@ -289,7 +289,7 @@ jobs:
           echo "Syft: $(jq '.artifacts | length' sbom.syft.json)"
 
   build:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, amd64]
     needs: [test, lint, codeql-analysis, sbom]
 
     steps:
@@ -299,7 +299,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.25.5"
+          go-version: "1.26"
 
       - name: Cache Go modules
         uses: actions/cache@v4
@@ -311,8 +311,11 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-go-
 
+      - name: Vendor dependencies
+        run: GOWORK=off go mod vendor
+
       - name: Build mpcd
-        run: go build -v ./cmd/mpcd
+        run: GOWORK=off go build -mod=vendor -v ./cmd/mpcd
 
       - name: Build lux-mpc-cli
-        run: go build -v ./cmd/lux-mpc-cli
+        run: GOWORK=off go build -mod=vendor -v ./cmd/lux-mpc-cli

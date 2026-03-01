@@ -17,7 +17,7 @@ func mustMarshal(t *testing.T, v interface{}) []byte {
 }
 
 func TestPolicyDeny(t *testing.T) {
-	policies := []db.Policy{
+	policies := []*db.Policy{
 		{
 			Name:     "block-all",
 			Priority: 10,
@@ -40,7 +40,7 @@ func TestPolicyDeny(t *testing.T) {
 }
 
 func TestPolicyApprove(t *testing.T) {
-	policies := []db.Policy{
+	policies := []*db.Policy{
 		{
 			Name:     "auto-approve-small",
 			Priority: 10,
@@ -63,7 +63,7 @@ func TestPolicyApprove(t *testing.T) {
 }
 
 func TestPolicyRequireApproval(t *testing.T) {
-	policies := []db.Policy{
+	policies := []*db.Policy{
 		{
 			Name:              "require-two-admins",
 			Priority:          10,
@@ -86,7 +86,7 @@ func TestPolicyRequireApproval(t *testing.T) {
 
 func TestPolicyMaxAmount(t *testing.T) {
 	// Policy: deny transactions exceeding 100
-	policies := []db.Policy{
+	policies := []*db.Policy{
 		{
 			Name:     "high-value-deny",
 			Priority: 10,
@@ -114,7 +114,7 @@ func TestPolicyMaxAmount(t *testing.T) {
 }
 
 func TestPolicyChainFilter(t *testing.T) {
-	policies := []db.Policy{
+	policies := []*db.Policy{
 		{
 			Name:     "eth-only-approve",
 			Priority: 10,
@@ -143,7 +143,7 @@ func TestPolicyChainFilter(t *testing.T) {
 }
 
 func TestPolicyPriority(t *testing.T) {
-	policies := []db.Policy{
+	policies := []*db.Policy{
 		{
 			Name:       "low-priority-approve",
 			Priority:   1,
@@ -187,7 +187,7 @@ func TestDefaultPolicy(t *testing.T) {
 }
 
 func TestDisabledPolicySkipped(t *testing.T) {
-	policies := []db.Policy{
+	policies := []*db.Policy{
 		{
 			Name:       "disabled-deny",
 			Priority:   100,
@@ -209,7 +209,7 @@ func TestDisabledPolicySkipped(t *testing.T) {
 }
 
 func TestPolicyBadConditionsJSON(t *testing.T) {
-	policies := []db.Policy{
+	policies := []*db.Policy{
 		{
 			Name:       "bad-json",
 			Priority:   100,

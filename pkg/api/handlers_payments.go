@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/hanzoai/orm"
 	"github.com/luxfi/mpc/pkg/db"
 )
 
@@ -39,19 +40,19 @@ func (s *Server) handleCreatePaymentRequest(w http.ResponseWriter, r *http.Reque
 		expiresAt = &t
 	}
 
-	var pr db.PaymentRequest
-	err := s.db.Pool.QueryRow(r.Context(),
-		`INSERT INTO payment_requests (org_id, wallet_id, request_token, merchant_name,
-		 recipient_address, chain, token, amount, memo, expires_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-		 RETURNING id, org_id, wallet_id, request_token, merchant_name,
-		 recipient_address, chain, token, amount, memo, status, expires_at, created_at`,
-		orgID, req.WalletID, token, req.MerchantName,
-		req.RecipientAddress, req.Chain, req.Token, req.Amount, req.Memo, expiresAt).
-		Scan(&pr.ID, &pr.OrgID, &pr.WalletID, &pr.RequestToken, &pr.MerchantName,
-			&pr.RecipientAddress, &pr.Chain, &pr.Token, &pr.Amount, &pr.Memo,
-			&pr.Status, &pr.ExpiresAt, &pr.CreatedAt)
-	if err != nil {
+	pr := orm.New[db.PaymentRequest](s.db.ORM)
+	pr.OrgID = orgID
+	pr.WalletID = req.WalletID
+	pr.RequestToken = token
+	pr.MerchantName = req.MerchantName
+	pr.RecipientAddress = req.RecipientAddress
+	pr.Chain = req.Chain
+	pr.Token = req.Token
+	pr.Amount = req.Amount
+	pr.Memo = req.Memo
+	pr.Status = "pending"
+	pr.ExpiresAt = expiresAt
+	if err := pr.Create(); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create payment request: "+err.Error())
 		return
 	}
@@ -64,30 +65,16 @@ func (s *Server) handleCreatePaymentRequest(w http.ResponseWriter, r *http.Reque
 
 func (s *Server) handleListPaymentRequests(w http.ResponseWriter, r *http.Request) {
 	orgID := getOrgID(r.Context())
-	rows, err := s.db.Pool.Query(r.Context(),
-		`SELECT id, org_id, wallet_id, request_token, merchant_name,
-		        recipient_address, chain, token, amount, memo,
-		        status, expires_at, paid_tx_id, created_at
-		 FROM payment_requests WHERE org_id = $1 ORDER BY created_at DESC`, orgID)
+	requests, err := orm.TypedQuery[db.PaymentRequest](s.db.ORM).
+		Filter("orgId =", orgID).
+		Order("-createdAt").
+		GetAll(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "database error")
 		return
 	}
-	defer rows.Close()
-
-	var requests []db.PaymentRequest
-	for rows.Next() {
-		var pr db.PaymentRequest
-		if err := rows.Scan(&pr.ID, &pr.OrgID, &pr.WalletID, &pr.RequestToken,
-			&pr.MerchantName, &pr.RecipientAddress, &pr.Chain, &pr.Token,
-			&pr.Amount, &pr.Memo, &pr.Status, &pr.ExpiresAt, &pr.PaidTxID,
-			&pr.CreatedAt); err != nil {
-			continue
-		}
-		requests = append(requests, pr)
-	}
 	if requests == nil {
-		requests = []db.PaymentRequest{}
+		requests = []*db.PaymentRequest{}
 	}
 	writeJSON(w, http.StatusOK, requests)
 }
@@ -96,17 +83,8 @@ func (s *Server) handleGetPaymentRequest(w http.ResponseWriter, r *http.Request)
 	orgID := getOrgID(r.Context())
 	prID := urlParam(r, "id")
 
-	var pr db.PaymentRequest
-	err := s.db.Pool.QueryRow(r.Context(),
-		`SELECT id, org_id, wallet_id, request_token, merchant_name,
-		        recipient_address, chain, token, amount, memo,
-		        status, expires_at, paid_tx_id, created_at
-		 FROM payment_requests WHERE id = $1 AND org_id = $2`, prID, orgID).
-		Scan(&pr.ID, &pr.OrgID, &pr.WalletID, &pr.RequestToken,
-			&pr.MerchantName, &pr.RecipientAddress, &pr.Chain, &pr.Token,
-			&pr.Amount, &pr.Memo, &pr.Status, &pr.ExpiresAt, &pr.PaidTxID,
-			&pr.CreatedAt)
-	if err != nil {
+	pr, err := orm.Get[db.PaymentRequest](s.db.ORM, prID)
+	if err != nil || pr.OrgID != orgID {
 		writeError(w, http.StatusNotFound, "payment request not found")
 		return
 	}
@@ -115,6 +93,7 @@ func (s *Server) handleGetPaymentRequest(w http.ResponseWriter, r *http.Request)
 
 func (s *Server) handlePayPaymentRequest(w http.ResponseWriter, r *http.Request) {
 	orgID := getOrgID(r.Context())
+	userID := getUserID(r.Context())
 	prID := urlParam(r, "id")
 
 	var req struct {
@@ -125,13 +104,8 @@ func (s *Server) handlePayPaymentRequest(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	var pr db.PaymentRequest
-	err := s.db.Pool.QueryRow(r.Context(),
-		`SELECT id, recipient_address, chain, token, amount, status, expires_at
-		 FROM payment_requests WHERE id = $1 AND org_id = $2`, prID, orgID).
-		Scan(&pr.ID, &pr.RecipientAddress, &pr.Chain, &pr.Token, &pr.Amount,
-			&pr.Status, &pr.ExpiresAt)
-	if err != nil {
+	pr, err := orm.Get[db.PaymentRequest](s.db.ORM, prID)
+	if err != nil || pr.OrgID != orgID {
 		writeError(w, http.StatusNotFound, "payment request not found")
 		return
 	}
@@ -144,26 +118,27 @@ func (s *Server) handlePayPaymentRequest(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	tokenStr := ""
-	if pr.Token != nil {
-		tokenStr = *pr.Token
-	}
-
-	var txID string
-	err = s.db.Pool.QueryRow(r.Context(),
-		`INSERT INTO transactions (org_id, wallet_id, tx_type, chain, to_address, amount, token, status, initiated_by)
-		 VALUES ($1, $2, 'payment', $3, $4, $5, $6, 'approved', $7)
-		 RETURNING id`,
-		orgID, req.WalletID, pr.Chain, pr.RecipientAddress, pr.Amount,
-		nilIfEmpty(tokenStr), getUserID(r.Context())).Scan(&txID)
-	if err != nil {
+	walletID := req.WalletID
+	tx := orm.New[db.Transaction](s.db.ORM)
+	tx.OrgID = orgID
+	tx.WalletID = &walletID
+	tx.TxType = "payment"
+	tx.Chain = pr.Chain
+	tx.ToAddress = nilIfEmpty(pr.RecipientAddress)
+	tx.Amount = nilIfEmpty(pr.Amount)
+	tx.Token = pr.Token
+	tx.Status = "approved"
+	tx.InitiatedBy = nilIfEmpty(userID)
+	if err := tx.Create(); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create transaction")
 		return
 	}
 
-	s.db.Pool.Exec(r.Context(),
-		`UPDATE payment_requests SET status = 'paid', paid_tx_id = $1 WHERE id = $2`,
-		txID, prID)
+	txID := tx.Id()
+	paid := "paid"
+	pr.Status = paid
+	pr.PaidTxID = &txID
+	pr.Update()
 
 	go s.signAndBroadcast(txID, orgID)
 
@@ -177,13 +152,9 @@ func (s *Server) handlePayPaymentRequest(w http.ResponseWriter, r *http.Request)
 func (s *Server) handlePublicPay(w http.ResponseWriter, r *http.Request) {
 	token := urlParam(r, "token")
 
-	var pr db.PaymentRequest
-	err := s.db.Pool.QueryRow(r.Context(),
-		`SELECT id, merchant_name, recipient_address, chain, token, amount, memo,
-		        status, expires_at, created_at
-		 FROM payment_requests WHERE request_token = $1`, token).
-		Scan(&pr.ID, &pr.MerchantName, &pr.RecipientAddress, &pr.Chain,
-			&pr.Token, &pr.Amount, &pr.Memo, &pr.Status, &pr.ExpiresAt, &pr.CreatedAt)
+	pr, err := orm.TypedQuery[db.PaymentRequest](s.db.ORM).
+		Filter("requestToken =", token).
+		First()
 	if err != nil {
 		writeError(w, http.StatusNotFound, "payment request not found")
 		return

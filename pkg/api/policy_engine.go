@@ -6,6 +6,7 @@ import (
 	"math/big"
 	"sort"
 
+	"github.com/hanzoai/orm"
 	"github.com/luxfi/mpc/pkg/db"
 )
 
@@ -21,7 +22,7 @@ type PolicyConditions struct {
 	AllowedAddresses []string `json:"allowed_addresses,omitempty"`
 }
 
-func evaluateTransaction(amount, chain, toAddress string, policies []db.Policy) PolicyDecision {
+func evaluateTransaction(amount, chain, toAddress string, policies []*db.Policy) PolicyDecision {
 	// Sort by priority descending
 	sort.Slice(policies, func(i, j int) bool {
 		return policies[i].Priority > policies[j].Priority
@@ -94,7 +95,6 @@ func matchesConditions(amount, chain, toAddress string, cond PolicyConditions) b
 		max, ok1 := new(big.Float).SetString(cond.MaxAmount)
 		val, ok2 := new(big.Float).SetString(amount)
 		if ok1 && ok2 && val.Cmp(max) > 0 {
-			// Amount exceeds max — this condition triggers
 			return true
 		}
 	}
@@ -102,33 +102,27 @@ func matchesConditions(amount, chain, toAddress string, cond PolicyConditions) b
 	return true
 }
 
-func (s *Server) loadPolicies(ctx context.Context, orgID string, vaultID *string) ([]db.Policy, error) {
-	query := `SELECT id, org_id, vault_id, name, priority, action, conditions,
-	          required_approvers, approver_roles, enabled, created_at
-	          FROM policies WHERE org_id = $1 AND enabled = true`
-	args := []interface{}{orgID}
+func (s *Server) loadPolicies(ctx context.Context, orgID string, vaultID *string) ([]*db.Policy, error) {
+	q := orm.TypedQuery[db.Policy](s.db.ORM).
+		Filter("orgId =", orgID).
+		Filter("enabled =", true).
+		Order("-priority")
 
-	if vaultID != nil {
-		query += " AND (vault_id IS NULL OR vault_id = $2)"
-		args = append(args, *vaultID)
-	}
-	query += " ORDER BY priority DESC"
-
-	rows, err := s.db.Pool.Query(ctx, query, args...)
+	policies, err := q.GetAll(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
-	var policies []db.Policy
-	for rows.Next() {
-		var p db.Policy
-		if err := rows.Scan(&p.ID, &p.OrgID, &p.VaultID, &p.Name, &p.Priority,
-			&p.Action, &p.Conditions, &p.RequiredApprovers, &p.ApproverRoles,
-			&p.Enabled, &p.CreatedAt); err != nil {
-			continue
+	// Filter by vaultID if provided (include policies with no vaultID or matching vaultID)
+	if vaultID != nil {
+		var filtered []*db.Policy
+		for _, p := range policies {
+			if p.VaultID == nil || *p.VaultID == *vaultID {
+				filtered = append(filtered, p)
+			}
 		}
-		policies = append(policies, p)
+		return filtered, nil
 	}
+
 	return policies, nil
 }
