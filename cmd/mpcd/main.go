@@ -953,6 +953,7 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 					pubSub:       pubSub,
 					peerRegistry: peerRegistry,
 					factory:      factory,
+					keyInfoStore: factory.KeyInfoStore(),
 					nodeID:       nodeID,
 					threshold:    int(threshold),
 				}
@@ -988,6 +989,7 @@ type ConsensusMPCBackend struct {
 	pubSub       *ConsensusPubSubAdapter
 	peerRegistry *ConsensusPeerRegistry
 	factory      *transport.Factory
+	keyInfoStore *transport.KeyInfoStore
 	nodeID       string
 	threshold    int
 }
@@ -1055,7 +1057,16 @@ func (b *ConsensusMPCBackend) TriggerSign(walletID string, payload []byte) (*mpc
 	}
 	defer unsub.Unsubscribe()
 
+	// Look up key type from key info store
+	keyType := types.KeyType("secp256k1") // default for ECDSA
+	if b.keyInfoStore != nil {
+		if info, err := b.keyInfoStore.Get(walletID); err == nil && info.KeyType != "" {
+			keyType = types.KeyType(info.KeyType)
+		}
+	}
+
 	msg := types.SignTxMessage{
+		KeyType:  keyType,
 		WalletID: walletID,
 		TxID:     txID,
 		Tx:       payload,
