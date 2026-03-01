@@ -62,7 +62,7 @@ func NewServer(database *db.DB, mpcBackend MPCBackend, jwtSecret string, listenA
 	r.Use(chimw.RequestID)
 	r.Use(chimw.RealIP)
 	r.Use(chimw.Recoverer)
-	r.Use(chimw.Timeout(30 * time.Second))
+	r.Use(chimw.Timeout(120 * time.Second))
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   []string{"https://cloud.lux.network", "https://mpc.lux.network", "https://bridge.lux.network", "http://localhost:3000"},
 		AllowedMethods:   []string{"GET", "POST", "PATCH", "DELETE", "OPTIONS"},
