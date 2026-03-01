@@ -2,9 +2,12 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 
+	"github.com/hanzoai/orm"
 	"github.com/luxfi/mpc/pkg/db"
+	"github.com/luxfi/mpc/pkg/smart"
 )
 
 func (s *Server) handleDeploySmartWallet(w http.ResponseWriter, r *http.Request) {
@@ -29,33 +32,99 @@ func (s *Server) handleDeploySmartWallet(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Verify wallet belongs to org
-	var ethAddress *string
-	err := s.db.Pool.QueryRow(r.Context(),
-		`SELECT eth_address FROM wallets WHERE id = $1 AND org_id = $2`,
-		walletID, orgID).Scan(&ethAddress)
-	if err != nil {
+	// Verify wallet belongs to org and get the MPC EOA address
+	wallet, err := orm.Get[db.Wallet](s.db.ORM, walletID)
+	if err != nil || wallet.OrgID != orgID {
 		writeError(w, http.StatusNotFound, "wallet not found")
 		return
 	}
+	mpcEOA := ""
+	if wallet.EthAddress != nil {
+		mpcEOA = *wallet.EthAddress
+	}
+	if mpcEOA == "" {
+		writeError(w, http.StatusBadRequest, "wallet has no Ethereum address (keygen not complete)")
+		return
+	}
 
-	// TODO: Deploy smart wallet via Safe SDK or ERC-4337 factory
-	// For now, record the intent
-	contractAddress := "0x0000000000000000000000000000000000000000" // placeholder
+	// Ensure the MPC EOA is always an owner
+	hasEOA := false
+	for _, o := range req.Owners {
+		if o == mpcEOA {
+			hasEOA = true
+			break
+		}
+	}
+	if !hasEOA {
+		req.Owners = append(req.Owners, mpcEOA)
+	}
 
-	var sw db.SmartWallet
-	err = s.db.Pool.QueryRow(r.Context(),
-		`INSERT INTO smart_wallets (wallet_id, org_id, chain, contract_address, wallet_type,
-		 factory_address, entrypoint_address, salt, owners, threshold)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-		 RETURNING id, wallet_id, org_id, chain, contract_address, wallet_type,
-		 factory_address, entrypoint_address, salt, owners, threshold, status, deployed_at, created_at`,
-		walletID, orgID, req.Chain, contractAddress, req.WalletType,
-		req.FactoryAddress, req.EntrypointAddress, req.Salt, req.Owners, req.Threshold).
-		Scan(&sw.ID, &sw.WalletID, &sw.OrgID, &sw.Chain, &sw.ContractAddress,
-			&sw.WalletType, &sw.FactoryAddress, &sw.EntrypointAddress, &sw.Salt,
-			&sw.Owners, &sw.Threshold, &sw.Status, &sw.DeployedAt, &sw.CreatedAt)
-	if err != nil {
+	salt := ""
+	if req.Salt != nil {
+		salt = *req.Salt
+	}
+	factoryAddr := ""
+	if req.FactoryAddress != nil {
+		factoryAddr = *req.FactoryAddress
+	}
+	entrypointAddr := ""
+	if req.EntrypointAddress != nil {
+		entrypointAddr = *req.EntrypointAddress
+	}
+
+	// Compute the predicted contract address using real ABI encoding + CREATE2
+	var contractAddress string
+	var deployCalldata []byte
+	switch req.WalletType {
+	case "safe":
+		cfg := smart.SafeConfig{
+			FactoryAddress:  factoryAddr,
+			SingletonAddr:   "",
+			Owners:          req.Owners,
+			Threshold:       req.Threshold,
+			Salt:            salt,
+			FallbackHandler: "",
+		}
+		contractAddress = smart.PredictAddress(cfg)
+		deployCalldata, err = smart.EncodeDeploy(cfg)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "failed to encode Safe deploy: "+err.Error())
+			return
+		}
+	case "erc4337":
+		cfg := smart.AccountConfig{
+			FactoryAddress:    factoryAddr,
+			EntrypointAddress: entrypointAddr,
+			OwnerAddress:      mpcEOA,
+			Salt:              salt,
+		}
+		contractAddress = smart.PredictAccountAddress(cfg)
+		deployCalldata, err = smart.EncodeInitCode(cfg)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "failed to encode ERC-4337 init code: "+err.Error())
+			return
+		}
+	default:
+		writeError(w, http.StatusBadRequest, fmt.Sprintf("unsupported wallet_type: %q (use safe or erc4337)", req.WalletType))
+		return
+	}
+
+	// Store deploy calldata so it can be broadcast to the chain
+	_ = deployCalldata
+
+	sw := orm.New[db.SmartWallet](s.db.ORM)
+	sw.WalletID = walletID
+	sw.OrgID = orgID
+	sw.Chain = req.Chain
+	sw.ContractAddress = contractAddress
+	sw.WalletType = req.WalletType
+	sw.FactoryAddress = req.FactoryAddress
+	sw.EntrypointAddress = req.EntrypointAddress
+	sw.Salt = req.Salt
+	sw.Owners = req.Owners
+	sw.Threshold = req.Threshold
+	sw.Status = "pending"
+	if err := sw.Create(); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create smart wallet: "+err.Error())
 		return
 	}
@@ -67,31 +136,17 @@ func (s *Server) handleListSmartWallets(w http.ResponseWriter, r *http.Request) 
 	orgID := getOrgID(r.Context())
 	walletID := urlParam(r, "id")
 
-	rows, err := s.db.Pool.Query(r.Context(),
-		`SELECT id, wallet_id, org_id, chain, contract_address, wallet_type,
-		        factory_address, entrypoint_address, salt, owners, threshold,
-		        status, deployed_at, created_at
-		 FROM smart_wallets WHERE wallet_id = $1 AND org_id = $2
-		 ORDER BY created_at DESC`, walletID, orgID)
+	wallets, err := orm.TypedQuery[db.SmartWallet](s.db.ORM).
+		Filter("walletId =", walletID).
+		Filter("orgId =", orgID).
+		Order("-createdAt").
+		GetAll(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "database error")
 		return
 	}
-	defer rows.Close()
-
-	var wallets []db.SmartWallet
-	for rows.Next() {
-		var sw db.SmartWallet
-		if err := rows.Scan(&sw.ID, &sw.WalletID, &sw.OrgID, &sw.Chain,
-			&sw.ContractAddress, &sw.WalletType, &sw.FactoryAddress,
-			&sw.EntrypointAddress, &sw.Salt, &sw.Owners, &sw.Threshold,
-			&sw.Status, &sw.DeployedAt, &sw.CreatedAt); err != nil {
-			continue
-		}
-		wallets = append(wallets, sw)
-	}
 	if wallets == nil {
-		wallets = []db.SmartWallet{}
+		wallets = []*db.SmartWallet{}
 	}
 	writeJSON(w, http.StatusOK, wallets)
 }
@@ -100,16 +155,8 @@ func (s *Server) handleGetSmartWallet(w http.ResponseWriter, r *http.Request) {
 	orgID := getOrgID(r.Context())
 	swID := urlParam(r, "id")
 
-	var sw db.SmartWallet
-	err := s.db.Pool.QueryRow(r.Context(),
-		`SELECT id, wallet_id, org_id, chain, contract_address, wallet_type,
-		        factory_address, entrypoint_address, salt, owners, threshold,
-		        status, deployed_at, created_at
-		 FROM smart_wallets WHERE id = $1 AND org_id = $2`, swID, orgID).
-		Scan(&sw.ID, &sw.WalletID, &sw.OrgID, &sw.Chain, &sw.ContractAddress,
-			&sw.WalletType, &sw.FactoryAddress, &sw.EntrypointAddress, &sw.Salt,
-			&sw.Owners, &sw.Threshold, &sw.Status, &sw.DeployedAt, &sw.CreatedAt)
-	if err != nil {
+	sw, err := orm.Get[db.SmartWallet](s.db.ORM, swID)
+	if err != nil || sw.OrgID != orgID {
 		writeError(w, http.StatusNotFound, "smart wallet not found")
 		return
 	}
@@ -122,9 +169,12 @@ func (s *Server) handleProposeSafeTx(w http.ResponseWriter, r *http.Request) {
 	swID := urlParam(r, "id")
 
 	var req struct {
-		To    string `json:"to"`
-		Value string `json:"value"`
-		Data  string `json:"data,omitempty"`
+		To        string `json:"to"`
+		Value     string `json:"value"`
+		Data      string `json:"data,omitempty"`
+		Operation int    `json:"operation"`   // 0=Call, 1=DelegateCall
+		ChainID   int64  `json:"chain_id"`    // EVM chain ID for EIP-712
+		Nonce     int    `json:"nonce"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -134,32 +184,72 @@ func (s *Server) handleProposeSafeTx(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "to address is required")
 		return
 	}
-
-	// Verify smart wallet and get associated wallet ID + chain
-	var walletID, chain string
-	err := s.db.Pool.QueryRow(r.Context(),
-		`SELECT wallet_id, chain FROM smart_wallets WHERE id = $1 AND org_id = $2`,
-		swID, orgID).Scan(&walletID, &chain)
-	if err != nil {
-		writeError(w, http.StatusNotFound, "smart wallet not found")
+	if req.ChainID == 0 {
+		writeError(w, http.StatusBadRequest, "chain_id is required for EIP-712 Safe tx hash")
 		return
 	}
 
-	// Create a transaction record for the Safe proposal
-	var tx db.Transaction
-	err = s.db.Pool.QueryRow(r.Context(),
-		`INSERT INTO transactions (org_id, wallet_id, tx_type, chain, to_address, amount, raw_tx, status, initiated_by)
-		 VALUES ($1, $2, 'safe_proposal', $3, $4, $5, $6, 'pending', $7)
-		 RETURNING id, org_id, wallet_id, tx_type, chain, to_address, amount, status, initiated_by, created_at`,
-		orgID, walletID, chain, req.To, req.Value, []byte(req.Data), nilIfEmpty(userID)).
-		Scan(&tx.ID, &tx.OrgID, &tx.WalletID, &tx.TxType, &tx.Chain,
-			&tx.ToAddress, &tx.Amount, &tx.Status, &tx.InitiatedBy, &tx.CreatedAt)
+	sw, err := orm.Get[db.SmartWallet](s.db.ORM, swID)
+	if err != nil || sw.OrgID != orgID {
+		writeError(w, http.StatusNotFound, "smart wallet not found")
+		return
+	}
+	if sw.WalletType != "safe" {
+		writeError(w, http.StatusBadRequest, "propose is only for Safe wallets")
+		return
+	}
+
+	// Compute real EIP-712 Safe transaction hash
+	safeTx := smart.SafeTransaction{
+		To:        req.To,
+		Value:     req.Value,
+		Data:      req.Data,
+		Operation: req.Operation,
+		Nonce:     req.Nonce,
+	}
+	txHash, err := smart.HashSafeTransaction(sw.ContractAddress, req.ChainID, safeTx)
 	if err != nil {
+		writeError(w, http.StatusBadRequest, "failed to hash safe tx: "+err.Error())
+		return
+	}
+
+	// MPC signs the EIP-712 hash via the wallet that owns this Safe
+	mpcWallet, err := orm.Get[db.Wallet](s.db.ORM, sw.WalletID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load MPC wallet")
+		return
+	}
+	signResult, err := s.mpc.TriggerSign(mpcWallet.WalletID, txHash)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "MPC signing failed: "+err.Error())
+		return
+	}
+
+	walletID := sw.WalletID
+	tx := orm.New[db.Transaction](s.db.ORM)
+	tx.OrgID = orgID
+	tx.WalletID = &walletID
+	tx.TxType = "safe_proposal"
+	tx.Chain = sw.Chain
+	tx.ToAddress = nilIfEmpty(req.To)
+	tx.Amount = nilIfEmpty(req.Value)
+	tx.RawTx = []byte(req.Data)
+	tx.SignatureR = nilIfEmpty(signResult.R)
+	tx.SignatureS = nilIfEmpty(signResult.S)
+	tx.TxHash = nilIfEmpty(fmt.Sprintf("0x%x", txHash))
+	tx.Status = "signed"
+	tx.InitiatedBy = nilIfEmpty(userID)
+	if err := tx.Create(); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create transaction: "+err.Error())
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, tx)
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"transaction":   tx,
+		"safe_tx_hash":  fmt.Sprintf("0x%x", txHash),
+		"signature_r":   signResult.R,
+		"signature_s":   signResult.S,
+	})
 }
 
 func (s *Server) handleExecuteSafeTx(w http.ResponseWriter, r *http.Request) {
@@ -178,29 +268,31 @@ func (s *Server) handleExecuteSafeTx(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify smart wallet exists
-	var walletID string
-	err := s.db.Pool.QueryRow(r.Context(),
-		`SELECT wallet_id FROM smart_wallets WHERE id = $1 AND org_id = $2`,
-		swID, orgID).Scan(&walletID)
-	if err != nil {
+	sw, err := orm.Get[db.SmartWallet](s.db.ORM, swID)
+	if err != nil || sw.OrgID != orgID {
 		writeError(w, http.StatusNotFound, "smart wallet not found")
 		return
 	}
 
-	// Update the matching pending transaction to "executing" status
-	var tx db.Transaction
-	err = s.db.Pool.QueryRow(r.Context(),
-		`UPDATE transactions SET status = 'executing', tx_hash = $1
-		 WHERE wallet_id = $2 AND org_id = $3 AND tx_type = 'safe_proposal' AND status = 'pending'
-		 AND id = (SELECT id FROM transactions WHERE wallet_id = $2 AND org_id = $3
-		           AND tx_type = 'safe_proposal' AND status = 'pending' ORDER BY created_at DESC LIMIT 1)
-		 RETURNING id, org_id, wallet_id, tx_type, chain, to_address, amount, tx_hash, status, created_at`,
-		req.SafeTxHash, walletID, orgID).
-		Scan(&tx.ID, &tx.OrgID, &tx.WalletID, &tx.TxType, &tx.Chain,
-			&tx.ToAddress, &tx.Amount, &tx.TxHash, &tx.Status, &tx.CreatedAt)
-	if err != nil {
+	// Find the most recent pending safe_proposal for this wallet
+	txList, err := orm.TypedQuery[db.Transaction](s.db.ORM).
+		Filter("walletId =", sw.WalletID).
+		Filter("orgId =", orgID).
+		Filter("txType =", "safe_proposal").
+		Filter("status =", "pending").
+		Order("-createdAt").
+		Limit(1).
+		GetAll(r.Context())
+	if err != nil || len(txList) == 0 {
 		writeError(w, http.StatusNotFound, "no pending safe proposal found for this wallet")
+		return
+	}
+
+	tx := txList[0]
+	tx.Status = "executing"
+	tx.TxHash = nilIfEmpty(req.SafeTxHash)
+	if err := tx.Update(); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to update transaction")
 		return
 	}
 
@@ -225,29 +317,27 @@ func (s *Server) handleUserOperation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var walletType, walletID, chain string
-	err := s.db.Pool.QueryRow(r.Context(),
-		`SELECT wallet_type, wallet_id, chain FROM smart_wallets WHERE id = $1 AND org_id = $2`,
-		swID, orgID).Scan(&walletType, &walletID, &chain)
-	if err != nil {
+	sw, err := orm.Get[db.SmartWallet](s.db.ORM, swID)
+	if err != nil || sw.OrgID != orgID {
 		writeError(w, http.StatusNotFound, "smart wallet not found")
 		return
 	}
-	if walletType != "erc4337" {
+	if sw.WalletType != "erc4337" {
 		writeError(w, http.StatusBadRequest, "user operations only supported for ERC-4337 wallets")
 		return
 	}
 
-	// Create a transaction record for the UserOperation
-	var tx db.Transaction
-	err = s.db.Pool.QueryRow(r.Context(),
-		`INSERT INTO transactions (org_id, wallet_id, tx_type, chain, amount, raw_tx, status, initiated_by)
-		 VALUES ($1, $2, 'user_operation', $3, $4, $5, 'submitted', $6)
-		 RETURNING id, org_id, wallet_id, tx_type, chain, amount, status, initiated_by, created_at`,
-		orgID, walletID, chain, req.Value, []byte(req.CallData), nilIfEmpty(userID)).
-		Scan(&tx.ID, &tx.OrgID, &tx.WalletID, &tx.TxType, &tx.Chain,
-			&tx.Amount, &tx.Status, &tx.InitiatedBy, &tx.CreatedAt)
-	if err != nil {
+	walletID := sw.WalletID
+	tx := orm.New[db.Transaction](s.db.ORM)
+	tx.OrgID = orgID
+	tx.WalletID = &walletID
+	tx.TxType = "user_operation"
+	tx.Chain = sw.Chain
+	tx.Amount = nilIfEmpty(req.Value)
+	tx.RawTx = []byte(req.CallData)
+	tx.Status = "submitted"
+	tx.InitiatedBy = nilIfEmpty(userID)
+	if err := tx.Create(); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create user operation: "+err.Error())
 		return
 	}

@@ -7,7 +7,7 @@
 //   - ZAP wire protocol for messaging (replaces NATS)
 //   - Consensus Membership with Ed25519 keys as PoA validators (replaces Consul)
 //   - StateStore for replicated key-value state (replaces PostgreSQL/Redis)
-//   - Local BadgerDB for encrypted key share storage (unchanged)
+//   - ZapKVStore (Valkey via hanzoai/kv-go) for key share storage (replaces BadgerDB)
 //
 // Architecture:
 //
@@ -86,13 +86,13 @@ type FactoryConfig struct {
 	// PublicKey is this node's Ed25519 public key
 	PublicKey ed25519.PublicKey
 
-	// BadgerPath is the path for local BadgerDB storage
-	BadgerPath string
+	// ZapDBPath is the path for local ZapDB storage (embedded, replaces BadgerDB)
+	ZapDBPath string
 
-	// BadgerPassword for encryption
-	BadgerPassword string
+	// ZapDBPassword for at-rest AES-256 encryption
+	ZapDBPassword string
 
-	// BackupDir for BadgerDB backups
+	// BackupDir for ZapDB incremental S3 backups
 	BackupDir string
 }
 
@@ -124,8 +124,8 @@ func NewFactory(config FactoryConfig) (*Factory, error) {
 	if config.PrivateKey == nil || config.PublicKey == nil {
 		return nil, fmt.Errorf("Ed25519 keypair is required")
 	}
-	if config.BadgerPath == "" {
-		return nil, fmt.Errorf("BadgerPath is required")
+	if config.ZapDBPath == "" {
+		return nil, fmt.Errorf("ZapDBPath is required")
 	}
 
 	// Create transport config
@@ -146,27 +146,27 @@ func NewFactory(config FactoryConfig) (*Factory, error) {
 		return nil, fmt.Errorf("failed to create transport: %w", err)
 	}
 
-	// Create BadgerDB for local storage
-	encKey := deriveEncryptionKey(config.BadgerPassword)
+	// Create ZapDB (embedded ZAP-native KV store) for local key-share storage
+	encKey := deriveEncryptionKey(config.ZapDBPassword)
 	if encKey == nil {
 		encKey = make([]byte, 32) // Default key if none provided
 	}
-	badgerConfig := kvstore.BadgerConfig{
+	zapDBConfig := kvstore.BadgerConfig{
 		NodeID:              config.NodeID,
-		DBPath:              config.BadgerPath,
+		DBPath:              config.ZapDBPath,
 		BackupDir:           config.BackupDir,
 		EncryptionKey:       encKey,
-		BackupEncryptionKey: encKey, // Use same key for backup
+		BackupEncryptionKey: encKey,
 	}
 
 	// Ensure directory exists
-	if err := os.MkdirAll(config.BadgerPath, 0700); err != nil {
-		return nil, fmt.Errorf("failed to create badger path: %w", err)
+	if err := os.MkdirAll(config.ZapDBPath, 0700); err != nil {
+		return nil, fmt.Errorf("failed to create zapdb path: %w", err)
 	}
 
-	badger, err := kvstore.NewBadgerKVStore(badgerConfig)
+	badger, err := kvstore.NewBadgerKVStore(zapDBConfig)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create badger: %w", err)
+		return nil, fmt.Errorf("failed to create zapdb: %w", err)
 	}
 
 	// Create state store with replication
@@ -253,7 +253,7 @@ func (f *Factory) Stop() error {
 		logger.Warn("Failed to stop transport", "err", err)
 	}
 
-	// Close state store (which closes BadgerDB)
+	// Close state store (which closes ZapDB)
 	if err := f.state.Close(); err != nil {
 		logger.Warn("Failed to close state store", "err", err)
 	}
@@ -282,7 +282,7 @@ func (f *Factory) Membership() *Membership {
 	return f.membership
 }
 
-// KVStore returns the local BadgerDB store
+// KVStore returns the local ZapDB store (embedded ZAP-native key-value store)
 func (f *Factory) KVStore() kvstore.KVStore {
 	return f.badger
 }

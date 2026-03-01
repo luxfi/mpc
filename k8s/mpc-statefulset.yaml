@@ -77,7 +77,7 @@ spec:
 
               # Node 0 also serves the Dashboard API
               if [ "$INDEX" = "0" ]; then
-                CMD="${CMD} --api-db ${DATABASE_URL} --api-listen :8081 --jwt-secret ${JWT_SECRET}"
+                CMD="${CMD} --api-db ${DATABASE_URL} --api-kv ${KV_URL} --api-listen :8081 --jwt-secret ${JWT_SECRET}"
               fi
 
               echo "Starting: ${CMD}"
@@ -103,6 +103,11 @@ spec:
                 secretKeyRef:
                   name: mpc-secrets
                   key: jwt-secret
+            - name: KV_URL
+              valueFrom:
+                secretKeyRef:
+                  name: mpc-secrets
+                  key: KV_URL
             - name: LUX_MPC_PASSWORD
               valueFrom:
                 secretKeyRef:

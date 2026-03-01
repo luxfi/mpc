@@ -115,6 +115,10 @@ func main() {
 						Usage: "PostgreSQL connection URL for dashboard API",
 					},
 					&cli.StringFlag{
+						Name:  "api-kv",
+						Usage: "Valkey/Redis address for KV cache (e.g. localhost:6379)",
+					},
+					&cli.StringFlag{
 						Name:  "api-listen",
 						Usage: "Dashboard API listen address",
 						Value: ":8081",
@@ -223,14 +227,14 @@ func runNode(ctx context.Context, c *cli.Command) error {
 	// Use the environment-prefixed nodeID we created above
 	// nodeID is already set with environment prefix
 
-	badgerKV := NewBadgerKV(nodeName, nodeID)
-	defer badgerKV.Close()
+	zapKV := NewZapKV(nodeName, nodeID)
+	defer zapKV.Close()
 
 	// Wrap BadgerKV with KMS-enabled store if configured
-	var kvStore kvstore.KVStore = badgerKV
-	kmsEnabledStore, err := mpc.NewKMSEnabledKVStore(badgerKV, nodeID)
+	var kvStore kvstore.KVStore = zapKV
+	kmsEnabledStore, err := mpc.NewKMSEnabledKVStore(zapKV, nodeID)
 	if err != nil {
-		logger.Warn("Failed to create KMS-enabled store, using regular BadgerDB", "error", err)
+		logger.Warn("Failed to create KMS-enabled store, using regular ZapDB", "error", err)
 	} else {
 		kvStore = kmsEnabledStore
 		logger.Info("Using KMS-enabled storage for sensitive keys")
@@ -240,7 +244,7 @@ func runNode(ctx context.Context, c *cli.Command) error {
 	backupEnabled := viper.GetBool("backup_enabled")
 	if backupEnabled {
 		backupPeriodSeconds := viper.GetInt("backup_period_seconds")
-		stopBackup := StartPeriodicBackup(ctx, badgerKV, backupPeriodSeconds)
+		stopBackup := StartPeriodicBackup(ctx, zapKV, backupPeriodSeconds)
 		defer stopBackup()
 	}
 
@@ -425,7 +429,7 @@ func promptForSensitiveCredentials() {
 	maskedPassword := maskString(string(badgerPass))
 	fmt.Printf("Password set: %s\n", maskedPassword)
 
-	viper.Set("badger_password", string(badgerPass))
+	viper.Set("zapdb_password", string(badgerPass))
 
 	// Prompt for initiator public key (using regular input since it's not as sensitive)
 	var initiatorKey string
@@ -464,7 +468,7 @@ func maskString(s string) string {
 // Check required configuration values are present
 func checkRequiredConfigValues() {
 	// Show warning if we're using file-based config but no password is set
-	if viper.GetString("badger_password") == "" {
+	if viper.GetString("zapdb_password") == "" {
 		logger.Fatal("Badger password is required", nil)
 	}
 
@@ -515,7 +519,7 @@ func GetIDFromName(name string, peers []config.Peer) string {
 	return nodeID
 }
 
-func NewBadgerKV(nodeName, nodeID string) *kvstore.BadgerKVStore {
+func NewZapKV(nodeName, nodeID string) *kvstore.BadgerKVStore {
 	// Badger KV DB
 	// Use configured db_path or default to current directory + "db"
 	basePath := viper.GetString("db_path")
@@ -533,21 +537,21 @@ func NewBadgerKV(nodeName, nodeID string) *kvstore.BadgerKVStore {
 	// Create BadgerConfig struct
 	config := kvstore.BadgerConfig{
 		NodeID:              nodeName,
-		EncryptionKey:       []byte(viper.GetString("badger_password")),
-		BackupEncryptionKey: []byte(viper.GetString("badger_password")), // Using same key for backup encryption
+		EncryptionKey:       []byte(viper.GetString("zapdb_password")),
+		BackupEncryptionKey: []byte(viper.GetString("zapdb_password")), // Using same key for backup encryption
 		BackupDir:           backupDir,
 		DBPath:              dbPath,
 	}
 
 	badgerKv, err := kvstore.NewBadgerKVStore(config)
 	if err != nil {
-		logger.Fatal("Failed to create badger kv store", err)
+		logger.Fatal("Failed to create zapdb store", err)
 	}
-	logger.Info("Connected to badger kv store", "path", dbPath, "backup_dir", backupDir)
+	logger.Info("Connected to zapdb store", "path", dbPath, "backup_dir", backupDir)
 	return badgerKv
 }
 
-func StartPeriodicBackup(ctx context.Context, badgerKV *kvstore.BadgerKVStore, periodSeconds int) func() {
+func StartPeriodicBackup(ctx context.Context, zapKV *kvstore.BadgerKVStore, periodSeconds int) func() {
 	if periodSeconds <= 0 {
 		periodSeconds = DefaultBackupPeriodSeconds
 	}
@@ -560,12 +564,12 @@ func StartPeriodicBackup(ctx context.Context, badgerKV *kvstore.BadgerKVStore, p
 				logger.Info("Backup background job stopped")
 				return
 			case <-backupTicker.C:
-				logger.Info("Running periodic BadgerDB backup...")
-				err := badgerKV.Backup()
+				logger.Info("Running periodic ZapDB backup...")
+				err := zapKV.Backup()
 				if err != nil {
-					logger.Error("Periodic BadgerDB backup failed", err)
+					logger.Error("Periodic ZapDB backup failed", err)
 				} else {
-					logger.Info("Periodic BadgerDB backup completed successfully")
+					logger.Info("Periodic ZapDB backup completed successfully")
 				}
 			}
 		}
@@ -665,27 +669,26 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 		}
 	}
 
-	// Get badger password from environment or prompt
-	badgerPassword := os.Getenv("LUX_MPC_PASSWORD")
-	if badgerPassword == "" {
-		badgerPassword = viper.GetString("badger_password")
+	// Get ZapDB password from environment or config
+	zapDBPassword := os.Getenv("LUX_MPC_PASSWORD")
+	if zapDBPassword == "" {
+		zapDBPassword = viper.GetString("zapdb_password") // legacy config key
 	}
-	if badgerPassword == "" {
-		// Generate a random password for development
-		logger.Warn("No badger password set, using default (NOT for production!)")
-		badgerPassword = "dev-password-change-me"
+	if zapDBPassword == "" {
+		logger.Warn("No ZapDB password set, using default (NOT for production!)")
+		zapDBPassword = "dev-password-change-me"
 	}
 
-	// Create transport factory
+	// Create transport factory (uses ZapDB for embedded key-share storage)
 	factoryCfg := transport.FactoryConfig{
-		NodeID:         nodeID,
-		ListenAddr:     listenAddr,
-		Peers:          peerMap,
-		PrivateKey:     privKey,
-		PublicKey:      pubKey,
-		BadgerPath:     filepath.Join(dataDir, "db"),
-		BadgerPassword: badgerPassword,
-		BackupDir:      filepath.Join(dataDir, "backups"),
+		NodeID:        nodeID,
+		ListenAddr:    listenAddr,
+		Peers:         peerMap,
+		PrivateKey:    privKey,
+		PublicKey:     pubKey,
+		ZapDBPath:     filepath.Join(dataDir, "db"),
+		ZapDBPassword: zapDBPassword,
+		BackupDir:     filepath.Join(dataDir, "backups"),
 	}
 
 	factory, err := transport.NewFactory(factoryCfg)
@@ -792,9 +795,9 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 				return
 			}
 			w.Header().Set("Content-Type", "application/json")
-			if badgerKV, ok := factory.KVStore().(*kvstore.BadgerKVStore); ok && badgerKV.BackupExecutor != nil {
+			if zapKV, ok := factory.KVStore().(*kvstore.BadgerKVStore); ok && zapKV.BackupExecutor != nil {
 				s3Cfg := backup.S3ConfigFromEnv(nodeID)
-				mgr, err := backup.NewManager(badgerKV.BackupExecutor, filepath.Join(dataDir, "backups"), nodeID, 0, s3Cfg)
+				mgr, err := backup.NewManager(zapKV.BackupExecutor, filepath.Join(dataDir, "backups"), nodeID, 0, s3Cfg)
 				if err != nil {
 					w.WriteHeader(http.StatusInternalServerError)
 					json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
@@ -912,9 +915,9 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 
 	// Start periodic backup with optional S3 upload
 	backupDir := filepath.Join(dataDir, "backups")
-	if badgerKV, ok := factory.KVStore().(*kvstore.BadgerKVStore); ok && badgerKV.BackupExecutor != nil {
+	if zapKV, ok := factory.KVStore().(*kvstore.BadgerKVStore); ok && zapKV.BackupExecutor != nil {
 		s3Cfg := backup.S3ConfigFromEnv(nodeID)
-		backupMgr, err := backup.NewManager(badgerKV.BackupExecutor, backupDir, nodeID, 5*time.Minute, s3Cfg)
+		backupMgr, err := backup.NewManager(zapKV.BackupExecutor, backupDir, nodeID, 5*time.Minute, s3Cfg)
 		if err != nil {
 			logger.Warn("Failed to create backup manager", "err", err)
 		} else {
@@ -940,15 +943,16 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 			logger.Warn("Using default JWT secret - NOT for production!")
 		}
 
-		database, err := db.New(ctx, apiDBURL)
+		apiKVAddr := c.String("api-kv")
+		if apiKVAddr == "" {
+			apiKVAddr = os.Getenv("MPC_API_KV")
+		}
+		database, err := db.New(apiDBURL, apiKVAddr)
 		if err != nil {
 			logger.Error("Failed to connect to dashboard database", err)
 		} else {
 			defer database.Close()
-
-			if err := database.Migrate(ctx); err != nil {
-				logger.Error("Failed to run database migrations", err)
-			} else {
+			{
 				mpcBackend := &ConsensusMPCBackend{
 					pubSub:       pubSub,
 					peerRegistry: peerRegistry,
@@ -1471,16 +1475,13 @@ func runAPIOnly(ctx context.Context, c *cli.Command) error {
 
 	logger.Info("Starting Dashboard API server (standalone)", "addr", listenAddr)
 
-	database, err := db.New(ctx, dbURL)
+	database, err := db.New(dbURL, "")
 	if err != nil {
 		return fmt.Errorf("failed to connect to database: %w", err)
 	}
 	defer database.Close()
 
-	if err := database.Migrate(ctx); err != nil {
-		return fmt.Errorf("failed to run database migrations: %w", err)
-	}
-	logger.Info("Database connected and migrated")
+	logger.Info("Database connected")
 
 	// Stub MPC backend that returns errors for MPC operations
 	mpcBackend := &stubMPCBackend{}
