@@ -48,7 +48,9 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/luxfi/mpc-api
+          images: |
+            ${{ env.REGISTRY }}/luxfi/mpc-api
+            ${{ env.REGISTRY }}/luxfi/mpc
           tags: |
             type=ref,event=branch
             type=semver,pattern={{version}}
@@ -153,10 +155,10 @@ jobs:
 
       - name: Restart deployments to pick up new images
         run: |
-          kubectl rollout restart statefulset/mpc-node -n lux-mpc
+          kubectl rollout restart statefulset/mpc-node -n lux-bridge
           kubectl rollout restart deployment/mpc-dashboard -n lux-mpc
 
       - name: Wait for rollout
         run: |
-          kubectl rollout status statefulset/mpc-node -n lux-mpc --timeout=300s
+          kubectl rollout status statefulset/mpc-node -n lux-bridge --timeout=300s
           kubectl rollout status deployment/mpc-dashboard -n lux-mpc --timeout=180s

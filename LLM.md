@@ -2,6 +2,33 @@
 
 This document provides comprehensive guidance for AI assistants working with the Hanzo MPC (Multi-Party Computation) codebase.
 
+## 🏭 Production Deployment State (2026-03-02)
+
+### Namespaces
+- `lux-mpc` — PRIMARY production consensus-mode MPC (3 nodes, dashboard API, postgres, valkey)
+- `lux-bridge` — Bridge-specific MPC (3 consensus-mode nodes, dashboard API using bridge postgres)
+- `hanzo` — Legacy NATS/Consul MPC nodes (5 nodes, older deployment)
+
+### Key Decisions
+- **Storage**: ZapDB (`github.com/luxfi/database/zapdb`) — our fork, NOT badger directly
+- **Encryption**: `encdb.New(password, rawDB)` wraps ZapDB with ChaCha20-Poly1305; backups contain pre-encrypted values, restore into raw zapdb
+- **Dashboard API**: Port 8081, enabled by `MPC_API_DB` env var; uses ORM's `_entities` JSONB table
+- **Multi-tenancy**: One postgres instance, one `_entities` table, `kind` + `orgId` in JSONB data
+- **Binary distribution**: S3 bucket `lux-mpc-backups/binaries/` (public read); startup script promotes `/data/mpcd.new`
+- **S3 address**: Use ClusterIP `10.124.44.247:9000` from lux-bridge pods (cross-namespace DNS fails); internal: `s3.hanzo.svc.cluster.local:9000` works only from hanzo namespace
+
+### Infrastructure Principles (keep it light)
+- 1 postgres per cluster (MPC gets `mpc_api` db, bridge gets `bridge` db)
+- 1 valkey/redis per cluster for KV cache
+- 1 S3 bucket with org-prefixed paths for all backups
+- All secrets via KMS (NOT plaintext in env vars) — FUTURE WORK
+- Customer-controlled encryption: each org's ZapDB encrypted with org's KMS key — FUTURE WORK
+
+### ORM Filter Behavior
+- `Filter("keyHash=", value)` → SQL: `WHERE data->>'keyHash' = $1` (camelCase from Go field name)
+- `Filter("key_hash=", value)` → SQL: `WHERE data->>'key_hash' = $1` (no conversion)
+- ALWAYS use camelCase matching the struct's `json:""` tag when filtering
+
 ## 📚 Overview
 
 Hanzo MPC is a threshold signing service that provides:
