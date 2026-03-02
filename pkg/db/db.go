@@ -1,10 +1,10 @@
 package db
 
 import (
-	"github.com/jackc/pgx/v5/pgxpool"
 	kv "github.com/hanzoai/kv-go/v9"
 	"github.com/hanzoai/orm"
 	ormdb "github.com/hanzoai/orm/db"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // Database holds the ORM entity store and the KV cache/session client.
