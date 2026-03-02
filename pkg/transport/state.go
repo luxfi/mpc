@@ -252,10 +252,58 @@ func (s *KeyInfoStore) DeleteKey(walletID string) error {
 	return s.state.Delete(s.prefix + walletID)
 }
 
-// ListKeys returns all registered keys
+// ListKeys returns all registered keys by scanning the underlying store for
+// entries whose key begins with the KeyInfoStore prefix ("mpc/keys/").
+// It leverages the concrete BadgerKVStore.Keys() method via a type assertion.
+// If the store does not support key listing, only pending updates are searched.
 func (s *KeyInfoStore) ListKeys() ([]KeyInfo, error) {
-	// This requires iterating over the store
-	// For BadgerDB, we'd need to add a List method
-	// For now, return empty list - full implementation needs store iteration
-	return nil, nil
+	type keyLister interface {
+		Keys() ([]string, error)
+	}
+
+	lister, ok := s.state.local.(keyLister)
+	if !ok {
+		// Fallback: scan pending map only.
+		s.state.pendingMu.RLock()
+		defer s.state.pendingMu.RUnlock()
+
+		var keys []KeyInfo
+		for k, v := range s.state.pending {
+			if len(k) > len(s.prefix) && k[:len(s.prefix)] == s.prefix {
+				var ki KeyInfo
+				if err := json.Unmarshal(v, &ki); err != nil {
+					continue
+				}
+				keys = append(keys, ki)
+			}
+		}
+		return keys, nil
+	}
+
+	allKeys, err := lister.Keys()
+	if err != nil {
+		return nil, err
+	}
+
+	var keys []KeyInfo
+	for _, k := range allKeys {
+		if len(k) <= len(s.prefix) || k[:len(s.prefix)] != s.prefix {
+			continue
+		}
+
+		data, err := s.state.Get(k)
+		if err != nil {
+			logger.Warn("Failed to read key info during list", "key", k, "err", err)
+			continue
+		}
+
+		var ki KeyInfo
+		if err := json.Unmarshal(data, &ki); err != nil {
+			logger.Warn("Failed to unmarshal key info during list", "key", k, "err", err)
+			continue
+		}
+		keys = append(keys, ki)
+	}
+
+	return keys, nil
 }
