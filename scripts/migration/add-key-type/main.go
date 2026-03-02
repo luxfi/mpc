@@ -23,15 +23,15 @@ func main() {
 
 	dbPath := fmt.Sprintf("./db/%s", *nodeName)
 
-	config := kvstore.BadgerConfig{
-		NodeID:              *nodeName,
-		EncryptionKey:       []byte(*password),
-		BackupEncryptionKey: []byte(*password),
-		BackupDir:           "./backups",
-		DBPath:              dbPath,
+	config := kvstore.Config{
+		NodeID:    *nodeName,
+		Key:       []byte(*password),
+		BackupKey: []byte(*password),
+		Dir:       "./backups",
+		Path:      dbPath,
 	}
 
-	store, err := kvstore.NewBadgerKVStore(config)
+	store, err := kvstore.New(config)
 	if err != nil {
 		logger.Fatal("Failed to create zapdb store", err)
 	}

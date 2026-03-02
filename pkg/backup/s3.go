@@ -61,17 +61,17 @@ func S3ConfigFromEnv(nodeID string) *S3Config {
 
 // Manager handles periodic backups with optional S3 upload
 type Manager struct {
-	executor *kvstore.BadgerBackupExecutor
+	executor  *kvstore.Backup
 	backupDir string
-	s3Config *S3Config
-	s3Client *minio.Client
-	nodeID   string
-	period   time.Duration
-	done     chan struct{}
+	s3Config  *S3Config
+	s3Client  *minio.Client
+	nodeID    string
+	period    time.Duration
+	done      chan struct{}
 }
 
 // NewManager creates a backup manager
-func NewManager(executor *kvstore.BadgerBackupExecutor, backupDir, nodeID string, period time.Duration, s3Cfg *S3Config) (*Manager, error) {
+func NewManager(executor *kvstore.Backup, backupDir, nodeID string, period time.Duration, s3Cfg *S3Config) (*Manager, error) {
 	m := &Manager{
 		executor:  executor,
 		backupDir: backupDir,

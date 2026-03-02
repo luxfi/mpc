@@ -254,7 +254,7 @@ func (s *KeyInfoStore) DeleteKey(walletID string) error {
 
 // ListKeys returns all registered keys by scanning the underlying store for
 // entries whose key begins with the KeyInfoStore prefix ("mpc/keys/").
-// It leverages the concrete BadgerKVStore.Keys() method via a type assertion.
+// It leverages the kvstore.Store.Keys() method via a type assertion.
 // If the store does not support key listing, only pending updates are searched.
 func (s *KeyInfoStore) ListKeys() ([]KeyInfo, error) {
 	type keyLister interface {
