@@ -3,6 +3,7 @@ package cggmp21
 import (
 	"context"
 	"crypto/ecdsa"
+	"crypto/elliptic"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -363,20 +364,10 @@ func (c *configAdapter) GetThreshold() int {
 
 func (c *configAdapter) GetPublicKey() *ecdsa.PublicKey {
 	point := c.config.PublicPoint()
-	// Convert curve.Point to ecdsa.PublicKey
-	// Using XScalar to get X coordinate as big.Int
-	if point.XScalar() != nil {
-		xBytes, _ := point.XScalar().MarshalBinary()
-		x := new(big.Int).SetBytes(xBytes)
-		// For Y, we need to derive it from the point
-		// This is a limitation - we can't get Y directly
-		return &ecdsa.PublicKey{
-			Curve: nil, // We can't convert curve.Curve to elliptic.Curve
-			X:     x,
-			Y:     new(big.Int), // Placeholder
-		}
+	if point == nil || point.IsIdentity() {
+		return nil
 	}
-	return nil
+	return curvePointToECDSA(point)
 }
 
 func (c *configAdapter) GetShare() *big.Int {
@@ -389,20 +380,11 @@ func (c *configAdapter) GetShare() *big.Int {
 }
 
 func (c *configAdapter) GetSharePublicKey() *ecdsa.PublicKey {
-	// Get this party's public share
-	if public, ok := c.config.Public[c.config.ID]; ok && public.ECDSA != nil {
-		// Convert curve.Point to ecdsa.PublicKey
-		if public.ECDSA.XScalar() != nil {
-			xBytes, _ := public.ECDSA.XScalar().MarshalBinary()
-			x := new(big.Int).SetBytes(xBytes)
-			return &ecdsa.PublicKey{
-				Curve: nil, // We can't convert curve.Curve to elliptic.Curve
-				X:     x,
-				Y:     new(big.Int), // Placeholder
-			}
-		}
+	public, ok := c.config.Public[c.config.ID]
+	if !ok || public.ECDSA == nil || public.ECDSA.IsIdentity() {
+		return nil
 	}
-	return nil
+	return curvePointToECDSA(public.ECDSA)
 }
 
 func (c *configAdapter) GetPartyIDs() []string {
@@ -415,7 +397,9 @@ func (c *configAdapter) GetPartyIDs() []string {
 }
 
 func (c *configAdapter) Serialize() ([]byte, error) {
-	return json.Marshal(c.config)
+	// Use CBOR-based MarshalBinary for proper serialization of crypto types.
+	// json.Marshal corrupts curve.Scalar and curve.Point fields.
+	return c.config.MarshalBinary()
 }
 
 // signatureAdapter implements protocol.Signature
@@ -491,12 +475,88 @@ func convertFromPartyIDs(ids []party.ID) []string {
 }
 
 func toCMPConfig(cfg protocol.KeyGenConfig) (*config.Config, error) {
-	// Try to cast directly first
+	// Try to cast directly first -- zero-copy path.
 	if adapter, ok := cfg.(*configAdapter); ok {
 		return adapter.config, nil
 	}
 
-	// Otherwise, we need to reconstruct
-	// This is a simplified version - in production you'd need proper serialization
-	return nil, errors.New("config conversion not implemented for non-CGGMP21 configs")
+	// Fallback: serialize through the interface's Serialize() method
+	// (which uses CBOR via MarshalBinary) and deserialize into a fresh Config.
+	data, err := cfg.Serialize()
+	if err != nil {
+		return nil, fmt.Errorf("failed to serialize config for conversion: %w", err)
+	}
+
+	// EmptyConfig initialises a Config with the correct curve so that
+	// UnmarshalBinary can decode curve-specific scalars and points.
+	out := config.EmptyConfig(curve.Secp256k1{})
+	if err := out.UnmarshalBinary(data); err != nil {
+		return nil, fmt.Errorf("failed to deserialize CMP config: %w", err)
+	}
+
+	return out, nil
+}
+
+// curvePointToECDSA converts a curve.Point (secp256k1) to a standard crypto/ecdsa.PublicKey
+// by marshalling to compressed form and recovering both X and Y coordinates.
+func curvePointToECDSA(point curve.Point) *ecdsa.PublicKey {
+	compressed, err := point.MarshalBinary()
+	if err != nil || len(compressed) != 33 {
+		return nil
+	}
+
+	x := new(big.Int).SetBytes(compressed[1:33])
+
+	// secp256k1: y^2 = x^3 + 7 mod p
+	p, _ := new(big.Int).SetString("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F", 16)
+	x3 := new(big.Int).Mul(x, x)
+	x3.Mod(x3, p)
+	x3.Mul(x3, x)
+	x3.Mod(x3, p)
+	y2 := new(big.Int).Add(x3, big.NewInt(7))
+	y2.Mod(y2, p)
+
+	// p mod 4 == 3, so sqrt = y2^((p+1)/4) mod p
+	exp := new(big.Int).Add(p, big.NewInt(1))
+	exp.Rsh(exp, 2)
+	y := new(big.Int).Exp(y2, exp, p)
+
+	// Verify the square root
+	check := new(big.Int).Mul(y, y)
+	check.Mod(check, p)
+	if check.Cmp(y2) != 0 {
+		return nil
+	}
+
+	// Select correct Y parity: 0x02 = even, 0x03 = odd
+	isOdd := compressed[0] == 0x03
+	if y.Bit(0) == 1 != isOdd {
+		y.Sub(p, y)
+	}
+
+	return &ecdsa.PublicKey{
+		Curve: ellipticSecp256k1(),
+		X:     x,
+		Y:     y,
+	}
+}
+
+// secp256k1Params provides a secp256k1 elliptic.Curve for use with crypto/ecdsa.PublicKey.
+var secp256k1CurveParams *elliptic.CurveParams
+
+func init() {
+	secp256k1CurveParams = &elliptic.CurveParams{
+		Name:    "secp256k1",
+		BitSize: 256,
+	}
+	secp256k1CurveParams.P, _ = new(big.Int).SetString("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F", 16)
+	secp256k1CurveParams.N, _ = new(big.Int).SetString("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141", 16)
+	secp256k1CurveParams.B = big.NewInt(7)
+	secp256k1CurveParams.Gx, _ = new(big.Int).SetString("79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798", 16)
+	secp256k1CurveParams.Gy, _ = new(big.Int).SetString("483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8", 16)
+}
+
+// ellipticSecp256k1 returns an elliptic.Curve representing secp256k1.
+func ellipticSecp256k1() elliptic.Curve {
+	return secp256k1CurveParams
 }
