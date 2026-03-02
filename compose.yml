@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: ghcr.io/hanzoai/sql:17-alpine
+    image: ghcr.io/hanzoai/sql:latest
     environment:
       POSTGRES_DB: mpc_api
       POSTGRES_USER: mpc
