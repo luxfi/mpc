@@ -15,7 +15,9 @@ import (
 	"sort"
 	"time"
 
-	"github.com/luxfi/zapdb/v4"
+	"github.com/luxfi/database"
+	"github.com/luxfi/database/zapdb"
+	"github.com/luxfi/metric"
 	"github.com/rs/zerolog/log"
 
 	"github.com/luxfi/mpc/pkg/encryption"
@@ -38,14 +40,14 @@ type BadgerBackupMeta struct {
 
 type BadgerBackupVersionInfo struct {
 	Version   uint64 `json:"version"`    // Human-readable counter
-	Since     uint64 `json:"since"`      // Badger internal backup offset
+	Since     uint64 `json:"since"`      // DB internal backup offset
 	UpdatedAt string `json:"updated_at"` // RFC3339
 }
 
-// BadgerBackupExecutor handles encrypted BadgerDB backups
+// BadgerBackupExecutor handles encrypted ZapDB backups
 type BadgerBackupExecutor struct {
 	NodeID              string
-	DB                  *badger.DB
+	DB                  database.Database
 	BackupEncryptionKey []byte
 	BackupDir           string
 }
@@ -53,7 +55,7 @@ type BadgerBackupExecutor struct {
 // NewBadgerBackupExecutor creates a new backup executor. If backupDir is empty, uses ./backups
 func NewBadgerBackupExecutor(
 	nodeID string,
-	db *badger.DB,
+	db database.Database,
 	backupEncryptionKey []byte,
 	backupDir string,
 ) *BadgerBackupExecutor {
@@ -163,7 +165,6 @@ func (b *BadgerBackupExecutor) LoadVersionInfo() (BadgerBackupVersionInfo, error
 	data, err := os.ReadFile(versionFile)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			// Return default info and no error
 			return BadgerBackupVersionInfo{
 				Version:   0,
 				Since:     0,
@@ -182,40 +183,42 @@ func (b *BadgerBackupExecutor) SortedEncryptedBackups() []string {
 	return files
 }
 
+// RestoreAllBackupsEncrypted decrypts and loads all backup files into restorePath.
+// The restored database is a raw zapdb — values were already individually encrypted
+// by the source encdb wrapper, so no additional encryption is applied during restore.
+// After restore, open the path with NewBadgerKVStore using the same encryption key
+// to read values correctly.
 func (b *BadgerBackupExecutor) RestoreAllBackupsEncrypted(restorePath string, encryptionKey []byte) error {
+	_ = encryptionKey // key validated at open time, not needed for raw load
 	err := os.MkdirAll(restorePath, 0700)
 	if err != nil {
 		return fmt.Errorf("failed to create restore directory: %w", err)
 	}
 
-	opts := badger.DefaultOptions(restorePath).
-		WithEncryptionKey(encryptionKey).
-		WithIndexCacheSize(10 << 20).
-		WithLogger(newQuietBadgerLogger())
-	restoreDB, err := badger.Open(opts)
+	// Load into a raw zapdb — values in the backup are already encrypted by encdb
+	rawDB, err := zapdb.New(restorePath, nil, b.NodeID+"-restore", metric.NewNoOpRegistry())
 	if err != nil {
 		return err
 	}
 
 	for _, file := range b.SortedEncryptedBackups() {
 		fmt.Println("Restoring:", file)
-		if err := b.loadEncryptedBackup(restoreDB, file); err != nil {
-			closeDBErr := restoreDB.Close()
-			if closeDBErr != nil {
-				log.Printf("Failed to close restoreDB: %v", closeDBErr)
+		if err := b.loadEncryptedBackup(rawDB, file); err != nil {
+			if closeErr := rawDB.Close(); closeErr != nil {
+				log.Printf("Failed to close restoreDB: %v", closeErr)
 			}
 			return err
 		}
 	}
 
-	if err := restoreDB.Close(); err != nil {
+	if err := rawDB.Close(); err != nil {
 		return fmt.Errorf("failed to close restore database: %w", err)
 	}
 	fmt.Println("✅ Restore complete:", restorePath)
 	return nil
 }
 
-func (b *BadgerBackupExecutor) loadEncryptedBackup(db *badger.DB, path string) error {
+func (b *BadgerBackupExecutor) loadEncryptedBackup(db database.Database, path string) error {
 	f, err := os.Open(path)
 	if err != nil {
 		return err
@@ -258,5 +261,5 @@ func (b *BadgerBackupExecutor) loadEncryptedBackup(db *badger.DB, path string) e
 	if err != nil {
 		return err
 	}
-	return db.Load(bytes.NewReader(plain), 10)
+	return db.Load(bytes.NewReader(plain))
 }

@@ -65,8 +65,8 @@ func (s *Server) handleBridgeSign(w http.ResponseWriter, r *http.Request) {
 
 	// Try to find wallet with "bridge" in name
 	wallets, err := orm.TypedQuery[db.Wallet](s.db.ORM).
-		Filter("status =", "active").
-		Filter("keyType =", "secp256k1").
+		Filter("status=", "active").
+		Filter("keyType=", "secp256k1").
 		Order("createdAt").
 		Limit(10).
 		GetAll(r.Context())
@@ -168,9 +168,9 @@ func (s *Server) handleBridgeComplete(w http.ResponseWriter, r *http.Request) {
 	orgID := getOrgID(r.Context())
 	if orgID != "" {
 		txList, err := orm.TypedQuery[db.Transaction](s.db.ORM).
-			Filter("orgId =", orgID).
-			Filter("txType =", "bridge_sign").
-			Filter("txHash =", req.HashedTxID).
+			Filter("orgId=", orgID).
+			Filter("txType=", "bridge_sign").
+			Filter("txHash=", req.HashedTxID).
 			Limit(1).
 			GetAll(r.Context())
 		if err == nil && len(txList) > 0 {

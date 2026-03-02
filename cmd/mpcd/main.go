@@ -389,19 +389,19 @@ func runNode(ctx context.Context, c *cli.Command) error {
 
 // Prompt user for sensitive configuration values
 func promptForSensitiveCredentials() {
-	fmt.Println("WARNING: Please back up your Badger DB password in a secure location.")
+	fmt.Println("WARNING: Please back up your ZapDB password in a secure location.")
 	fmt.Println("If you lose this password, you will permanently lose access to your data!")
 
-	// Prompt for badger password with confirmation
+	// Prompt for ZapDB password with confirmation
 	var badgerPass []byte
 	var confirmPass []byte
 	var err error
 
 	for {
-		fmt.Print("Enter Badger DB password: ")
+		fmt.Print("Enter ZapDB password: ")
 		badgerPass, err = term.ReadPassword(syscall.Stdin)
 		if err != nil {
-			logger.Fatal("Failed to read badger password", err)
+			logger.Fatal("Failed to read ZapDB password", err)
 		}
 		fmt.Println() // Add newline after password input
 
@@ -410,7 +410,7 @@ func promptForSensitiveCredentials() {
 			continue
 		}
 
-		fmt.Print("Confirm Badger DB password: ")
+		fmt.Print("Confirm ZapDB password: ")
 		confirmPass, err = term.ReadPassword(syscall.Stdin)
 		if err != nil {
 			logger.Fatal("Failed to read confirmation password", err)
@@ -469,7 +469,7 @@ func maskString(s string) string {
 func checkRequiredConfigValues() {
 	// Show warning if we're using file-based config but no password is set
 	if viper.GetString("zapdb_password") == "" {
-		logger.Fatal("Badger password is required", nil)
+		logger.Fatal("ZapDB password is required", nil)
 	}
 
 	if viper.GetString("event_initiator_pubkey") == "" {
@@ -520,7 +520,7 @@ func GetIDFromName(name string, peers []config.Peer) string {
 }
 
 func NewZapKV(nodeName, nodeID string) *kvstore.BadgerKVStore {
-	// Badger KV DB
+	// ZapDB KV store
 	// Use configured db_path or default to current directory + "db"
 	basePath := viper.GetString("db_path")
 	if basePath == "" {
@@ -534,7 +534,7 @@ func NewZapKV(nodeName, nodeID string) *kvstore.BadgerKVStore {
 		backupDir = filepath.Join(".", "backups")
 	}
 
-	// Create BadgerConfig struct
+	// Create ZapDB config
 	config := kvstore.BadgerConfig{
 		NodeID:              nodeName,
 		EncryptionKey:       []byte(viper.GetString("zapdb_password")),
