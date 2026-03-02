@@ -126,6 +126,98 @@ func TestHashUserOp(t *testing.T) {
 	}
 }
 
+// TestPredictAccountAddress verifies CREATE2 address prediction produces valid addresses.
+func TestPredictAccountAddress(t *testing.T) {
+	cfg := AccountConfig{
+		FactoryAddress: "0xa6B71E26C5e0845f74c812102Ca7114b6a896AB2",
+		OwnerAddress:   "0xEAbCC110fAcBfebabC66Ad6f9E7B67288e720B59",
+		Salt:           "0x0",
+	}
+	addr := PredictAccountAddress(cfg)
+	if !strings.HasPrefix(addr, "0x") {
+		t.Errorf("expected 0x-prefixed address, got %q", addr)
+	}
+	if len(addr) != 42 {
+		t.Errorf("expected 42-char address, got %d chars: %s", len(addr), addr)
+	}
+
+	// Same inputs must produce same address (deterministic)
+	addr2 := PredictAccountAddress(cfg)
+	if addr != addr2 {
+		t.Errorf("non-deterministic: %s != %s", addr, addr2)
+	}
+
+	// Different salt must produce different address
+	cfg2 := cfg
+	cfg2.Salt = "0x1"
+	addr3 := PredictAccountAddress(cfg2)
+	if addr == addr3 {
+		t.Errorf("different salt should produce different address: %s == %s", addr, addr3)
+	}
+
+	// Different owner must produce different address
+	cfg3 := cfg
+	cfg3.OwnerAddress = "0xd9Db270c1B5E3Bd161E8c8503c55cEABeE709552"
+	addr4 := PredictAccountAddress(cfg3)
+	if addr == addr4 {
+		t.Errorf("different owner should produce different address: %s == %s", addr, addr4)
+	}
+
+	// Empty factory should return empty
+	cfg4 := cfg
+	cfg4.FactoryAddress = ""
+	if PredictAccountAddress(cfg4) != "" {
+		t.Error("expected empty string for empty factory")
+	}
+
+	// Empty owner should return empty
+	cfg5 := cfg
+	cfg5.OwnerAddress = ""
+	if PredictAccountAddress(cfg5) != "" {
+		t.Error("expected empty string for empty owner")
+	}
+}
+
+// TestPredictCreate2Address verifies the raw CREATE2 formula.
+func TestPredictCreate2Address(t *testing.T) {
+	var deployer [20]byte
+	copy(deployer[:], []byte{0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01})
+
+	var salt [32]byte
+	salt[31] = 0x42
+
+	initCode := []byte{0x60, 0x80, 0x60, 0x40, 0x52} // minimal EVM bytecode
+
+	addr := PredictCreate2Address(deployer, salt, initCode)
+
+	// Must be non-zero
+	allZero := true
+	for _, b := range addr {
+		if b != 0 {
+			allZero = false
+			break
+		}
+	}
+	if allZero {
+		t.Error("expected non-zero address")
+	}
+
+	// Deterministic
+	addr2 := PredictCreate2Address(deployer, salt, initCode)
+	if addr != addr2 {
+		t.Errorf("non-deterministic: %x != %x", addr, addr2)
+	}
+
+	// Different salt -> different address
+	salt2 := salt
+	salt2[31] = 0x43
+	addr3 := PredictCreate2Address(deployer, salt2, initCode)
+	if addr == addr3 {
+		t.Errorf("different salt should produce different address")
+	}
+}
+
 // TestEncodeInitCode verifies the ERC-4337 initCode format.
 func TestEncodeInitCode(t *testing.T) {
 	cfg := AccountConfig{
