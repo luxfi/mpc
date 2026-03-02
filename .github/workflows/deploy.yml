@@ -9,9 +9,15 @@ on:
 env:
   REGISTRY: ghcr.io
 
+# Runner naming convention: {org}-build-{os}-{arch}
+# Self-hosted ARC:  lux-build-linux-amd64  (DO lux-k8s)
+# GitHub-hosted:    macos-14               (Apple Silicon)
+#                   windows-latest         (x86_64)
+# Future:           lux-build-linux-arm64  (AWS Graviton or DO arm64)
+
 jobs:
   build-api:
-    runs-on: [self-hosted, linux, amd64]
+    runs-on: lux-build-linux-amd64
     permissions:
       contents: read
       packages: write
@@ -72,7 +78,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=api
 
   build-dashboard:
-    runs-on: [self-hosted, linux, amd64]
+    runs-on: lux-build-linux-amd64
     permissions:
       contents: read
       packages: write
@@ -114,13 +120,13 @@ jobs:
           cache-from: type=gha,scope=dashboard
           cache-to: type=gha,mode=max,scope=dashboard
           build-args: |
-            NEXT_PUBLIC_API_URL=https://mpc.lux.network/api/v1
+            NEXT_PUBLIC_API_URL=https://mpc-api.lux.network/api/v1
             NEXT_PUBLIC_IAM_URL=https://lux.id
             NEXT_PUBLIC_IAM_CLIENT_ID=lux-mpc
 
   deploy:
     needs: [build-api, build-dashboard]
-    runs-on: [self-hosted, linux, amd64]
+    runs-on: lux-build-linux-amd64
     if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
     steps:
       - uses: actions/checkout@v4
