@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/rs/zerolog"
@@ -107,13 +108,21 @@ func Infof(format string, v ...interface{}) {
 // Error logs an error message.
 func Error(msg string, err error, keyValues ...interface{}) {
 	if len(keyValues)%2 != 0 {
-		panic("keyValues must be a list of key/value pairs")
+		// Log the malformed call as a warning with all provided args rather
+		// than panicking, which would crash production. Append a sentinel
+		// value to make the slice even-length so the loop below still works.
+		Log.Warn().Caller().Interface("malformedKeyValues", keyValues).
+			Msg("[logger.Error] keyValues must be a list of key/value pairs; appending sentinel")
+		keyValues = append(keyValues, "<MISSING_VALUE>")
 	}
 
 	ctx := Log.Error()
 	for i := 0; i < len(keyValues); i += 2 {
-		key, value := keyValues[i].(string), keyValues[i+1]
-		ctx = ctx.Interface(key, value)
+		key, ok := keyValues[i].(string)
+		if !ok {
+			key = fmt.Sprintf("key_%d", i/2)
+		}
+		ctx = ctx.Interface(key, keyValues[i+1])
 	}
 
 	ctx.Caller().Stack().Err(err).Msg(msg)

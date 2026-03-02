@@ -16,8 +16,23 @@ import (
 	"github.com/luxfi/mpc/pkg/messaging"
 	"github.com/luxfi/mpc/pkg/protocol"
 	"github.com/luxfi/mpc/pkg/protocol/frost"
+	"github.com/luxfi/mpc/pkg/types"
 	"github.com/luxfi/mpc/pkg/utils"
 )
+
+// reshareProtocolMessage adapts types.Message fields to protocol.Message interface
+// for routing inbound wire-format messages into the FROST protocol party.
+type reshareProtocolMessage struct {
+	from      string
+	to        []string
+	data      []byte
+	broadcast bool
+}
+
+func (m *reshareProtocolMessage) GetFrom() string   { return m.from }
+func (m *reshareProtocolMessage) GetTo() []string   { return m.to }
+func (m *reshareProtocolMessage) GetData() []byte   { return m.data }
+func (m *reshareProtocolMessage) IsBroadcast() bool { return m.broadcast }
 
 // eddsaReshareSession implements ReshareSession for EdDSA using FROST
 type eddsaReshareSession struct {
@@ -187,13 +202,36 @@ func (s *eddsaReshareSession) Reshare(done func()) {
 				return
 			}
 
-			// For EdDSA, we would extract the Ed25519 public key
-			// This is a placeholder - actual implementation would depend on the protocol
-			s.pubKeyResult = []byte{} // Placeholder
+			// Extract the Ed25519/Taproot public key from the FROST result.
+			// The frostConfigAdapter (from pkg/protocol/frost/) exposes
+			// GetPublicKeyBytes() which returns the raw public key bytes.
+			type eddsaPubKeyProvider interface {
+				GetPublicKeyBytes() []byte
+			}
+			if provider, ok := newConfig.(eddsaPubKeyProvider); ok {
+				s.pubKeyResult = provider.GetPublicKeyBytes()
+			} else {
+				// Fallback: try to serialize the config and extract from the
+				// serialized data. FROST TaprootConfig stores PublicKey as a
+				// 32-byte x-only key in the JSON/CBOR representation.
+				if configData, err := newConfig.Serialize(); err == nil {
+					var rawMap map[string]json.RawMessage
+					if json.Unmarshal(configData, &rawMap) == nil {
+						if pubKeyRaw, exists := rawMap["PublicKey"]; exists {
+							var pubKeyBytes []byte
+							if json.Unmarshal(pubKeyRaw, &pubKeyBytes) == nil && len(pubKeyBytes) > 0 {
+								s.pubKeyResult = pubKeyBytes
+							}
+						}
+					}
+				}
+			}
 
+			pubKeyHex := fmt.Sprintf("%x", s.pubKeyResult)
 			s.logger.Info().
 				Str("sessionID", s.sessionID).
 				Bool("isNewPeer", s.isNewPeer).
+				Str("publicKey", pubKeyHex).
 				Msg("EdDSA/FROST reshare completed successfully")
 		} else {
 			s.errCh <- fmt.Errorf("unexpected result type from reshare: %T", result)
@@ -201,14 +239,83 @@ func (s *eddsaReshareSession) Reshare(done func()) {
 	}
 }
 
-// ProcessInboundMessage handles incoming protocol messages
+// ProcessInboundMessage handles incoming protocol messages from the transport
+// layer and routes them to the FROST reshare protocol party.
 func (s *eddsaReshareSession) ProcessInboundMessage(msgBytes []byte) {
-	// Implementation similar to keygen session
+	s.processingLock.Lock()
+	defer s.processingLock.Unlock()
+
+	// Unmarshal wire format to extract routing info and body
+	inboundMessage := &types.Message{}
+	if err := json.Unmarshal(msgBytes, inboundMessage); err != nil {
+		s.logger.Error().Err(err).Msg("EdDSA reshare: failed to unmarshal inbound message")
+		return
+	}
+
+	// Deduplication check using body hash
+	msgHashStr := fmt.Sprintf("%x", utils.GetMessageHash(inboundMessage.Body))
+	if s.processing[msgHashStr] {
+		return
+	}
+	s.processing[msgHashStr] = true
+
+	if s.party == nil {
+		s.logger.Warn().Msg("EdDSA reshare: protocol party not initialized, dropping message")
+		return
+	}
+
+	// Create a protocol message adapter and route to the party
+	protoMsg := &reshareProtocolMessage{
+		from:      inboundMessage.SenderID,
+		to:        inboundMessage.RecipientIDs,
+		data:      inboundMessage.Body,
+		broadcast: inboundMessage.IsBroadcast,
+	}
+
+	if err := s.party.Update(protoMsg); err != nil {
+		s.logger.Debug().Err(err).
+			Str("from", inboundMessage.SenderID).
+			Msg("EdDSA reshare: party rejected message")
+	}
 }
 
-// ProcessOutboundMessage handles outgoing protocol messages
+// ProcessOutboundMessage reads outgoing protocol messages from the FROST
+// reshare party and sends them to remote peers via the transport layer.
 func (s *eddsaReshareSession) ProcessOutboundMessage() {
-	// Implementation similar to keygen session
+	s.logger.Info().Str("sessionID", s.sessionID).Msg("EdDSA reshare: ProcessOutboundMessage started")
+
+	if s.party == nil {
+		s.logger.Error().Msg("EdDSA reshare: protocol party not initialized")
+		return
+	}
+
+	msgCh := s.party.Messages()
+
+	for {
+		select {
+		case protoMsg, ok := <-msgCh:
+			if !ok {
+				// Protocol completed; check result and signal finish
+				s.logger.Info().Msg("EdDSA reshare: protocol messages channel closed")
+				s.finishCh <- true
+				return
+			}
+
+			// Wrap protocol message in wire format and send
+			wireMsg := &types.Message{
+				SessionID:    s.walletID,
+				SenderID:     string(s.selfPartyID),
+				RecipientIDs: protoMsg.GetTo(),
+				Body:         protoMsg.GetData(),
+				IsBroadcast:  protoMsg.IsBroadcast(),
+			}
+
+			s.sendMsg(wireMsg)
+
+		case err := <-s.errCh:
+			s.logger.Error().Err(err).Msg("EdDSA reshare: error during ProcessOutboundMessage")
+		}
+	}
 }
 
 // GetPubKeyResult returns the public key after successful resharing
