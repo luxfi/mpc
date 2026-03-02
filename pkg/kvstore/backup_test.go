@@ -28,20 +28,20 @@ func generateTestKeys() ([]byte, []byte) {
 	return generateRandomKey(32), generateRandomKey(32)
 }
 
-func newTestStore(t *testing.T, dbPath, backupDir string, encKey, backupKey []byte) *BadgerKVStore {
+func newTestStore(t *testing.T, dbPath, backupDir string, encKey, backupKey []byte) *Store {
 	t.Helper()
-	store, err := NewBadgerKVStore(BadgerConfig{
-		NodeID:              "test-node",
-		EncryptionKey:       encKey,
-		BackupEncryptionKey: backupKey,
-		BackupDir:           backupDir,
-		DBPath:              dbPath,
+	store, err := New(Config{
+		NodeID:    "test-node",
+		Key:       encKey,
+		BackupKey: backupKey,
+		Dir:       backupDir,
+		Path:      dbPath,
 	})
 	require.NoError(t, err)
 	return store
 }
 
-func TestBadgerBackupExecutor_Execute(t *testing.T) {
+func TestBackup_Execute(t *testing.T) {
 	testDir := t.TempDir()
 	dbPath := filepath.Join(testDir, "testdb")
 	backupDir := filepath.Join(testDir, "backups")
@@ -51,53 +51,53 @@ func TestBadgerBackupExecutor_Execute(t *testing.T) {
 	store := newTestStore(t, dbPath, backupDir, encryptionKey, backupEncryptionKey)
 	defer store.Close()
 
-	executor := store.BackupExecutor
+	exec := store.Exec
 
 	t.Run("first backup should create initial backup", func(t *testing.T) {
 		err := store.Put("key1", []byte("value1"))
 		require.NoError(t, err)
 
-		err = executor.Execute()
+		err = exec.Execute()
 		require.NoError(t, err)
 
 		files, err := filepath.Glob(filepath.Join(backupDir, "backup-*.enc"))
 		require.NoError(t, err)
 		assert.Len(t, files, 1)
 
-		info, err := executor.LoadVersionInfo()
+		info, err := exec.LoadVersionInfo()
 		require.NoError(t, err)
 		assert.Greater(t, info.Version, uint64(0))
 	})
 
 	t.Run("incremental backup should only backup changes", func(t *testing.T) {
-		initialInfo, err := executor.LoadVersionInfo()
+		initialInfo, err := exec.LoadVersionInfo()
 		require.NoError(t, err)
 		initialVersion := initialInfo.Version
 
 		err = store.Put("key2", []byte("value2"))
 		require.NoError(t, err)
 
-		err = executor.Execute()
+		err = exec.Execute()
 		require.NoError(t, err)
 
 		files, err := filepath.Glob(filepath.Join(backupDir, "backup-*.enc"))
 		require.NoError(t, err)
 		assert.Len(t, files, 2)
 
-		finalInfo, err := executor.LoadVersionInfo()
+		finalInfo, err := exec.LoadVersionInfo()
 		require.NoError(t, err)
 		assert.Greater(t, finalInfo.Version, initialVersion)
 	})
 
 	t.Run("backup with no changes should be skipped", func(t *testing.T) {
-		info, err := executor.LoadVersionInfo()
+		info, err := exec.LoadVersionInfo()
 		require.NoError(t, err)
 		currentVersion := info.Version
 
-		err = executor.Execute()
+		err = exec.Execute()
 		require.NoError(t, err)
 
-		newInfo, err := executor.LoadVersionInfo()
+		newInfo, err := exec.LoadVersionInfo()
 		require.NoError(t, err)
 		assert.Equal(t, currentVersion, newInfo.Version)
 
@@ -107,7 +107,7 @@ func TestBadgerBackupExecutor_Execute(t *testing.T) {
 	})
 }
 
-func TestBadgerBackupExecutor_BackupMetadata(t *testing.T) {
+func TestBackup_BackupMetadata(t *testing.T) {
 	testDir := t.TempDir()
 	dbPath := filepath.Join(testDir, "testdb")
 	backupDir := filepath.Join(testDir, "backups")
@@ -117,12 +117,12 @@ func TestBadgerBackupExecutor_BackupMetadata(t *testing.T) {
 	store := newTestStore(t, dbPath, backupDir, encryptionKey, backupEncryptionKey)
 	defer store.Close()
 
-	executor := store.BackupExecutor
+	exec := store.Exec
 
 	err := store.Put("test-key", []byte("test-value"))
 	require.NoError(t, err)
 
-	err = executor.Execute()
+	err = exec.Execute()
 	require.NoError(t, err)
 
 	files, err := filepath.Glob(filepath.Join(backupDir, "backup-*.enc"))
@@ -130,7 +130,7 @@ func TestBadgerBackupExecutor_BackupMetadata(t *testing.T) {
 	require.Len(t, files, 1)
 
 	t.Run("backup metadata should have correct fields", func(t *testing.T) {
-		meta, err := executor.parseBackupMetadata(files[0])
+		meta, err := exec.parseBackupMetadata(files[0])
 		if err != nil {
 			t.Logf("parseBackupMetadata error: %v", err)
 		}
@@ -144,7 +144,7 @@ func TestBadgerBackupExecutor_BackupMetadata(t *testing.T) {
 	})
 
 	t.Run("backup metadata timestamp should be recent", func(t *testing.T) {
-		meta, err := executor.parseBackupMetadata(files[0])
+		meta, err := exec.parseBackupMetadata(files[0])
 		require.NoError(t, err)
 
 		createdAt, err := time.Parse(time.RFC3339, meta.CreatedAt)
@@ -154,7 +154,7 @@ func TestBadgerBackupExecutor_BackupMetadata(t *testing.T) {
 	})
 
 	t.Run("backup metadata should reference correct encryption key", func(t *testing.T) {
-		meta, err := executor.parseBackupMetadata(files[0])
+		meta, err := exec.parseBackupMetadata(files[0])
 		require.NoError(t, err)
 
 		// EncryptionKeyID should be first 16 chars of sha256 hex of backup key
@@ -163,7 +163,7 @@ func TestBadgerBackupExecutor_BackupMetadata(t *testing.T) {
 	})
 }
 
-func TestBadgerBackupExecutor_VersionTracking(t *testing.T) {
+func TestBackup_VersionTracking(t *testing.T) {
 	testDir := t.TempDir()
 	backupDir := filepath.Join(testDir, "backups")
 
@@ -171,23 +171,23 @@ func TestBadgerBackupExecutor_VersionTracking(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create a mock executor just for version tracking tests
-	executor := &BadgerBackupExecutor{
-		NodeID:              "test-node",
-		BackupEncryptionKey: generateRandomKey(32),
-		BackupDir:           backupDir,
+	exec := &Backup{
+		NodeID: "test-node",
+		Key:    generateRandomKey(32),
+		Dir:    backupDir,
 	}
 
 	t.Run("should create version file on first save", func(t *testing.T) {
 		version := uint64(12345)
 		since := uint64(100)
-		err := executor.SaveVersionInfo(version, since)
+		err := exec.SaveVersionInfo(version, since)
 		require.NoError(t, err)
 
 		versionFile := filepath.Join(backupDir, "latest.version")
 		_, err = os.Stat(versionFile)
 		require.NoError(t, err)
 
-		info, err := executor.LoadVersionInfo()
+		info, err := exec.LoadVersionInfo()
 		require.NoError(t, err)
 		assert.Equal(t, version, info.Version)
 		assert.NotEmpty(t, info.UpdatedAt)
@@ -202,34 +202,34 @@ func TestBadgerBackupExecutor_VersionTracking(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 
 		newVersion := uint64(99999)
-		err = executor.SaveVersionInfo(newVersion, 200)
+		err = exec.SaveVersionInfo(newVersion, 200)
 		require.NoError(t, err)
 
 		newFileInfo, err := os.Stat(versionFile)
 		require.NoError(t, err)
 		assert.True(t, newFileInfo.ModTime().After(oldModTime) || newFileInfo.ModTime().Equal(oldModTime))
 
-		info, err := executor.LoadVersionInfo()
+		info, err := exec.LoadVersionInfo()
 		require.NoError(t, err)
 		assert.Equal(t, newVersion, info.Version)
 	})
 
 	t.Run("should return default info if version file doesn't exist", func(t *testing.T) {
 		emptyDir := t.TempDir()
-		emptyExecutor := &BadgerBackupExecutor{
-			NodeID:              "test",
-			BackupEncryptionKey: generateRandomKey(32),
-			BackupDir:           emptyDir,
+		emptyExec := &Backup{
+			NodeID: "test",
+			Key:    generateRandomKey(32),
+			Dir:    emptyDir,
 		}
 
-		info, err := emptyExecutor.LoadVersionInfo()
+		info, err := emptyExec.LoadVersionInfo()
 		require.NoError(t, err)
 		assert.Equal(t, uint64(0), info.Version)
 		assert.Equal(t, uint64(0), info.Since)
 	})
 
 	t.Run("should parse version info correctly", func(t *testing.T) {
-		info, err := executor.LoadVersionInfo()
+		info, err := exec.LoadVersionInfo()
 		require.NoError(t, err)
 
 		assert.Equal(t, uint64(99999), info.Version)
@@ -240,7 +240,7 @@ func TestBadgerBackupExecutor_VersionTracking(t *testing.T) {
 	})
 }
 
-func TestBadgerBackupExecutor_Restore(t *testing.T) {
+func TestBackup_Restore(t *testing.T) {
 	testDir := t.TempDir()
 	dbPath := filepath.Join(testDir, "testdb")
 	backupDir := filepath.Join(testDir, "backups")
@@ -250,7 +250,7 @@ func TestBadgerBackupExecutor_Restore(t *testing.T) {
 
 	store := newTestStore(t, dbPath, backupDir, encryptionKey, backupEncryptionKey)
 
-	executor := store.BackupExecutor
+	exec := store.Exec
 
 	testData := map[string]string{
 		"key1": "value1",
@@ -260,23 +260,23 @@ func TestBadgerBackupExecutor_Restore(t *testing.T) {
 
 	err := store.Put("key1", []byte("value1"))
 	require.NoError(t, err)
-	err = executor.Execute()
+	err = exec.Execute()
 	require.NoError(t, err)
 
 	err = store.Put("key2", []byte("value2"))
 	require.NoError(t, err)
-	err = executor.Execute()
+	err = exec.Execute()
 	require.NoError(t, err)
 
 	err = store.Put("key3", []byte("value3"))
 	require.NoError(t, err)
-	err = executor.Execute()
+	err = exec.Execute()
 	require.NoError(t, err)
 
 	store.Close()
 
 	t.Run("should restore all backups in order", func(t *testing.T) {
-		err := executor.RestoreAllBackupsEncrypted(restorePath, encryptionKey)
+		err := exec.RestoreAllBackupsEncrypted(restorePath, encryptionKey)
 		require.NoError(t, err)
 
 		// Open restored database via KVStore abstraction
@@ -295,10 +295,10 @@ func TestBadgerBackupExecutor_Restore(t *testing.T) {
 		err := os.MkdirAll(emptyBackupDir, 0755)
 		require.NoError(t, err)
 
-		emptyExecutor := NewBadgerBackupExecutor("test-node", nil, backupEncryptionKey, emptyBackupDir)
+		emptyExec := NewBackup("test-node", nil, backupEncryptionKey, emptyBackupDir)
 
 		emptyRestorePath := filepath.Join(testDir, "empty_restored")
-		err = emptyExecutor.RestoreAllBackupsEncrypted(emptyRestorePath, encryptionKey)
+		err = emptyExec.RestoreAllBackupsEncrypted(emptyRestorePath, encryptionKey)
 		require.NoError(t, err)
 
 		// Should create an empty database
@@ -307,7 +307,7 @@ func TestBadgerBackupExecutor_Restore(t *testing.T) {
 	})
 }
 
-func TestBadgerBackupExecutor_BackupFileFormat(t *testing.T) {
+func TestBackup_FileFormat(t *testing.T) {
 	testDir := t.TempDir()
 	backupDir := filepath.Join(testDir, "backups")
 
@@ -316,12 +316,12 @@ func TestBadgerBackupExecutor_BackupFileFormat(t *testing.T) {
 	store := newTestStore(t, filepath.Join(testDir, "testdb"), backupDir, encryptionKey, backupEncryptionKey)
 	defer store.Close()
 
-	executor := store.BackupExecutor
+	exec := store.Exec
 
 	err := store.Put("test-key", []byte("test-value"))
 	require.NoError(t, err)
 
-	err = executor.Execute()
+	err = exec.Execute()
 	require.NoError(t, err)
 
 	files, err := filepath.Glob(filepath.Join(backupDir, "backup-*.enc"))
@@ -351,7 +351,7 @@ func TestBadgerBackupExecutor_BackupFileFormat(t *testing.T) {
 		metaLen := binary.BigEndian.Uint32(data[offset : offset+4])
 		offset += 4
 
-		var meta BadgerBackupMeta
+		var meta BackupMeta
 		err = json.Unmarshal(data[offset:offset+int(metaLen)], &meta)
 		require.NoError(t, err)
 		assert.Equal(t, "AES-256-GCM", meta.Algo)
@@ -365,8 +365,8 @@ func TestBadgerBackupExecutor_BackupFileFormat(t *testing.T) {
 }
 
 // Helper method to parse backup metadata for testing
-func (b *BadgerBackupExecutor) parseBackupMetadata(path string) (BadgerBackupMeta, error) {
-	var meta BadgerBackupMeta
+func (b *Backup) parseBackupMetadata(path string) (BackupMeta, error) {
+	var meta BackupMeta
 
 	f, err := os.Open(path)
 	if err != nil {
@@ -396,22 +396,22 @@ func (b *BadgerBackupExecutor) parseBackupMetadata(path string) (BadgerBackupMet
 	return meta, err
 }
 
-func TestBadgerKVStore_BackupIntegration(t *testing.T) {
+func TestStore_BackupIntegration(t *testing.T) {
 	testDir := t.TempDir()
 	dbPath := filepath.Join(testDir, "testdb")
 	backupDir := filepath.Join(testDir, "backups")
 
 	encryptionKey, backupEncryptionKey := generateTestKeys()
 
-	config := BadgerConfig{
-		NodeID:              "test-node",
-		EncryptionKey:       encryptionKey,
-		BackupEncryptionKey: backupEncryptionKey,
-		BackupDir:           backupDir,
-		DBPath:              dbPath,
+	config := Config{
+		NodeID:    "test-node",
+		Key:       encryptionKey,
+		BackupKey: backupEncryptionKey,
+		Dir:       backupDir,
+		Path:      dbPath,
 	}
 
-	store, err := NewBadgerKVStore(config)
+	store, err := New(config)
 	require.NoError(t, err)
 	defer store.Close()
 
@@ -448,7 +448,7 @@ func TestBadgerKVStore_BackupIntegration(t *testing.T) {
 	})
 
 	t.Run("store should handle backup without executor", func(t *testing.T) {
-		store.BackupExecutor = nil
+		store.Exec = nil
 		err := store.Backup()
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "backup executor is not initialized")

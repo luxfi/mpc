@@ -7,7 +7,7 @@
 //   - ZAP wire protocol for messaging (replaces NATS)
 //   - Consensus Membership with Ed25519 keys as PoA validators (replaces Consul)
 //   - StateStore for replicated key-value state (replaces PostgreSQL/Redis)
-//   - ZapKVStore (Valkey via hanzoai/kv-go) for key share storage (replaces BadgerDB)
+//   - ZapKVStore (Valkey via hanzoai/kv-go) for key share storage (replaces ZapDB)
 //
 // Architecture:
 //
@@ -26,7 +26,7 @@
 //	│  └──────────────────────────────────────────────────────────┘   │
 //	│       │                                                         │
 //	│  ┌────▼─────────────────────────────────────────────────────┐   │
-//	│  │              StateStore (BadgerDB + Replication)          │   │
+//	│  │              StateStore (ZapDB + Replication)             │   │
 //	│  └──────────────────────────────────────────────────────────┘   │
 //	└─────────────────────────────────────────────────────────────────┘
 //
@@ -42,7 +42,7 @@
 //	    },
 //	    PrivateKey: privateKey,
 //	    PublicKey:  publicKey,
-//	    BadgerPath: "/data/mpc/node0",
+//	    ZapDBPath:  "/data/mpc/node0",
 //	})
 //
 //	// Start the transport
@@ -104,7 +104,7 @@ type Factory struct {
 	pubsub     *PubSub
 	registry   *Registry
 	membership *Membership
-	badger     kvstore.KVStore
+	store      kvstore.KVStore
 	state      *StateStore
 	keyinfo    *KeyInfoStore
 }
@@ -151,12 +151,12 @@ func NewFactory(config FactoryConfig) (*Factory, error) {
 	if encKey == nil {
 		encKey = make([]byte, 32) // Default key if none provided
 	}
-	zapDBConfig := kvstore.BadgerConfig{
-		NodeID:              config.NodeID,
-		DBPath:              config.ZapDBPath,
-		BackupDir:           config.BackupDir,
-		EncryptionKey:       encKey,
-		BackupEncryptionKey: encKey,
+	zapDBConfig := kvstore.Config{
+		NodeID:    config.NodeID,
+		Path:      config.ZapDBPath,
+		Dir:       config.BackupDir,
+		Key:       encKey,
+		BackupKey: encKey,
 	}
 
 	// Ensure directory exists
@@ -164,13 +164,13 @@ func NewFactory(config FactoryConfig) (*Factory, error) {
 		return nil, fmt.Errorf("failed to create zapdb path: %w", err)
 	}
 
-	badger, err := kvstore.NewBadgerKVStore(zapDBConfig)
+	kv, err := kvstore.New(zapDBConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create zapdb: %w", err)
 	}
 
 	// Create state store with replication
-	state := NewStateStore(badger, transport, config.NodeID)
+	state := NewStateStore(kv, transport, config.NodeID)
 
 	// Create key info store
 	keyinfo := NewKeyInfoStore(state, config.NodeID)
@@ -196,7 +196,7 @@ func NewFactory(config FactoryConfig) (*Factory, error) {
 		pubsub:     pubsub,
 		registry:   registry,
 		membership: membership,
-		badger:     badger,
+		store:      kv,
 		state:      state,
 		keyinfo:    keyinfo,
 	}, nil
@@ -284,7 +284,7 @@ func (f *Factory) Membership() *Membership {
 
 // KVStore returns the local ZapDB store (embedded ZAP-native key-value store)
 func (f *Factory) KVStore() kvstore.KVStore {
-	return f.badger
+	return f.store
 }
 
 // StateStore returns the replicated state store
