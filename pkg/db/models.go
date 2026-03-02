@@ -75,7 +75,13 @@ type Wallet struct {
 
 func init() { orm.Register[Wallet]("wallet") }
 
-// Transaction is a blockchain transaction record.
+// Transaction is a blockchain transaction record with full lifecycle tracking.
+//
+// Status flow:
+//
+//	pending_approval → approved → signing → signed → broadcast → confirming → finalized
+//	                                                                        → failed
+//	                                                                        → reverted
 type Transaction struct {
 	orm.Model[Transaction]
 	OrgID           string     `json:"orgId"`
@@ -97,6 +103,53 @@ type Transaction struct {
 	RejectionReason *string    `json:"rejectionReason,omitempty"`
 	SignedAt        *time.Time `json:"signedAt,omitempty"`
 	BroadcastAt     *time.Time `json:"broadcastAt,omitempty"`
+
+	// On-chain receipt tracking — answers "did the tx land?"
+	BroadcastHash *string `json:"broadcastHash,omitempty"` // actual hash returned from network
+	Nonce         *int64  `json:"nonce,omitempty"`          // nonce used on-chain
+	BlockNumber   *int64  `json:"blockNumber,omitempty"`    // block the tx was included in
+	BlockHash     *string `json:"blockHash,omitempty"`      // hash of the containing block
+	ReceiptStatus *int    `json:"receiptStatus,omitempty"`  // 0=reverted, 1=success
+	GasUsed       *string `json:"gasUsed,omitempty"`
+	RevertReason  *string `json:"revertReason,omitempty"` // decoded revert reason if receiptStatus=0
+
+	// Finality tracking — answers "when did we record it as confirmed?"
+	Confirmations     int        `json:"confirmations"`               // current confirmation count
+	TargetConfirms    int        `json:"targetConfirmations"`         // required confirmations (default 12)
+	FinalizedAt       *time.Time `json:"finalizedAt,omitempty"`       // when tx reached target confirmations
+	FinalizationBlock *int64     `json:"finalizationBlock,omitempty"` // block at which finality was declared
+
+	// State machine history: every transition recorded with timestamp
+	StatusHistory []StatusTransition `json:"statusHistory,omitempty"`
+
+	// Settlement (cross-chain / matched trade)
+	IntentID         *string    `json:"intentId,omitempty"`         // linked intent record
+	SettlementTxHash *string    `json:"settlementTxHash,omitempty"` // settlement tx on destination chain
+	SettledAt        *time.Time `json:"settledAt,omitempty"`
+}
+
+// StatusTransition records a single state change with its timestamp and context.
+type StatusTransition struct {
+	From      string     `json:"from"`
+	To        string     `json:"to"`
+	Timestamp time.Time  `json:"timestamp"`
+	Detail    string     `json:"detail,omitempty"`
+	BlockNum  *int64     `json:"blockNumber,omitempty"`
+	TxHash    *string    `json:"txHash,omitempty"`
+	Actor     *string    `json:"actor,omitempty"` // userID or "system"
+}
+
+// RecordTransition appends a status transition and updates the current status.
+func (tx *Transaction) RecordTransition(to, detail string, actor *string) {
+	now := time.Now()
+	tx.StatusHistory = append(tx.StatusHistory, StatusTransition{
+		From:      tx.Status,
+		To:        to,
+		Timestamp: now,
+		Detail:    detail,
+		Actor:     actor,
+	})
+	tx.Status = to
 }
 
 func init() { orm.Register[Transaction]("transaction") }
@@ -249,3 +302,97 @@ type SmartWallet struct {
 }
 
 func init() { orm.Register[SmartWallet]("smart-wallet") }
+
+// Intent represents a user's signed intention to execute a trade or transfer.
+// Intents are the first step of the settlement flow: the user signs what they
+// want to do, then the platform co-signs, then the intent is recorded on-chain.
+//
+// Status flow:
+//
+//	pending_sign → signed → co_signed → recorded → matched → settling → settled → verified
+type Intent struct {
+	orm.Model[Intent]
+	OrgID          string     `json:"orgId"`
+	WalletID       string     `json:"walletId"`
+	IntentType     string     `json:"intentType"` // buy, sell, transfer, bridge
+	Chain          string     `json:"chain"`
+	ToAddress      *string    `json:"toAddress,omitempty"`
+	Amount         string     `json:"amount"`
+	Token          *string    `json:"token,omitempty"`
+	IntentHash     string     `json:"intentHash"`               // keccak256 of canonical intent data
+	Signature      *string    `json:"signature,omitempty"`       // user's MPC signature (first signer)
+	CoSignature    *string    `json:"coSignature,omitempty"`     // platform HSM signature (second signer)
+	CoSignerKeyID  *string    `json:"coSignerKeyId,omitempty"`   // HSM key ID used for co-signing
+	OnChainTxHash  *string    `json:"onChainTxHash,omitempty"`   // tx that recorded intent on-chain
+	RecordedAt     *time.Time `json:"recordedAt,omitempty"`      // when on-chain recording confirmed
+	RecordedBlock  *int64     `json:"recordedBlock,omitempty"`   // block number of on-chain record
+	MatchID        *string    `json:"matchId,omitempty"`         // from order matching engine
+	MatchedAt      *time.Time `json:"matchedAt,omitempty"`
+	Status         string     `json:"status"`
+	ExpiresAt      *time.Time `json:"expiresAt,omitempty"`
+	StatusHistory  []StatusTransition `json:"statusHistory,omitempty"`
+}
+
+func init() { orm.Register[Intent]("intent") }
+
+// Settlement tracks the lifecycle from matched trade to finalized on-chain settlement.
+// It links an intent to its settlement transaction and records HSM multisig attestations.
+type Settlement struct {
+	orm.Model[Settlement]
+	OrgID                string          `json:"orgId"`
+	IntentID             string          `json:"intentId"`
+	MatchID              *string         `json:"matchId,omitempty"`
+	SettlementTxHash     *string         `json:"settlementTxHash,omitempty"`
+	FinalizeTxHash       *string         `json:"finalizeTxHash,omitempty"`
+	FinalizedBlockNumber *int64          `json:"finalizedBlockNumber,omitempty"`
+	HSMSignatures        []HSMSignature  `json:"hsmSignatures,omitempty"`
+	// Transfer agency verification
+	TransferAgencyHash       *string    `json:"transferAgencyHash,omitempty"`
+	TransferAgencyVerified   bool       `json:"transferAgencyVerified"`
+	TransferAgencyVerifiedAt *time.Time `json:"transferAgencyVerifiedAt,omitempty"`
+	// Timestamps
+	MatchedAt    *time.Time `json:"matchedAt,omitempty"`
+	SignedAt     *time.Time `json:"signedAt,omitempty"`
+	BroadcastAt  *time.Time `json:"broadcastAt,omitempty"`
+	FinalizedAt  *time.Time `json:"finalizedAt,omitempty"`
+	VerifiedAt   *time.Time `json:"verifiedAt,omitempty"`
+	Status       string     `json:"status"` // pending, hsm_signing, broadcast, confirming, finalized, verified, failed
+	StatusHistory []StatusTransition `json:"statusHistory,omitempty"`
+}
+
+// HSMSignature is an attestation from a liquidity multisig signer backed by HSM.
+type HSMSignature struct {
+	SignerID  string    `json:"signerId"`
+	KeyID     string    `json:"keyId"`
+	Signature string    `json:"signature"` // hex-encoded
+	Provider  string    `json:"provider"`  // aws, gcp, azure, zymbit, kms
+	SignedAt  time.Time `json:"signedAt"`
+}
+
+func init() { orm.Register[Settlement]("settlement") }
+
+// WalletBackup records a wallet key share backup with Shamir-sharded encryption key.
+// The backup key is split into shards stored across different destinations
+// (e.g., iCloud Keychain + Platform HSM) so that no single party can decrypt alone.
+type WalletBackup struct {
+	orm.Model[WalletBackup]
+	OrgID              string    `json:"orgId"`
+	WalletID           string    `json:"walletId"`
+	BackupID           string    `json:"backupId"` // unique backup identifier
+	Threshold          int       `json:"threshold"` // T shards required to reconstruct
+	TotalShards        int       `json:"totalShards"`
+	EncryptedKeyShare  []byte    `json:"encryptedKeyShare,omitempty"` // AES-256-GCM encrypted wallet key share
+	Shards             []BackupShard `json:"shards,omitempty"`
+	Status             string    `json:"status"` // active, recovered, revoked
+}
+
+// BackupShard is a labeled Shamir share with its storage destination.
+type BackupShard struct {
+	Index       int       `json:"index"`
+	Destination string    `json:"destination"` // icloud, hsm, offline, custody
+	StorageRef  *string   `json:"storageRef,omitempty"` // reference ID in destination system
+	CreatedAt   time.Time `json:"createdAt"`
+	VerifiedAt  *time.Time `json:"verifiedAt,omitempty"`
+}
+
+func init() { orm.Register[WalletBackup]("wallet-backup") }
