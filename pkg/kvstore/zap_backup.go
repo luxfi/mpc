@@ -29,7 +29,8 @@ const (
 	defaultBackupDir = "./backups"
 )
 
-type BadgerBackupMeta struct {
+// BackupMeta holds metadata for an encrypted ZapDB backup file.
+type BackupMeta struct {
 	Algo            string `json:"algo"`              // AES-256-GCM
 	NonceB64        string `json:"nonce_b64"`         // base64 nonce
 	CreatedAt       string `json:"created_at"`        // RFC3339
@@ -38,42 +39,43 @@ type BadgerBackupMeta struct {
 	EncryptionKeyID string `json:"encryption_key_id"` // sha256(key) prefix
 }
 
-type BadgerBackupVersionInfo struct {
+// BackupVersion tracks the incremental backup state.
+type BackupVersion struct {
 	Version   uint64 `json:"version"`    // Human-readable counter
 	Since     uint64 `json:"since"`      // DB internal backup offset
 	UpdatedAt string `json:"updated_at"` // RFC3339
 }
 
-// BadgerBackupExecutor handles encrypted ZapDB backups
-type BadgerBackupExecutor struct {
-	NodeID              string
-	DB                  database.Database
-	BackupEncryptionKey []byte
-	BackupDir           string
+// Backup handles encrypted ZapDB backups.
+type Backup struct {
+	NodeID string
+	DB     database.Database
+	Key    []byte
+	Dir    string
 }
 
-// NewBadgerBackupExecutor creates a new backup executor. If backupDir is empty, uses ./backups
-func NewBadgerBackupExecutor(
+// NewBackup creates a new backup executor. If dir is empty, uses ./backups.
+func NewBackup(
 	nodeID string,
 	db database.Database,
-	backupEncryptionKey []byte,
-	backupDir string,
-) *BadgerBackupExecutor {
-	if backupDir == "" {
-		backupDir = defaultBackupDir
+	key []byte,
+	dir string,
+) *Backup {
+	if dir == "" {
+		dir = defaultBackupDir
 	}
-	if err := os.MkdirAll(backupDir, 0700); err != nil {
+	if err := os.MkdirAll(dir, 0700); err != nil {
 		panic(fmt.Errorf("failed to create backup directory: %w", err))
 	}
-	return &BadgerBackupExecutor{
-		NodeID:              nodeID,
-		DB:                  db,
-		BackupEncryptionKey: backupEncryptionKey,
-		BackupDir:           backupDir,
+	return &Backup{
+		NodeID: nodeID,
+		DB:     db,
+		Key:    key,
+		Dir:    dir,
 	}
 }
 
-func (b *BadgerBackupExecutor) Execute() error {
+func (b *Backup) Execute() error {
 	info, err := b.LoadVersionInfo()
 	if err != nil {
 		return fmt.Errorf("failed to load version info: %w", err)
@@ -83,7 +85,7 @@ func (b *BadgerBackupExecutor) Execute() error {
 	version := info.Version + 1
 	now := time.Now()
 	filename := fmt.Sprintf("backup-%s-%s-%d.enc", b.NodeID, now.Format("2006-01-02_15-04-05"), version)
-	outPath := filepath.Join(b.BackupDir, filename)
+	outPath := filepath.Join(b.Dir, filename)
 
 	var plain bytes.Buffer
 	nextSince, err := b.DB.Backup(&plain, since)
@@ -97,18 +99,18 @@ func (b *BadgerBackupExecutor) Execute() error {
 	}
 
 	// encrypt
-	ct, nonce, err := encryption.EncryptAESGCM(plain.Bytes(), b.BackupEncryptionKey)
+	ct, nonce, err := encryption.EncryptAESGCM(plain.Bytes(), b.Key)
 	if err != nil {
 		return err
 	}
 
-	meta := BadgerBackupMeta{
+	meta := BackupMeta{
 		Algo:            "AES-256-GCM",
 		NonceB64:        base64.StdEncoding.EncodeToString(nonce),
 		CreatedAt:       now.Format(time.RFC3339),
 		Since:           since,
 		NextSince:       nextSince,
-		EncryptionKeyID: fmt.Sprintf("%x", sha256.Sum256(b.BackupEncryptionKey))[:16],
+		EncryptionKeyID: fmt.Sprintf("%x", sha256.Sum256(b.Key))[:16],
 	}
 
 	metaJSON, _ := json.Marshal(meta)
@@ -145,8 +147,8 @@ func (b *BadgerBackupExecutor) Execute() error {
 	return nil
 }
 
-func (b *BadgerBackupExecutor) SaveVersionInfo(counter, since uint64) error {
-	info := BadgerBackupVersionInfo{
+func (b *Backup) SaveVersionInfo(counter, since uint64) error {
+	info := BackupVersion{
 		Version:   counter,
 		Since:     since,
 		UpdatedAt: time.Now().UTC().Format(time.RFC3339),
@@ -155,17 +157,17 @@ func (b *BadgerBackupExecutor) SaveVersionInfo(counter, since uint64) error {
 	if err != nil {
 		return err
 	}
-	versionFile := filepath.Join(b.BackupDir, "latest.version")
+	versionFile := filepath.Join(b.Dir, "latest.version")
 	return os.WriteFile(versionFile, data, 0600)
 }
 
-func (b *BadgerBackupExecutor) LoadVersionInfo() (BadgerBackupVersionInfo, error) {
-	var info BadgerBackupVersionInfo
-	versionFile := filepath.Join(b.BackupDir, "latest.version")
+func (b *Backup) LoadVersionInfo() (BackupVersion, error) {
+	var info BackupVersion
+	versionFile := filepath.Join(b.Dir, "latest.version")
 	data, err := os.ReadFile(versionFile)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return BadgerBackupVersionInfo{
+			return BackupVersion{
 				Version:   0,
 				Since:     0,
 				UpdatedAt: time.Now().Format(time.RFC3339),
@@ -177,8 +179,8 @@ func (b *BadgerBackupExecutor) LoadVersionInfo() (BadgerBackupVersionInfo, error
 	return info, err
 }
 
-func (b *BadgerBackupExecutor) SortedEncryptedBackups() []string {
-	files, _ := filepath.Glob(filepath.Join(b.BackupDir, "backup-*.enc"))
+func (b *Backup) SortedEncryptedBackups() []string {
+	files, _ := filepath.Glob(filepath.Join(b.Dir, "backup-*.enc"))
 	sort.Strings(files)
 	return files
 }
@@ -186,9 +188,8 @@ func (b *BadgerBackupExecutor) SortedEncryptedBackups() []string {
 // RestoreAllBackupsEncrypted decrypts and loads all backup files into restorePath.
 // The restored database is a raw zapdb — values were already individually encrypted
 // by the source encdb wrapper, so no additional encryption is applied during restore.
-// After restore, open the path with NewBadgerKVStore using the same encryption key
-// to read values correctly.
-func (b *BadgerBackupExecutor) RestoreAllBackupsEncrypted(restorePath string, encryptionKey []byte) error {
+// After restore, open the path with New using the same encryption key to read values correctly.
+func (b *Backup) RestoreAllBackupsEncrypted(restorePath string, encryptionKey []byte) error {
 	_ = encryptionKey // key validated at open time, not needed for raw load
 	err := os.MkdirAll(restorePath, 0700)
 	if err != nil {
@@ -214,11 +215,11 @@ func (b *BadgerBackupExecutor) RestoreAllBackupsEncrypted(restorePath string, en
 	if err := rawDB.Close(); err != nil {
 		return fmt.Errorf("failed to close restore database: %w", err)
 	}
-	fmt.Println("✅ Restore complete:", restorePath)
+	fmt.Println("Restore complete:", restorePath)
 	return nil
 }
 
-func (b *BadgerBackupExecutor) loadEncryptedBackup(db database.Database, path string) error {
+func (b *Backup) loadEncryptedBackup(db database.Database, path string) error {
 	f, err := os.Open(path)
 	if err != nil {
 		return err
@@ -243,7 +244,7 @@ func (b *BadgerBackupExecutor) loadEncryptedBackup(db database.Database, path st
 	if _, err := io.ReadFull(f, metaBuf); err != nil {
 		return err
 	}
-	var meta BadgerBackupMeta
+	var meta BackupMeta
 	if err := json.Unmarshal(metaBuf, &meta); err != nil {
 		return err
 	}
@@ -257,7 +258,7 @@ func (b *BadgerBackupExecutor) loadEncryptedBackup(db database.Database, path st
 	if err != nil {
 		return err
 	}
-	plain, err := encryption.DecryptAESGCM(ct, b.BackupEncryptionKey, nonce)
+	plain, err := encryption.DecryptAESGCM(ct, b.Key, nonce)
 	if err != nil {
 		return err
 	}
