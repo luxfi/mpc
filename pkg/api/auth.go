@@ -96,8 +96,8 @@ func (s *Server) validateAPIKey(ctx context.Context, key string) (string, error)
 	}
 
 	apiKey, err := orm.TypedQuery[db.APIKey](s.db.ORM).
-		Filter("keyHash =", keyHash).
-		Filter("keyPrefix =", prefix).
+		Filter("keyHash=", keyHash).
+		Filter("keyPrefix=", prefix).
 		First()
 	if err != nil {
 		return "", fmt.Errorf("invalid api key")

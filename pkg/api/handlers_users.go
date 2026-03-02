@@ -12,7 +12,7 @@ import (
 func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
 	orgID := getOrgID(r.Context())
 	users, err := orm.TypedQuery[db.User](s.db.ORM).
-		Filter("orgId =", orgID).
+		Filter("orgId=", orgID).
 		Order("createdAt").
 		GetAll(r.Context())
 	if err != nil {
@@ -124,7 +124,7 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleListAPIKeys(w http.ResponseWriter, r *http.Request) {
 	orgID := getOrgID(r.Context())
 	keys, err := orm.TypedQuery[db.APIKey](s.db.ORM).
-		Filter("orgId =", orgID).
+		Filter("orgId=", orgID).
 		Order("-createdAt").
 		GetAll(r.Context())
 	if err != nil {

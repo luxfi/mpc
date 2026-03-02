@@ -13,9 +13,9 @@ import (
 )
 
 // StateStore wraps kvstore.KVStore with consensus-based replication
-// Local writes go to BadgerDB, reads query consensus for latest state
+// Local writes go to ZapDB, reads query consensus for latest state
 type StateStore struct {
-	local     kvstore.KVStore // Local BadgerDB
+	local     kvstore.KVStore // Local ZapDB
 	transport *Transport
 	nodeID    string
 
