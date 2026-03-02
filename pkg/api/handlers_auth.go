@@ -7,8 +7,9 @@ import (
 	"strings"
 
 	"github.com/hanzoai/orm"
-	"github.com/luxfi/mpc/pkg/db"
 	"github.com/pquerna/otp/totp"
+
+	"github.com/luxfi/mpc/pkg/db"
 )
 
 func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {

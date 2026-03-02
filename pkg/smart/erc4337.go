@@ -249,9 +249,9 @@ func BuildUserOp(sender, to, value, callData string, nonce uint64) *UserOperatio
 		Nonce:                nonceHex,
 		InitCode:             "0x",
 		CallData:             "0x" + hex.EncodeToString(execCalldata),
-		CallGasLimit:         "0x15f90",  // 90000 — caller should override with estimate
-		VerificationGasLimit: "0x186a0",  // 100000
-		PreVerificationGas:   "0xbb8",    // 3000
+		CallGasLimit:         "0x15f90",    // 90000 — caller should override with estimate
+		VerificationGasLimit: "0x186a0",    // 100000
+		PreVerificationGas:   "0xbb8",      // 3000
 		MaxFeePerGas:         "0x3b9aca00", // 1 gwei
 		MaxPriorityFeePerGas: "0x3b9aca00",
 		PaymasterAndData:     "0x",
