@@ -7,8 +7,9 @@ import (
 	"time"
 
 	"github.com/hanzoai/orm"
-	"github.com/luxfi/mpc/pkg/db"
 	"golang.org/x/crypto/sha3"
+
+	"github.com/luxfi/mpc/pkg/db"
 )
 
 // Bridge signing request — matches the bridge server's expected format.

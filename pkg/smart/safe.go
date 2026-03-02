@@ -30,9 +30,9 @@ type SafeConfig struct {
 // SafeTransaction represents a queued Safe transaction (EIP-712 typed).
 type SafeTransaction struct {
 	To             string `json:"to"`
-	Value          string `json:"value"`          // decimal wei
-	Data           string `json:"data"`           // 0x-prefixed hex calldata
-	Operation      int    `json:"operation"`      // 0=Call, 1=DelegateCall
+	Value          string `json:"value"`     // decimal wei
+	Data           string `json:"data"`      // 0x-prefixed hex calldata
+	Operation      int    `json:"operation"` // 0=Call, 1=DelegateCall
 	SafeTxGas      string `json:"safe_tx_gas"`
 	BaseGas        string `json:"base_gas"`
 	GasPrice       string `json:"gas_price"`
