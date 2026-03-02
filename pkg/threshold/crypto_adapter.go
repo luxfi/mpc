@@ -392,14 +392,103 @@ func (s *cggmp21Signer) PublicShare() []byte                { return s.share.Pub
 func (s *cggmp21Signer) KeyShare() cryptothreshold.KeyShare { return s.share }
 
 func (s *cggmp21Signer) NonceGen(ctx context.Context) (cryptothreshold.NonceCommitment, cryptothreshold.NonceState, error) {
-	// CGGMP21 uses presigning for nonces
-	return nil, nil, errors.New("use presigning for CGGMP21 nonces")
+	// Generate a random scalar k on secp256k1
+	curve := secp256k1.S256()
+	n := curve.Params().N
+
+	k, err := cryptorand.Int(defaultRand(), n)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to generate nonce scalar: %w", err)
+	}
+	if k.Sign() == 0 {
+		return nil, nil, errors.New("generated zero nonce")
+	}
+
+	// Compute commitment R = k * G on secp256k1
+	Rx, Ry := curve.ScalarBaseMult(k.Bytes())
+
+	// Encode R as 33-byte compressed point
+	rBytes := compressPointSecp256k1(Rx, Ry)
+
+	// Encode k as 32-byte big-endian scalar
+	kBytes := make([]byte, 32)
+	kB := k.Bytes()
+	copy(kBytes[32-len(kB):], kB)
+
+	// Nonce state: k (32 bytes, secret) || R_compressed (33 bytes, public)
+	stateData := make([]byte, 65)
+	copy(stateData[:32], kBytes)
+	copy(stateData[32:], rBytes)
+
+	commitment := &cggmp21NonceCommitment{from: s.share.Index(), data: rBytes}
+	state := &cggmp21NonceState{from: s.share.Index(), data: stateData}
+
+	return commitment, state, nil
 }
 
 func (s *cggmp21Signer) SignShare(ctx context.Context, message []byte, signers []int, nonce cryptothreshold.NonceState) (cryptothreshold.SignatureShare, error) {
-	// Create signature share (placeholder - real impl would use protocol)
+	if nonce == nil {
+		return nil, errors.New("nonce state is required for CGGMP21 signing")
+	}
+	nonceData := nonce.Bytes()
+	if len(nonceData) < 65 {
+		return nil, errors.New("invalid nonce state: expected at least 65 bytes (k || R)")
+	}
+
+	n := secp256k1.S256().Params().N
+
+	// Extract k (nonce scalar) and r = R.x mod n from nonce state
+	k := new(big.Int).SetBytes(nonceData[:32])
+	Rx, _ := decompressPointSecp256k1(nonceData[32:65])
+	if Rx == nil {
+		return nil, errors.New("failed to decompress R from nonce state")
+	}
+	r := new(big.Int).Set(Rx)
+	r.Mod(r, n)
+
+	// Get secret share d_i
+	shareBytes := s.share.Bytes()
+	if len(shareBytes) < 32 {
+		padded := make([]byte, 32)
+		copy(padded[32-len(shareBytes):], shareBytes)
+		shareBytes = padded
+	}
+	di := new(big.Int).SetBytes(shareBytes[:32])
+
+	// Compute Lagrange coefficient for this party among the signers
+	myIdx := s.share.Index()
+	lambda := lagrangeCoefficientAt0(myIdx, signers, n)
+
+	// Hash the message to 32 bytes
+	var m *big.Int
+	if len(message) == 32 {
+		m = new(big.Int).SetBytes(message)
+	} else {
+		h := sha256.Sum256(message)
+		m = new(big.Int).SetBytes(h[:])
+	}
+	m.Mod(m, n)
+
+	// Partial ECDSA signature: s_i = k^{-1} * (m + r * d_i * lambda_i) mod n
+	kInv := new(big.Int).ModInverse(k, n)
+	if kInv == nil {
+		return nil, errors.New("nonce k is not invertible mod n")
+	}
+	rdi := new(big.Int).Mul(r, di)
+	rdi.Mod(rdi, n)
+	rdi.Mul(rdi, lambda)
+	rdi.Mod(rdi, n)
+	si := new(big.Int).Add(m, rdi)
+	si.Mod(si, n)
+	si.Mul(kInv, si)
+	si.Mod(si, n)
+
+	// Encode as 64 bytes: r (32) || s_i (32)
 	shareData := make([]byte, 64)
-	copy(shareData, message)
+	rB := r.Bytes()
+	copy(shareData[32-len(rB):32], rB)
+	siB := si.Bytes()
+	copy(shareData[64-len(siB):64], siB)
 
 	return &cggmp21SignatureShare{
 		scheme: s.scheme,
@@ -430,15 +519,52 @@ func (a *cggmp21Aggregator) Aggregate(ctx context.Context, message []byte, share
 		return nil, errors.New("no shares to aggregate")
 	}
 
-	// Placeholder aggregation - real impl would do Lagrange interpolation
-	sigData := make([]byte, 65)
-	for _, share := range shares {
-		for i, b := range share.Bytes() {
-			if i < len(sigData) {
-				sigData[i] ^= b
-			}
-		}
+	n := secp256k1.S256().Params().N
+	halfN := new(big.Int).Rsh(n, 1)
+
+	// Each share is 64 bytes: r (32) || s_i (32).
+	// All shares must have the same r value.
+	firstShare := shares[0].Bytes()
+	if len(firstShare) < 64 {
+		return nil, errors.New("invalid share size: expected at least 64 bytes")
 	}
+	r := new(big.Int).SetBytes(firstShare[:32])
+
+	// Aggregate: s = sum(s_i) mod n
+	// Lagrange coefficients were already applied in SignShare.
+	sAgg := new(big.Int)
+	for _, share := range shares {
+		sb := share.Bytes()
+		if len(sb) < 64 {
+			return nil, fmt.Errorf("invalid share from party %d: too short", share.Index())
+		}
+		shareR := new(big.Int).SetBytes(sb[:32])
+		if shareR.Cmp(r) != 0 {
+			return nil, fmt.Errorf("share from party %d has mismatched r value", share.Index())
+		}
+		si := new(big.Int).SetBytes(sb[32:64])
+		sAgg.Add(sAgg, si)
+		sAgg.Mod(sAgg, n)
+	}
+
+	// Low-S normalization (Bitcoin/Ethereum consensus)
+	if sAgg.Cmp(halfN) > 0 {
+		sAgg.Sub(n, sAgg)
+	}
+
+	// Recovery byte v
+	var v byte
+	if r.Cmp(halfN) > 0 {
+		v = 1
+	}
+
+	// 65-byte ECDSA signature: r (32) || s (32) || v (1)
+	sigData := make([]byte, 65)
+	rBytes := r.Bytes()
+	copy(sigData[32-len(rBytes):32], rBytes)
+	sBytes := sAgg.Bytes()
+	copy(sigData[64-len(sBytes):64], sBytes)
+	sigData[64] = v
 
 	return &cggmp21Signature{
 		scheme: a.scheme,
@@ -542,12 +668,58 @@ type cggmp21Verifier struct {
 func (v *cggmp21Verifier) GroupKey() cryptothreshold.PublicKey { return v.groupKey }
 
 func (v *cggmp21Verifier) Verify(message []byte, signature cryptothreshold.Signature) bool {
-	// Placeholder verification - real impl would verify ECDSA
-	return len(signature.Bytes()) > 0
+	return v.VerifyBytes(message, signature.Bytes())
 }
 
 func (v *cggmp21Verifier) VerifyBytes(message, signature []byte) bool {
-	return len(signature) > 0
+	if len(signature) < 64 {
+		return false
+	}
+
+	r := new(big.Int).SetBytes(signature[:32])
+	s := new(big.Int).SetBytes(signature[32:64])
+
+	curve := secp256k1.S256()
+	n := curve.Params().N
+	if r.Sign() <= 0 || r.Cmp(n) >= 0 || s.Sign() <= 0 || s.Cmp(n) >= 0 {
+		return false
+	}
+
+	groupKeyBytes := v.groupKey.Bytes()
+	pk := bytesToEllipticPublicKey(groupKeyBytes)
+	if pk == nil {
+		return false
+	}
+	pk.Curve = curve
+
+	var hash []byte
+	if len(message) == 32 {
+		hash = message
+	} else {
+		h := sha256.Sum256(message)
+		hash = h[:]
+	}
+
+	// Standard ECDSA verification
+	sInv := new(big.Int).ModInverse(s, n)
+	if sInv == nil {
+		return false
+	}
+	e := new(big.Int).SetBytes(hash)
+	u1 := new(big.Int).Mul(e, sInv)
+	u1.Mod(u1, n)
+	u2 := new(big.Int).Mul(r, sInv)
+	u2.Mod(u2, n)
+
+	x1, y1 := curve.ScalarBaseMult(u1.Bytes())
+	x2, y2 := curve.ScalarMult(pk.X, pk.Y, u2.Bytes())
+	rx, _ := curve.Add(x1, y1, x2, y2)
+
+	if rx == nil {
+		return false
+	}
+	rx.Mod(rx, n)
+	return rx.Cmp(r) == 0
 }
 
 // =============================================================================
@@ -917,14 +1089,58 @@ func (a *frostAggregator) Aggregate(ctx context.Context, message []byte, shares 
 		return nil, errors.New("no shares to aggregate")
 	}
 
-	sigData := make([]byte, 64)
-	for _, share := range shares {
-		for i, b := range share.Bytes() {
-			if i < len(sigData) {
-				sigData[i] ^= b
-			}
-		}
+	n := secp256k1.S256().Params().N
+	firstShare := shares[0].Bytes()
+	if len(firstShare) < 32 {
+		return nil, errors.New("invalid FROST share: too short")
 	}
+
+	var rBytes []byte
+	sAgg := new(big.Int)
+
+	if len(firstShare) == 32 {
+		// Shares are scalar-only s_i; R comes from commitments
+		if len(commitments) == 0 {
+			return nil, errors.New("FROST aggregation requires nonce commitments when shares are scalar-only")
+		}
+		rBytes = commitments[0].Bytes()
+		if len(rBytes) > 32 {
+			rBytes = rBytes[:32]
+		}
+		for _, share := range shares {
+			si := new(big.Int).SetBytes(share.Bytes())
+			sAgg.Add(sAgg, si)
+			sAgg.Mod(sAgg, n)
+		}
+	} else if len(firstShare) >= 64 {
+		// Shares contain R_x (32) || s_i (32)
+		rBytes = make([]byte, 32)
+		copy(rBytes, firstShare[:32])
+		for _, share := range shares {
+			sb := share.Bytes()
+			if len(sb) < 64 {
+				return nil, fmt.Errorf("invalid FROST share from party %d: too short", share.Index())
+			}
+			for j := 0; j < 32; j++ {
+				if sb[j] != rBytes[j] {
+					return nil, fmt.Errorf("share from party %d has different R commitment", share.Index())
+				}
+			}
+			si := new(big.Int).SetBytes(sb[32:64])
+			sAgg.Add(sAgg, si)
+			sAgg.Mod(sAgg, n)
+		}
+	} else {
+		return nil, fmt.Errorf("unexpected FROST share size: %d", len(firstShare))
+	}
+
+	// BIP-340 compatible signature: R_x (32) || s (32)
+	sigData := make([]byte, 64)
+	if len(rBytes) >= 32 {
+		copy(sigData[:32], rBytes[:32])
+	}
+	sB := sAgg.Bytes()
+	copy(sigData[64-len(sB):64], sB)
 
 	return &frostSignature{scheme: a.scheme, data: sigData}, nil
 }
@@ -1061,10 +1277,81 @@ type frostVerifier struct {
 
 func (v *frostVerifier) GroupKey() cryptothreshold.PublicKey { return v.groupKey }
 func (v *frostVerifier) Verify(message []byte, signature cryptothreshold.Signature) bool {
-	return len(signature.Bytes()) > 0
+	return v.VerifyBytes(message, signature.Bytes())
 }
 func (v *frostVerifier) VerifyBytes(message, signature []byte) bool {
-	return len(signature) > 0
+	if len(signature) != 64 {
+		return false
+	}
+
+	// BIP-340 Schnorr verification: sig = R_x (32) || s (32)
+	groupKeyBytes := v.groupKey.Bytes()
+	var pkXBytes []byte
+	switch len(groupKeyBytes) {
+	case 32:
+		pkXBytes = groupKeyBytes
+	case 33:
+		pkXBytes = groupKeyBytes[1:]
+	case 65:
+		pkXBytes = groupKeyBytes[1:33]
+	default:
+		return false
+	}
+
+	curve := secp256k1.S256()
+	n := curve.Params().N
+
+	// Parse s and verify range
+	s := new(big.Int).SetBytes(signature[32:64])
+	if s.Cmp(n) >= 0 {
+		return false
+	}
+
+	// Lift R from x-only coordinate
+	Rx := new(big.Int).SetBytes(signature[:32])
+	Rpk, err := secp256k1.ParsePubKey(append([]byte{0x02}, signature[:32]...))
+	if err != nil {
+		return false
+	}
+
+	// Lift P from x-only coordinate (even Y)
+	Ppk, err := secp256k1.ParsePubKey(append([]byte{0x02}, pkXBytes...))
+	if err != nil {
+		return false
+	}
+
+	// BIP-340 challenge: e = tagged_hash("BIP0340/challenge", R_x || P_x || m) mod n
+	tagHash := sha256.Sum256([]byte("BIP0340/challenge"))
+	h := sha256.New()
+	h.Write(tagHash[:])
+	h.Write(tagHash[:])
+	h.Write(signature[:32])
+	h.Write(pkXBytes)
+	h.Write(message)
+	eHash := h.Sum(nil)
+	e := new(big.Int).SetBytes(eHash)
+	e.Mod(e, n)
+
+	// Verify: s*G == R + e*P  =>  s*G - e*P should equal R
+	sGx, sGy := curve.ScalarBaseMult(s.Bytes())
+	ePx, ePy := curve.ScalarMult(Ppk.X(), Ppk.Y(), e.Bytes())
+	// Negate e*P
+	p := curve.Params().P
+	ePyNeg := new(big.Int).Sub(p, ePy)
+	ePyNeg.Mod(ePyNeg, p)
+	checkX, checkY := curve.Add(sGx, sGy, ePx, ePyNeg)
+
+	if checkX == nil || (checkX.Sign() == 0 && checkY.Sign() == 0) {
+		return false
+	}
+
+	// BIP-340: R must have even Y
+	if checkY.Bit(0) != 0 {
+		return false
+	}
+
+	_ = Rpk
+	return checkX.Cmp(Rx) == 0
 }
 
 // =============================================================================
@@ -1129,4 +1416,79 @@ func bytesToEllipticPublicKey(data []byte) *ecdsa.PublicKey {
 		X: new(big.Int).SetBytes(data[1:33]),
 		Y: new(big.Int).SetBytes(data[33:65]),
 	}
+}
+
+// CGGMP21 nonce types for presigning
+
+type cggmp21NonceCommitment struct {
+	from int
+	data []byte
+}
+
+func (c *cggmp21NonceCommitment) Bytes() []byte  { return c.data }
+func (c *cggmp21NonceCommitment) FromParty() int { return c.from }
+
+type cggmp21NonceState struct {
+	from int
+	data []byte
+}
+
+func (s *cggmp21NonceState) Bytes() []byte  { return s.data }
+func (s *cggmp21NonceState) FromParty() int { return s.from }
+
+// lagrangeCoefficientAt0 computes the Lagrange coefficient for party myIdx
+// evaluated at x=0 among the set of signers. Party indices are 0-based;
+// evaluation points are x_i = i+1 to avoid division by zero.
+func lagrangeCoefficientAt0(myIdx int, signers []int, n *big.Int) *big.Int {
+	xi := big.NewInt(int64(myIdx + 1))
+	num := big.NewInt(1)
+	den := big.NewInt(1)
+
+	for _, j := range signers {
+		if j == myIdx {
+			continue
+		}
+		xj := big.NewInt(int64(j + 1))
+		negXj := new(big.Int).Neg(xj)
+		negXj.Mod(negXj, n)
+		num.Mul(num, negXj)
+		num.Mod(num, n)
+		diff := new(big.Int).Sub(xi, xj)
+		diff.Mod(diff, n)
+		den.Mul(den, diff)
+		den.Mod(den, n)
+	}
+
+	denInv := new(big.Int).ModInverse(den, n)
+	if denInv == nil {
+		return big.NewInt(0)
+	}
+	lambda := new(big.Int).Mul(num, denInv)
+	lambda.Mod(lambda, n)
+	return lambda
+}
+
+// compressPointSecp256k1 encodes a secp256k1 point as 33-byte compressed form.
+func compressPointSecp256k1(x, y *big.Int) []byte {
+	result := make([]byte, 33)
+	if y.Bit(0) == 0 {
+		result[0] = 0x02
+	} else {
+		result[0] = 0x03
+	}
+	xBytes := x.Bytes()
+	copy(result[33-len(xBytes):33], xBytes)
+	return result
+}
+
+// decompressPointSecp256k1 decodes a 33-byte compressed secp256k1 point.
+func decompressPointSecp256k1(data []byte) (x, y *big.Int) {
+	if len(data) != 33 || (data[0] != 0x02 && data[0] != 0x03) {
+		return nil, nil
+	}
+	pk, err := secp256k1.ParsePubKey(data)
+	if err != nil {
+		return nil, nil
+	}
+	return pk.X(), pk.Y()
 }
