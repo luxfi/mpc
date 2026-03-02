@@ -137,8 +137,8 @@ func (s *Server) handleListSmartWallets(w http.ResponseWriter, r *http.Request) 
 	walletID := urlParam(r, "id")
 
 	wallets, err := orm.TypedQuery[db.SmartWallet](s.db.ORM).
-		Filter("walletId =", walletID).
-		Filter("orgId =", orgID).
+		Filter("walletId=", walletID).
+		Filter("orgId=", orgID).
 		Order("-createdAt").
 		GetAll(r.Context())
 	if err != nil {
@@ -276,10 +276,10 @@ func (s *Server) handleExecuteSafeTx(w http.ResponseWriter, r *http.Request) {
 
 	// Find the most recent pending safe_proposal for this wallet
 	txList, err := orm.TypedQuery[db.Transaction](s.db.ORM).
-		Filter("walletId =", sw.WalletID).
-		Filter("orgId =", orgID).
-		Filter("txType =", "safe_proposal").
-		Filter("status =", "pending").
+		Filter("walletId=", sw.WalletID).
+		Filter("orgId=", orgID).
+		Filter("txType=", "safe_proposal").
+		Filter("status=", "pending").
 		Order("-createdAt").
 		Limit(1).
 		GetAll(r.Context())

@@ -12,7 +12,7 @@ import (
 func (s *Server) handleListVaults(w http.ResponseWriter, r *http.Request) {
 	orgID := getOrgID(r.Context())
 	vaults, err := orm.TypedQuery[db.Vault](s.db.ORM).
-		Filter("orgId =", orgID).
+		Filter("orgId=", orgID).
 		Order("-createdAt").
 		GetAll(r.Context())
 	if err != nil {

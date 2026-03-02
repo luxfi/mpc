@@ -11,7 +11,7 @@ import (
 func (s *Server) handleListWebhooks(w http.ResponseWriter, r *http.Request) {
 	orgID := getOrgID(r.Context())
 	webhooks, err := orm.TypedQuery[db.Webhook](s.db.ORM).
-		Filter("orgId =", orgID).
+		Filter("orgId=", orgID).
 		Order("-createdAt").
 		GetAll(r.Context())
 	if err != nil {
@@ -129,7 +129,7 @@ func (s *Server) handleTestWebhook(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleListWhitelist(w http.ResponseWriter, r *http.Request) {
 	orgID := getOrgID(r.Context())
 	entries, err := orm.TypedQuery[db.AddressWhitelist](s.db.ORM).
-		Filter("orgId =", orgID).
+		Filter("orgId=", orgID).
 		Order("-createdAt").
 		GetAll(r.Context())
 	if err != nil {

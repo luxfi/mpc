@@ -7,7 +7,6 @@ require (
 	github.com/avast/retry-go v3.0.0+incompatible
 	github.com/decred/dcrd/dcrec/edwards/v2 v2.0.4
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.0
-	github.com/luxfi/zapdb/v4 v4.9.2
 	github.com/fxamacker/cbor/v2 v2.9.0
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/go-chi/cors v1.2.2
@@ -21,6 +20,7 @@ require (
 	github.com/luxfi/fhe v1.7.6
 	github.com/luxfi/log v1.4.1
 	github.com/luxfi/threshold v1.5.5
+	github.com/luxfi/zapdb/v4 v4.9.2
 	github.com/minio/minio-go/v7 v7.0.98
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/nats-io/nats.go v1.48.0
@@ -75,8 +75,11 @@ require (
 	github.com/klauspost/compress v1.18.3 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/klauspost/crc32 v1.3.0 // indirect
+	github.com/luxfi/database v1.2.9 // indirect
+	github.com/luxfi/ids v1.2.9 // indirect
 	github.com/luxfi/lattice/v7 v7.0.0 // indirect
 	github.com/luxfi/mdns v0.1.0 // indirect
+	github.com/luxfi/mock v0.1.0 // indirect
 	github.com/luxfi/zap v0.2.0 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
@@ -85,6 +88,7 @@ require (
 	github.com/minio/crc64nvme v1.1.1 // indirect
 	github.com/minio/md5-simd v1.1.2 // indirect
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
+	github.com/mr-tron/base58 v1.2.0 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/nats-io/nkeys v0.4.14 // indirect
 	github.com/nats-io/nuid v1.0.1 // indirect
@@ -110,6 +114,7 @@ require (
 	go.opentelemetry.io/otel/metric v1.39.0 // indirect
 	go.opentelemetry.io/otel/trace v1.39.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
+	go.uber.org/mock v0.6.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.3 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/exp v0.0.0-20260112195511-716be5621a96 // indirect
@@ -124,6 +129,4 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace (
-	github.com/agl/ed25519 => github.com/luxfi/edwards25519 v0.0.0-20200305024217-f36fc4b53d43
-)
+replace github.com/agl/ed25519 => github.com/luxfi/edwards25519 v0.0.0-20200305024217-f36fc4b53d43
