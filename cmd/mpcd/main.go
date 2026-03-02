@@ -185,6 +185,16 @@ func main() {
 						Usage:   "JWT signing secret",
 						Sources: cli.EnvVars("JWT_SECRET", "MPC_JWT_SECRET"),
 					},
+					&cli.StringFlag{
+						Name:    "cluster-url",
+						Usage:   "MPC cluster URL for forwarding operations (e.g. http://mpc-node:9800)",
+						Sources: cli.EnvVars("MPC_CLUSTER_URL"),
+					},
+					&cli.StringFlag{
+						Name:    "cluster-api-key",
+						Usage:   "API key for authenticating with MPC cluster",
+						Sources: cli.EnvVars("MPC_CLUSTER_API_KEY"),
+					},
 					&cli.BoolFlag{
 						Name:  "debug",
 						Usage: "Enable debug logging",
