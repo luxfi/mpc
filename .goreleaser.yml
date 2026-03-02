@@ -51,14 +51,9 @@ archives:
       {{- else if eq .Arch "386" }}i386
       {{- else }}{{ .Arch }}{{ end }}
       {{- if .Arm }}v{{ .Arm }}{{ end }}
-    format_overrides:
-      - goos: windows
-        format: zip
     files:
       - README.md
       - LICENSE
-      - docs/*
-      - examples/*
 
 checksum:
   name_template: 'checksums.txt'
@@ -99,14 +94,13 @@ changelog:
 
 dockers:
   - image_templates:
-      - "luxfi/mpc:{{ .Tag }}"
-      - "luxfi/mpc:latest"
-      - "ghcr.io/luxfi/mpc:{{ .Tag }}"
-      - "ghcr.io/luxfi/mpc:latest"
+      - "luxfi/mpc:{{ .Tag }}-amd64"
+      - "ghcr.io/luxfi/mpc:{{ .Tag }}-amd64"
     dockerfile: Dockerfile
     use: buildx
+    goarch: amd64
     build_flag_templates:
-      - "--platform=linux/amd64,linux/arm64"
+      - "--platform=linux/amd64"
       - "--label=org.opencontainers.image.created={{.Date}}"
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
@@ -114,6 +108,39 @@ dockers:
       - "--label=org.opencontainers.image.source={{.GitURL}}"
       - "--label=org.opencontainers.image.description=Lux MPC - Threshold Signature Service"
       - "--label=org.opencontainers.image.licenses=MIT"
+  - image_templates:
+      - "luxfi/mpc:{{ .Tag }}-arm64"
+      - "ghcr.io/luxfi/mpc:{{ .Tag }}-arm64"
+    dockerfile: Dockerfile
+    use: buildx
+    goarch: arm64
+    build_flag_templates:
+      - "--platform=linux/arm64"
+      - "--label=org.opencontainers.image.created={{.Date}}"
+      - "--label=org.opencontainers.image.title={{.ProjectName}}"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
+      - "--label=org.opencontainers.image.source={{.GitURL}}"
+      - "--label=org.opencontainers.image.description=Lux MPC - Threshold Signature Service"
+      - "--label=org.opencontainers.image.licenses=MIT"
+
+docker_manifests:
+  - name_template: "luxfi/mpc:{{ .Tag }}"
+    image_templates:
+      - "luxfi/mpc:{{ .Tag }}-amd64"
+      - "luxfi/mpc:{{ .Tag }}-arm64"
+  - name_template: "luxfi/mpc:latest"
+    image_templates:
+      - "luxfi/mpc:{{ .Tag }}-amd64"
+      - "luxfi/mpc:{{ .Tag }}-arm64"
+  - name_template: "ghcr.io/luxfi/mpc:{{ .Tag }}"
+    image_templates:
+      - "ghcr.io/luxfi/mpc:{{ .Tag }}-amd64"
+      - "ghcr.io/luxfi/mpc:{{ .Tag }}-arm64"
+  - name_template: "ghcr.io/luxfi/mpc:latest"
+    image_templates:
+      - "ghcr.io/luxfi/mpc:{{ .Tag }}-amd64"
+      - "ghcr.io/luxfi/mpc:{{ .Tag }}-arm64"
 
 nfpms:
   - id: packages
