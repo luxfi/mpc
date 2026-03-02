@@ -133,10 +133,16 @@ func TestInfof_FormattedMessage(t *testing.T) {
 	assert.Contains(t, output, "level\":\"info\"")
 }
 
-func TestError_PanicsOnOddKeyValues(t *testing.T) {
+func TestError_OddKeyValuesLogsWarning(t *testing.T) {
 	Init("test", false)
 
-	assert.Panics(t, func() {
-		Error("test error", nil, "odd_key", "value", "another_odd_key") //nolint:staticcheck // intentionally testing odd number of key-value pairs
+	var buf bytes.Buffer
+	Log = zerolog.New(&buf).With().Timestamp().Logger()
+
+	// Should not panic — logs a warning and appends a sentinel instead.
+	assert.NotPanics(t, func() {
+		Error("test error", nil, "odd_key", "value", "another_odd_key") //nolint:staticcheck
 	})
+	out := buf.String()
+	assert.Contains(t, out, "test error")
 }

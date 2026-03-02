@@ -996,7 +996,7 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 					factory:      factory,
 					keyInfoStore: factory.KeyInfoStore(),
 					nodeID:       nodeID,
-					threshold:    int(threshold),
+					threshold:    threshold,
 				}
 
 				apiServer := mpcapi.NewServer(database, mpcBackend, jwtSecret, apiListenAddr)

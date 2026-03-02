@@ -136,13 +136,13 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 // API Key handlers
 
 type apiKeyView struct {
-	ID          string    `json:"id"`
-	Name        string    `json:"name"`
-	KeyPrefix   string    `json:"keyPrefix"`
-	Permissions []string  `json:"permissions"`
-	ExpiresAt   any       `json:"expiresAt,omitempty"`
-	LastUsedAt  any       `json:"lastUsedAt,omitempty"`
-	CreatedAt   any       `json:"createdAt"`
+	ID          string   `json:"id"`
+	Name        string   `json:"name"`
+	KeyPrefix   string   `json:"keyPrefix"`
+	Permissions []string `json:"permissions"`
+	ExpiresAt   any      `json:"expiresAt,omitempty"`
+	LastUsedAt  any      `json:"lastUsedAt,omitempty"`
+	CreatedAt   any      `json:"createdAt"`
 }
 
 func (s *Server) handleListAPIKeys(w http.ResponseWriter, r *http.Request) {
