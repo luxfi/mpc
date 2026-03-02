@@ -6,9 +6,9 @@ before:
     - go generate ./...
 
 builds:
-  - id: lux-mpc
-    main: ./cmd/lux-mpc
-    binary: lux-mpc
+  - id: mpcd
+    main: ./cmd/mpcd
+    binary: mpcd
     env:
       - CGO_ENABLED=0
     goos:
@@ -125,7 +125,7 @@ dockers:
 
 nfpms:
   - id: packages
-    package_name: lux-mpc
+    package_name: mpcd
     vendor: Lux Partners Limited
     homepage: https://github.com/luxfi/mpc
     maintainer: Lux Development Team <dev@lux.network>
@@ -142,12 +142,7 @@ nfpms:
     recommends:
       - golang
     bindir: /usr/bin
-    contents:
-      - src: ./systemd/lux-mpc.service
-        dst: /lib/systemd/system/lux-mpc.service
-      - src: ./configs/
-        dst: /etc/lux-mpc/
-        type: config
+    contents: []
 
 release:
   github:
