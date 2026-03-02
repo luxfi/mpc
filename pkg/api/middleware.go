@@ -14,9 +14,10 @@ import (
 type contextKey string
 
 const (
-	ctxUserID contextKey = "user_id"
-	ctxOrgID  contextKey = "org_id"
-	ctxRole   contextKey = "role"
+	ctxUserID      contextKey = "user_id"
+	ctxOrgID       contextKey = "org_id"
+	ctxRole        contextKey = "role"
+	ctxPermissions contextKey = "permissions"
 )
 
 func getUserID(ctx context.Context) string {
@@ -32,6 +33,20 @@ func getOrgID(ctx context.Context) string {
 func getRole(ctx context.Context) string {
 	v, _ := ctx.Value(ctxRole).(string)
 	return v
+}
+
+func getPermissions(ctx context.Context) []string {
+	v, _ := ctx.Value(ctxPermissions).([]string)
+	return v
+}
+
+func hasPermission(ctx context.Context, perm string) bool {
+	for _, p := range getPermissions(ctx) {
+		if p == perm || p == "*" {
+			return true
+		}
+	}
+	return false
 }
 
 func urlParam(r *http.Request, key string) string {
@@ -57,15 +72,16 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 		}
 
 		// Try API key from X-API-Key header
-		apiKey := r.Header.Get("X-API-Key")
-		if apiKey != "" {
-			orgID, err := s.validateAPIKey(r.Context(), apiKey)
+		apiKeyHeader := r.Header.Get("X-API-Key")
+		if apiKeyHeader != "" {
+			key, err := s.validateAPIKey(r.Context(), apiKeyHeader)
 			if err != nil {
 				writeError(w, http.StatusUnauthorized, "invalid api key")
 				return
 			}
-			ctx := context.WithValue(r.Context(), ctxOrgID, orgID)
+			ctx := context.WithValue(r.Context(), ctxOrgID, key.OrgID)
 			ctx = context.WithValue(ctx, ctxRole, "api")
+			ctx = context.WithValue(ctx, ctxPermissions, key.Permissions)
 			next.ServeHTTP(w, r.WithContext(ctx))
 			return
 		}
@@ -95,6 +111,27 @@ func requireRole(roles ...string) func(http.Handler) http.Handler {
 				}
 			}
 			writeError(w, http.StatusForbidden, "insufficient permissions")
+		})
+	}
+}
+
+// requirePermission gates API key requests by checking their permissions slice.
+// JWT-authenticated users (non-"api" role) pass through — role-based checks handle them.
+func requirePermission(perm string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			role := getRole(r.Context())
+			// JWT users: check role-based access, not per-permission
+			if role != "api" {
+				next.ServeHTTP(w, r)
+				return
+			}
+			// API key users: must have the specific permission
+			if !hasPermission(r.Context(), perm) {
+				writeError(w, http.StatusForbidden, "api key missing permission: "+perm)
+				return
+			}
+			next.ServeHTTP(w, r)
 		})
 	}
 }

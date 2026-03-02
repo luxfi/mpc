@@ -20,9 +20,9 @@ type User struct {
 	orm.Model[User]
 	OrgID        string  `json:"orgId"`
 	Email        string  `json:"email"`
-	PasswordHash string  `json:"passwordHash"`
+	PasswordHash string  `json:"passwordHash"` // never returned directly; use safeUser() in handlers
 	Role         string  `json:"role"`
-	MFASecret    *string `json:"mfaSecret,omitempty"`
+	MFASecret    *string `json:"mfaSecret,omitempty"` // never returned directly
 }
 
 func init() { orm.Register[User]("user") }
