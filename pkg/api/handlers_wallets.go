@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/hanzoai/orm"
@@ -62,7 +63,10 @@ func (s *Server) handleCreateWallet(w http.ResponseWriter, r *http.Request) {
 	status := s.mpc.GetClusterStatus()
 	participants := []string{}
 	if status != nil {
-		participants = append(participants, status.NodeID)
+		total := status.ExpectedPeers + 1
+		for i := 0; i < total; i++ {
+			participants = append(participants, fmt.Sprintf("node%d", i))
+		}
 	}
 
 	name := req.Name

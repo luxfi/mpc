@@ -17,10 +17,11 @@ require (
 	github.com/hashicorp/consul/api v1.33.2
 	github.com/jackc/pgx/v5 v5.8.0
 	github.com/luxfi/crypto v1.17.40
+	github.com/luxfi/database v1.17.43
 	github.com/luxfi/fhe v1.7.6
 	github.com/luxfi/log v1.4.1
+	github.com/luxfi/metric v1.5.0
 	github.com/luxfi/threshold v1.5.5
-	github.com/luxfi/zapdb/v4 v4.9.2
 	github.com/minio/minio-go/v7 v7.0.98
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/nats-io/nats.go v1.48.0
@@ -58,6 +59,7 @@ require (
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
 	github.com/google/flatbuffers v25.12.19+incompatible // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
+	github.com/gorilla/rpc v1.2.1 // indirect
 	github.com/grandcat/zeroconf v1.0.0 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
@@ -69,18 +71,25 @@ require (
 	github.com/hashicorp/go-version v1.7.0 // indirect
 	github.com/hashicorp/golang-lru v1.0.2 // indirect
 	github.com/hashicorp/serf v0.10.2 // indirect
+	github.com/holiman/uint256 v1.3.2 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/klauspost/compress v1.18.3 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/klauspost/crc32 v1.3.0 // indirect
-	github.com/luxfi/database v1.2.9 // indirect
+	github.com/luxfi/cache v1.2.1 // indirect
+	github.com/luxfi/codec v1.1.3 // indirect
+	github.com/luxfi/compress v0.0.5 // indirect
+	github.com/luxfi/concurrent v0.0.3 // indirect
 	github.com/luxfi/ids v1.2.9 // indirect
 	github.com/luxfi/lattice/v7 v7.0.0 // indirect
+	github.com/luxfi/math v1.2.3 // indirect
+	github.com/luxfi/math/big v0.1.0 // indirect
 	github.com/luxfi/mdns v0.1.0 // indirect
-	github.com/luxfi/mock v0.1.0 // indirect
+	github.com/luxfi/mock v0.1.1 // indirect
 	github.com/luxfi/zap v0.2.0 // indirect
+	github.com/luxfi/zapdb/v4 v4.9.2 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-sqlite3 v1.14.24 // indirect
