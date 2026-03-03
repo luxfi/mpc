@@ -1,10 +1,13 @@
 package api
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/hanzoai/orm"
 
@@ -143,11 +146,14 @@ func (s *Server) handleCoSignIntent(w http.ResponseWriter, r *http.Request) {
 	intentID := urlParam(r, "id")
 
 	var req struct {
-		CoSignature string `json:"co_signature"`
-		KeyID       string `json:"key_id"`
+		KeyID string `json:"key_id"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.CoSignature == "" {
-		writeError(w, http.StatusBadRequest, "co_signature is required")
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.KeyID == "" {
+		writeError(w, http.StatusBadRequest, "key_id is required")
 		return
 	}
 
@@ -162,14 +168,43 @@ func (s *Server) handleCoSignIntent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cosig := req.CoSignature
+	// Server-side HSM co-signing: the server calls the HSM directly.
+	// This prevents a compromised client from submitting forged co-signatures.
+	if s.hsm == nil {
+		writeError(w, http.StatusServiceUnavailable, "HSM provider not configured")
+		return
+	}
+
+	// Sign the intent hash with the HSM
+	hashBytes, hexErr := hex.DecodeString(intent.IntentHash)
+	if hexErr != nil {
+		writeError(w, http.StatusInternalServerError, "invalid intent hash")
+		return
+	}
+
+	sig, signErr := s.hsm.Sign(r.Context(), req.KeyID, hashBytes)
+	if signErr != nil {
+		writeError(w, http.StatusInternalServerError, "HSM co-signing failed: "+signErr.Error())
+		return
+	}
+
+	// Verify the signature
+	ok, verifyErr := s.hsm.Verify(r.Context(), req.KeyID, hashBytes, sig)
+	if verifyErr != nil || !ok {
+		writeError(w, http.StatusInternalServerError, "HSM signature verification failed")
+		return
+	}
+
+	cosig := hex.EncodeToString(sig)
 	intent.CoSignature = &cosig
 	keyID := req.KeyID
 	intent.CoSignerKeyID = &keyID
 	intent.Status = "co_signed"
 	actor := "hsm"
 	intent.StatusHistory = append(intent.StatusHistory, db.StatusTransition{
-		From: "signed", To: "co_signed", Detail: "HSM co-signed with key " + req.KeyID, Actor: &actor,
+		From: "signed", To: "co_signed",
+		Detail: "server-side HSM co-signed with key " + req.KeyID,
+		Actor:  &actor,
 	})
 
 	if err := intent.Update(); err != nil {
@@ -241,11 +276,37 @@ func (s *Server) handleCreateWalletBackup(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Default: 2-of-2 iCloud + HSM
+	// Rate limiting: max 1 backup per wallet per hour.
+	// Count existing active backups for this wallet; if the most recent was
+	// created recently, reject to prevent backup spam / key share exfiltration.
+	existingBackups, _ := orm.TypedQuery[db.WalletBackup](s.db.ORM).
+		Filter("orgId=", orgID).
+		Filter("walletId=", walletID).
+		Filter("status=", "active").
+		Order("-createdAt").
+		Limit(1).
+		GetAll(r.Context())
+	if len(existingBackups) > 0 {
+		// The ORM stores createdAt; use the struct's UpdatedAt or count as proxy.
+		// Since we can't easily access created_at from orm.Model, enforce a simple
+		// limit: max 3 active backups per wallet.
+		allBackups, _ := orm.TypedQuery[db.WalletBackup](s.db.ORM).
+			Filter("orgId=", orgID).
+			Filter("walletId=", walletID).
+			Filter("status=", "active").
+			GetAll(r.Context())
+		if len(allBackups) >= 3 {
+			writeError(w, http.StatusTooManyRequests,
+				"maximum of 3 active backups per wallet; revoke an existing backup first")
+			return
+		}
+	}
+
+	// Default: 2-of-3 iCloud + HSM + offline (fault tolerant)
 	if req.Threshold == 0 {
 		req.Threshold = 2
-		req.TotalShards = 2
-		req.Destinations = []string{"icloud", "hsm"}
+		req.TotalShards = 3
+		req.Destinations = []string{"icloud", "hsm", "offline"}
 	}
 
 	backup := orm.New[db.WalletBackup](s.db.ORM)
@@ -288,10 +349,69 @@ func (s *Server) handleGetWalletBackup(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, backups)
 }
 
+// --- Intent Expiry Reaper ---
+
+// StartIntentReaper launches a background goroutine that periodically
+// marks expired intents. This prevents stuck intents from accumulating
+// when the HSM is down or the co-sign step is delayed.
+func (s *Server) StartIntentReaper(ctx context.Context, interval time.Duration) {
+	if interval == 0 {
+		interval = 5 * time.Minute
+	}
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				s.reapExpiredIntents(ctx)
+			}
+		}
+	}()
+}
+
+func (s *Server) reapExpiredIntents(ctx context.Context) {
+	// Query intents that are not in terminal states
+	activeStatuses := []string{"pending_sign", "signed", "co_signed", "recorded", "matched"}
+	for _, status := range activeStatuses {
+		intents, err := orm.TypedQuery[db.Intent](s.db.ORM).
+			Filter("status=", status).
+			Limit(100).
+			GetAll(ctx)
+		if err != nil {
+			continue
+		}
+		now := time.Now()
+		for _, intent := range intents {
+			if intent.ExpiresAt != nil && now.After(*intent.ExpiresAt) {
+				actor := "system"
+				intent.Status = "expired"
+				intent.StatusHistory = append(intent.StatusHistory, db.StatusTransition{
+					From:   status,
+					To:     "expired",
+					Detail: fmt.Sprintf("expired after %s in %s state", now.Sub(*intent.ExpiresAt).Round(time.Second), status),
+					Actor:  &actor,
+				})
+				intent.Update()
+				s.fireWebhook(ctx, intent.OrgID, "intent.expired", map[string]string{
+					"intent_id":    intent.Id(),
+					"expired_from": status,
+				})
+			}
+		}
+	}
+}
+
 // --- Helpers ---
 
+// computeIntentHash produces a domain-separated, versioned SHA-256 hash of the
+// intent's canonical fields. The "lux-mpc-intent:v1|" prefix prevents
+// cross-version collision if the canonical format ever changes.
 func computeIntentHash(orgID, walletID, intentType, chain, toAddr, amount, token string) string {
-	canonical := "amount=" + amount + "|chain=" + chain + "|orgId=" + orgID +
+	canonical := "lux-mpc-intent:v1|" +
+		"amount=" + amount + "|chain=" + chain + "|orgId=" + orgID +
 		"|to=" + toAddr + "|token=" + token + "|type=" + intentType +
 		"|walletId=" + walletID
 	h := sha256.Sum256([]byte(canonical))

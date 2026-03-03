@@ -10,6 +10,8 @@ const navLinks = [
   { href: '/dashboard' as const, label: 'Dashboard' },
   { href: '/vaults' as const, label: 'Vaults' },
   { href: '/transactions' as const, label: 'Transactions' },
+  { href: '/intents' as const, label: 'Intents' },
+  { href: '/settlements' as const, label: 'Settlements' },
   { href: '/policies' as const, label: 'Policies' },
   { href: '/bridge' as const, label: 'Bridge' },
   { href: '/team' as const, label: 'Team' },
