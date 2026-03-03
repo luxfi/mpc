@@ -46,9 +46,16 @@ type ClusterStatus struct {
 	Version        string `json:"version"`
 }
 
+// HSMProvider abstracts hardware security module operations for co-signing.
+type HSMProvider interface {
+	Sign(ctx context.Context, keyID string, message []byte) ([]byte, error)
+	Verify(ctx context.Context, keyID string, message, signature []byte) (bool, error)
+}
+
 type Server struct {
 	db          *db.Database
 	mpc         MPCBackend
+	hsm         HSMProvider // optional: server-side HSM co-signing
 	txTracker   *txtracker.Tracker
 	jwtSecret   []byte
 	oidcIssuers []string
@@ -289,6 +296,9 @@ func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, l
 		})
 	})
 
+	// Start background intent expiry reaper
+	s.StartIntentReaper(context.Background(), 5*time.Minute)
+
 	s.router = r
 	s.server = &http.Server{
 		Addr:         listenAddr,
@@ -313,6 +323,13 @@ func (s *Server) Start() (*http.Server, <-chan error) {
 		close(errCh)
 	}()
 	return s.server, errCh
+}
+
+// SetHSM configures the server-side HSM provider for intent co-signing.
+// When set, the co-sign endpoint signs with the HSM directly instead of
+// accepting client-submitted signatures (prevents forged co-signatures).
+func (s *Server) SetHSM(hsm HSMProvider) {
+	s.hsm = hsm
 }
 
 // Shutdown gracefully drains connections and stops the server.
