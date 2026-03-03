@@ -30,6 +30,7 @@ const (
 	DefaultStuckTimeout        = 5 * time.Minute
 	DefaultTargetConfirmations = 12
 	MaxPollAttempts            = 720 // 1 hour at 5s
+	ReorgSafetyMargin          = 6  // extra confirmations after finality before stopping
 )
 
 // WebhookFunc is called when transaction state changes occur.
@@ -60,6 +61,10 @@ type trackedTx struct {
 	startedAt time.Time
 	attempts  int
 	cancel    context.CancelFunc
+
+	// Reorg detection: last-seen block data for this tx.
+	lastBlockHash   string
+	lastBlockNumber int64
 }
 
 // Tracker monitors broadcast transactions until they reach finality.
@@ -211,8 +216,61 @@ func (t *Tracker) poll(ctx context.Context, tt *trackedTx, rpc RPCClient, chain 
 			// Try to get receipt
 			receipt, err := rpc.GetTransactionReceipt(ctx, tt.txHash)
 			if err != nil || receipt == nil {
-				continue // not included yet
+				// If we previously saw this tx in a block but now receipt is nil,
+				// it was reorged out of the chain.
+				if tt.lastBlockHash != "" {
+					tx, loadErr := orm.Get[db.Transaction](t.database.ORM, tt.txID)
+					if loadErr == nil {
+						sys := "system"
+						tx.RecordTransition("broadcast",
+							fmt.Sprintf("reorg detected: tx was in block %d (%s) but receipt is now nil",
+								tt.lastBlockNumber, tt.lastBlockHash), &sys)
+						tx.BlockNumber = nil
+						tx.BlockHash = nil
+						tx.Confirmations = 0
+						tx.FinalizedAt = nil
+						tx.FinalizationBlock = nil
+						tx.Update()
+						t.fireWebhook(tt.orgID, "tx.reorged", map[string]string{
+							"tx_id":          tt.txID,
+							"tx_hash":        tt.txHash,
+							"chain":          chain,
+							"former_block":   fmt.Sprintf("%d", tt.lastBlockNumber),
+							"former_hash":    tt.lastBlockHash,
+						})
+					}
+					tt.lastBlockHash = ""
+					tt.lastBlockNumber = 0
+				}
+				continue // not included (yet / anymore)
 			}
+
+			// Reorg detection: block hash changed for the same tx
+			if tt.lastBlockHash != "" && tt.lastBlockHash != receipt.BlockHash {
+				tx, loadErr := orm.Get[db.Transaction](t.database.ORM, tt.txID)
+				if loadErr == nil {
+					sys := "system"
+					tx.RecordTransition("confirming",
+						fmt.Sprintf("reorg: tx moved from block %s to %s (block %d→%d)",
+							tt.lastBlockHash[:12], receipt.BlockHash[:12],
+							tt.lastBlockNumber, receipt.BlockNumber), &sys)
+					blockNum := receipt.BlockNumber
+					tx.BlockNumber = &blockNum
+					blockHash := receipt.BlockHash
+					tx.BlockHash = &blockHash
+					tx.FinalizedAt = nil
+					tx.FinalizationBlock = nil
+					tx.Update()
+					t.fireWebhook(tt.orgID, "tx.reorged", map[string]string{
+						"tx_id":       tt.txID,
+						"tx_hash":     tt.txHash,
+						"chain":       chain,
+						"new_block":   fmt.Sprintf("%d", receipt.BlockNumber),
+					})
+				}
+			}
+			tt.lastBlockHash = receipt.BlockHash
+			tt.lastBlockNumber = receipt.BlockNumber
 
 			// Receipt found — tx is included in a block
 			tx, err := orm.Get[db.Transaction](t.database.ORM, tt.txID)
@@ -294,7 +352,13 @@ func (t *Tracker) poll(ctx context.Context, tt *trackedTx, rpc RPCClient, chain 
 					"block_number":  fmt.Sprintf("%d", *tx.BlockNumber),
 					"confirmations": fmt.Sprintf("%d", confirmations),
 				})
-				return // done tracking
+				// Continue polling for ReorgSafetyMargin more blocks to catch late reorgs
+				// before declaring tracking complete.
+			}
+
+			// After finalization, keep polling for a safety margin to detect late reorgs
+			if tx.FinalizedAt != nil && confirmations >= target+ReorgSafetyMargin {
+				return // truly done: past finalization + safety margin
 			}
 
 			tx.Update()

@@ -109,7 +109,9 @@ func NewIntent(id, orgID, walletID string, intentType IntentType, chain, toAddr,
 	return i
 }
 
-// Hash computes a deterministic SHA-256 hash of the intent's canonical fields.
+// Hash computes a domain-separated, versioned SHA-256 hash of the intent's
+// canonical fields. The "lux-mpc-intent:v1|" prefix provides domain separation
+// and prevents cross-version collision if the canonical format changes.
 // This is the message that gets signed by both the user's MPC wallet and the platform HSM.
 func (i *Intent) Hash() string {
 	// Canonical representation: sorted key=value pairs, pipe-separated.
@@ -124,7 +126,7 @@ func (i *Intent) Hash() string {
 		fmt.Sprintf("walletId=%s", i.WalletID),
 	}
 	sort.Strings(fields)
-	canonical := strings.Join(fields, "|")
+	canonical := "lux-mpc-intent:v1|" + strings.Join(fields, "|")
 
 	h := sha256.Sum256([]byte(canonical))
 	return hex.EncodeToString(h[:])
