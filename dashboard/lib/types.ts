@@ -416,3 +416,151 @@ export interface TransactionFilters {
   status?: string
   chain?: string
 }
+
+// --- Transaction Lifecycle (enhanced fields from pkg/db/models.go) ---
+
+export interface StatusTransition {
+  from: string
+  to: string
+  timestamp: string
+  detail?: string
+  block_number?: number | null
+  tx_hash?: string | null
+  actor?: string | null
+}
+
+export interface TransactionDetail extends Transaction {
+  broadcast_hash?: string | null
+  nonce?: number | null
+  block_number?: number | null
+  block_hash?: string | null
+  receipt_status?: number | null
+  gas_used?: string | null
+  revert_reason?: string | null
+  confirmations?: number
+  target_confirmations?: number
+  finalized_at?: string | null
+  finalization_block?: number | null
+  status_history?: StatusTransition[]
+  intent_id?: string | null
+  settlement_tx_hash?: string | null
+  settled_at?: string | null
+}
+
+// --- Intents ---
+
+export type IntentType = 'buy' | 'sell' | 'transfer' | 'bridge'
+export type IntentStatus = 'pending_sign' | 'signed' | 'co_signed' | 'recorded' | 'matched' | 'settling' | 'settled' | 'verified' | 'expired' | 'failed'
+
+export interface Intent {
+  id: string
+  org_id: string
+  wallet_id: string
+  intent_type: IntentType
+  chain: string
+  to_address?: string | null
+  amount: string
+  token?: string | null
+  intent_hash: string
+  signature?: string | null
+  co_signature?: string | null
+  co_signer_key_id?: string | null
+  on_chain_tx_hash?: string | null
+  recorded_at?: string | null
+  recorded_block?: number | null
+  match_id?: string | null
+  matched_at?: string | null
+  status: IntentStatus
+  expires_at?: string | null
+  status_history?: StatusTransition[]
+  created_at: string
+}
+
+export interface CreateIntentRequest {
+  wallet_id: string
+  intent_type: IntentType
+  chain: string
+  to_address?: string
+  amount: string
+  token?: string
+}
+
+export interface SignIntentRequest {
+  signature: string
+}
+
+export interface CoSignIntentRequest {
+  key_id: string // HSM key ID; server calls HSM directly (no client-submitted signature)
+}
+
+// --- Settlements ---
+
+export type SettlementStatus = 'pending' | 'hsm_signing' | 'broadcast' | 'confirming' | 'finalized' | 'verified' | 'failed'
+
+export interface HSMSignature {
+  signer_id: string
+  key_id: string
+  signature: string
+  provider: string
+  signed_at: string
+}
+
+export interface Settlement {
+  id: string
+  org_id: string
+  intent_id: string
+  match_id?: string | null
+  settlement_tx_hash?: string | null
+  finalize_tx_hash?: string | null
+  finalized_block_number?: number | null
+  hsm_signatures?: HSMSignature[]
+  transfer_agency_hash?: string | null
+  transfer_agency_verified: boolean
+  transfer_agency_verified_at?: string | null
+  matched_at?: string | null
+  signed_at?: string | null
+  broadcast_at?: string | null
+  finalized_at?: string | null
+  verified_at?: string | null
+  status: SettlementStatus
+  status_history?: StatusTransition[]
+  created_at: string
+}
+
+// --- Wallet Backup ---
+
+export type ShardDestination = 'icloud' | 'hsm' | 'offline' | 'custody' | 'device'
+
+export interface BackupShard {
+  index: number
+  destination: ShardDestination
+  storage_ref?: string | null
+  created_at: string
+  verified_at?: string | null
+}
+
+export interface WalletBackup {
+  id: string
+  org_id: string
+  wallet_id: string
+  backup_id: string
+  threshold: number
+  total_shards: number
+  shards?: BackupShard[]
+  status: string
+  created_at: string
+}
+
+export interface CreateWalletBackupRequest {
+  threshold?: number
+  total_shards?: number
+  destinations?: ShardDestination[]
+}
+
+export interface IntentFilters {
+  status?: string
+}
+
+export interface SettlementFilters {
+  status?: string
+}

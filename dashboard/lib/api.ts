@@ -45,6 +45,15 @@ import type {
   AuditEntry,
   ClusterStatus,
   InfoResponse,
+  Intent,
+  CreateIntentRequest,
+  SignIntentRequest,
+  CoSignIntentRequest,
+  IntentFilters,
+  Settlement,
+  SettlementFilters,
+  WalletBackup,
+  CreateWalletBackupRequest,
 } from './types'
 
 export class APIError extends Error {
@@ -464,6 +473,54 @@ export class APIClient {
 
   async listBridgeNetworks(): Promise<any[]> {
     return this.get('/bridge/networks')
+  }
+
+  // --- Intents ---
+
+  async createIntent(req: CreateIntentRequest): Promise<Intent> {
+    return this.post<Intent>('/intents', req)
+  }
+
+  async listIntents(filters?: IntentFilters): Promise<Intent[]> {
+    const params = new URLSearchParams()
+    if (filters?.status) params.set('status', filters.status)
+    const qs = params.toString()
+    return this.get<Intent[]>(`/intents${qs ? '?' + qs : ''}`)
+  }
+
+  async getIntent(id: string): Promise<Intent> {
+    return this.get<Intent>(`/intents/${id}`)
+  }
+
+  async signIntent(id: string, req: SignIntentRequest): Promise<Intent> {
+    return this.post<Intent>(`/intents/${id}/sign`, req)
+  }
+
+  async coSignIntent(id: string, req: CoSignIntentRequest): Promise<Intent> {
+    return this.post<Intent>(`/intents/${id}/co-sign`, req)
+  }
+
+  // --- Settlements ---
+
+  async listSettlements(filters?: SettlementFilters): Promise<Settlement[]> {
+    const params = new URLSearchParams()
+    if (filters?.status) params.set('status', filters.status)
+    const qs = params.toString()
+    return this.get<Settlement[]>(`/settlements${qs ? '?' + qs : ''}`)
+  }
+
+  async getSettlement(id: string): Promise<Settlement> {
+    return this.get<Settlement>(`/settlements/${id}`)
+  }
+
+  // --- Wallet Backup ---
+
+  async createWalletBackup(walletId: string, req?: CreateWalletBackupRequest): Promise<WalletBackup> {
+    return this.post<WalletBackup>(`/wallets/${walletId}/backup`, req ?? {})
+  }
+
+  async getWalletBackups(walletId: string): Promise<WalletBackup[]> {
+    return this.get<WalletBackup[]>(`/wallets/${walletId}/backup`)
   }
 
   // --- Status & Info ---
