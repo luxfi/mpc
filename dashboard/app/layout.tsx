@@ -1,12 +1,16 @@
 import type { Metadata } from 'next'
+import { headers } from 'next/headers'
 import { GeistSans } from 'geist/font/sans'
 import { GeistMono } from 'geist/font/mono'
+import { getBranding } from '@/lib/branding'
 import { Providers } from './providers'
 import './globals.css'
 
-export const metadata: Metadata = {
-  title: 'Lux MPC',
-  description: 'Multi-Party Computation Wallet Platform by Lux Network',
+export async function generateMetadata(): Promise<Metadata> {
+  const h = await headers()
+  const host = h.get('host') ?? 'mpc.lux.network'
+  const b = getBranding(host)
+  return { title: b.brand, description: b.description }
 }
 
 export default function RootLayout({

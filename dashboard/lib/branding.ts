@@ -1,11 +1,10 @@
-'use client'
-
-import { useMemo, useSyncExternalStore } from 'react'
-
 export interface Branding {
   brand: string
   logoText: string
   description: string
+  iamUrl: string
+  iamClientId: string
+  iamLabel: string
 }
 
 export const brandingConfig: Record<string, Branding> = {
@@ -13,38 +12,40 @@ export const brandingConfig: Record<string, Branding> = {
     brand: 'Lux MPC',
     logoText: 'Lux MPC',
     description: 'Multi-Party Computation Wallet Platform by Lux Network',
+    iamUrl: 'https://lux.id',
+    iamClientId: 'lux-mpc',
+    iamLabel: 'Lux ID',
+  },
+  'mpc.pars.network': {
+    brand: 'Pars MPC',
+    logoText: 'Pars MPC',
+    description: 'Multi-Party Computation Wallet Platform by Pars Network',
+    iamUrl: 'https://pars.id',
+    iamClientId: 'pars-mpc',
+    iamLabel: 'Pars ID',
+  },
+  'mpc.zoo.network': {
+    brand: 'Zoo MPC',
+    logoText: 'Zoo MPC',
+    description: 'Multi-Party Computation Wallet Platform by Zoo Network',
+    iamUrl: 'https://id.zoo.network',
+    iamClientId: 'zoo-mpc',
+    iamLabel: 'Zoo ID',
   },
   'cloud.lux.network': {
     brand: 'Lux Cloud',
     logoText: 'Lux Cloud',
     description: 'Cloud Wallet Management by Lux Network',
+    iamUrl: 'https://lux.id',
+    iamClientId: 'lux-mpc',
+    iamLabel: 'Lux ID',
   },
 }
 
 const defaultBranding: Branding = brandingConfig['mpc.lux.network']
 
-/** Pure function for server-side use. Pass the hostname from request headers. */
+/** Pure function — works in both server and client contexts. */
 export function getBranding(hostname: string): Branding {
-  // Strip port if present (e.g. localhost:3000 -> localhost)
   const host = hostname.split(':')[0]
   return brandingConfig[host] ?? defaultBranding
-}
-
-// Subscribe to nothing -- hostname doesn't change during a session.
-function subscribe() {
-  return () => {}
-}
-
-function getHostname() {
-  return typeof window !== 'undefined' ? window.location.hostname : ''
-}
-
-function getServerHostname() {
-  return ''
-}
-
-/** Client hook. Reads window.location.hostname once and returns branding. */
-export function useBranding(): Branding {
-  const hostname = useSyncExternalStore(subscribe, getHostname, getServerHostname)
-  return useMemo(() => getBranding(hostname), [hostname])
 }
