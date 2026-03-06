@@ -1,0 +1,113 @@
+# NetworkPolicies for lux-mpc namespace
+# MPC nodes hold key shares — restrict lateral movement
+---
+# MPC node ingress: only allow p2p from other MPC nodes, API from mpc-api
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mpc-node-ingress
+  namespace: lux-mpc
+spec:
+  podSelector:
+    matchLabels:
+      app: mpc-node
+  policyTypes:
+  - Ingress
+  ingress:
+  # mpc-node <-> mpc-node: consensus p2p
+  - from:
+    - podSelector:
+        matchLabels:
+          app: mpc-node
+    ports:
+    - protocol: TCP
+      port: 9651
+    - protocol: TCP
+      port: 9800
+  # mpc-api -> mpc-node: dashboard API proxy
+  - from:
+    - podSelector:
+        matchLabels:
+          app: mpc-api
+    ports:
+    - protocol: TCP
+      port: 8081
+    - protocol: TCP
+      port: 9800
+  # probes from kubelet (must allow)
+  - ports:
+    - protocol: TCP
+      port: 9800
+---
+# MPC node egress: unrestricted (needs S3, postgres, peers)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mpc-node-egress
+  namespace: lux-mpc
+spec:
+  podSelector:
+    matchLabels:
+      app: mpc-node
+  policyTypes:
+  - Egress
+  egress:
+  - {}
+---
+# MPC API ingress: only from ingress controller and dashboard
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mpc-api-ingress
+  namespace: lux-mpc
+spec:
+  podSelector:
+    matchLabels:
+      app: mpc-api
+  policyTypes:
+  - Ingress
+  ingress:
+  # From Traefik ingress (lux-system namespace)
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: lux-system
+    ports:
+    - protocol: TCP
+      port: 8081
+  # From dashboard
+  - from:
+    - podSelector:
+        matchLabels:
+          app: mpc-dashboard
+    ports:
+    - protocol: TCP
+      port: 8081
+  # Probes
+  - ports:
+    - protocol: TCP
+      port: 8081
+---
+# Dashboard: only from ingress
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mpc-dashboard-ingress
+  namespace: lux-mpc
+spec:
+  podSelector:
+    matchLabels:
+      app: mpc-dashboard
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: lux-system
+    ports:
+    - protocol: TCP
+      port: 3000
+  - ports:
+    - protocol: TCP
+      port: 3000
