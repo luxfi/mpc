@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { Nav } from '@/components/layout/nav'
 import { StatusBadge } from '@/components/common/status-badge'
 import { api } from '@/lib/api'
+import { isWebAuthnSupported, startAuthentication } from '@/lib/webauthn'
 import type { Transaction } from '@/lib/types'
 
 export default function TransactionDetailPage() {
@@ -14,6 +15,9 @@ export default function TransactionDetailPage() {
   const [error, setError] = useState('')
   const [acting, setActing] = useState(false)
   const [rejectReason, setRejectReason] = useState('')
+  const [hasWebAuthn, setHasWebAuthn] = useState(false)
+
+  useEffect(() => { setHasWebAuthn(isWebAuthnSupported()) }, [])
 
   useEffect(() => {
     if (!id) return
@@ -29,6 +33,21 @@ export default function TransactionDetailPage() {
       setTx(updated)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Approval failed')
+    } finally {
+      setActing(false)
+    }
+  }
+
+  async function handleBiometricApprove() {
+    setActing(true)
+    setError('')
+    try {
+      const assertion = await startAuthentication(id)
+      await api.webauthnVerify(id, assertion)
+      const updated = await api.getTransaction(id)
+      setTx(updated)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Biometric approval failed')
     } finally {
       setActing(false)
     }
@@ -194,10 +213,19 @@ export default function TransactionDetailPage() {
               <div className="rounded-lg border border-border bg-card p-6 space-y-4">
                 <h2 className="text-sm font-medium uppercase tracking-wider text-muted-foreground">Actions</h2>
                 <div className="flex flex-wrap items-end gap-4">
+                  {hasWebAuthn && (
+                    <button
+                      onClick={handleBiometricApprove}
+                      disabled={acting}
+                      className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                    >
+                      {acting ? 'Processing...' : 'Approve with Biometrics'}
+                    </button>
+                  )}
                   <button
                     onClick={handleApprove}
                     disabled={acting}
-                    className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                    className="rounded-md border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent disabled:opacity-50"
                   >
                     {acting ? 'Processing...' : 'Approve'}
                   </button>

@@ -17,6 +17,11 @@ const settingsLinks = [
     title: 'Webhooks',
     description: 'Configure webhook endpoints for event notifications.',
   },
+  {
+    href: '/settings/devices' as const,
+    title: 'Devices & Biometrics',
+    description: 'Register Face ID, Touch ID, or YubiKey for transaction approval.',
+  },
 ]
 
 export default function SettingsPage() {
