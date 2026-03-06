@@ -21,11 +21,12 @@ function CallbackInner() {
       return
     }
 
-    // Implicit flow: access_token is in the URL hash fragment
+    // Implicit flow: access_token may be in the hash fragment or query string
+    // (Casdoor returns it in the query string, standard OAuth2 uses hash)
     const hash = window.location.hash.substring(1)
-    const params = new URLSearchParams(hash)
-    const accessToken = params.get('access_token')
-    const state = params.get('state')
+    const hashParams = new URLSearchParams(hash)
+    const accessToken = hashParams.get('access_token') ?? searchParams.get('access_token')
+    const state = hashParams.get('state') ?? searchParams.get('state')
 
     if (!accessToken) {
       setError('No access token received from identity provider')
