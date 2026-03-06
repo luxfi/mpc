@@ -120,10 +120,21 @@ func New(config *Config) (*Transport, error) {
 
 // Start starts the transport (listener and peer connections)
 func (t *Transport) Start(ctx context.Context) error {
-	// Start listener
-	listener, err := net.Listen("tcp", t.config.ListenAddr)
-	if err != nil {
-		return fmt.Errorf("failed to listen: %w", err)
+	// Start listener with TLS 1.3 + PQ hybrid key exchange (X25519MLKEM768)
+	var listener net.Listener
+	var err error
+	if t.config.PrivateKey != nil && t.config.PublicKey != nil {
+		listener, err = ListenTLS(t.config.ListenAddr, t.config.NodeID, t.config.PrivateKey, t.config.PublicKey)
+		if err != nil {
+			return fmt.Errorf("failed to listen (TLS): %w", err)
+		}
+		logger.Info("Transport listening with PQ TLS 1.3", "addr", listener.Addr().String())
+	} else {
+		listener, err = net.Listen("tcp", t.config.ListenAddr)
+		if err != nil {
+			return fmt.Errorf("failed to listen: %w", err)
+		}
+		logger.Warn("Transport listening WITHOUT TLS (no identity keys)", "addr", listener.Addr().String())
 	}
 	t.listener = listener
 
@@ -219,7 +230,13 @@ func (t *Transport) connectToPeer(ctx context.Context, nodeID, addr string) {
 			continue
 		}
 
-		conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
+		var conn net.Conn
+		var err error
+		if t.config.PrivateKey != nil && t.config.PublicKey != nil {
+			conn, err = DialTLS(addr, t.config.NodeID, t.config.PrivateKey, t.config.PublicKey, 10*time.Second)
+		} else {
+			conn, err = net.DialTimeout("tcp", addr, 10*time.Second)
+		}
 		if err != nil {
 			logger.Warn("Failed to connect to peer", "nodeID", nodeID, "addr", addr, "err", err)
 			time.Sleep(backoff)
