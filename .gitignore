@@ -32,10 +32,15 @@ logs/
 # Docker build artifacts
 .docker-build/
 
-# Dashboard build
+# Dashboard build (legacy Next.js)
 dashboard/node_modules/
 dashboard/.next/
 dashboard/package-lock.json
+
+# Embedded UI build
+ui/node_modules/
+ui/dist/
+ui/pnpm-lock.yaml
 
 # Environment
 .env
