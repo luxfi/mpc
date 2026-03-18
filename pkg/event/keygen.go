@@ -7,9 +7,10 @@ const (
 )
 
 type KeygenResultEvent struct {
-	WalletID    string `json:"wallet_id"`
-	ECDSAPubKey []byte `json:"ecdsa_pub_key"`
-	EDDSAPubKey []byte `json:"eddsa_pub_key"`
+	WalletID      string `json:"wallet_id"`
+	ECDSAPubKey   []byte `json:"ecdsa_pub_key"`
+	EDDSAPubKey   []byte `json:"eddsa_pub_key"`
+	SR25519PubKey []byte `json:"sr25519_pub_key,omitempty"`
 
 	ResultType  ResultType `json:"result_type"`
 	ErrorReason string     `json:"error_reason"`
