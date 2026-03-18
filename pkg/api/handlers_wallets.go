@@ -49,8 +49,8 @@ func (s *Server) handleCreateWallet(w http.ResponseWriter, r *http.Request) {
 	if req.Protocol == "" {
 		req.Protocol = "cggmp21"
 	}
-	if req.Protocol != "cggmp21" && req.Protocol != "frost" && req.Protocol != "lss" {
-		writeError(w, http.StatusBadRequest, "invalid protocol: must be cggmp21, frost, or lss")
+	if req.Protocol != "cggmp21" && req.Protocol != "frost" && req.Protocol != "lss" && req.Protocol != "sr25519" {
+		writeError(w, http.StatusBadRequest, "invalid protocol: must be cggmp21, frost, lss, or sr25519")
 		return
 	}
 

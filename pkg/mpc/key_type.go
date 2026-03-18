@@ -5,4 +5,5 @@ type KeyType string
 const (
 	KeyTypeSecp256k1 KeyType = "secp256k1"
 	KeyTypeEd25519   KeyType = "ed25519"
+	KeyTypeSR25519   KeyType = "sr25519"
 )

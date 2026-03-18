@@ -420,10 +420,21 @@ make e2e-test
 | Ethereum/EVM | ✅ Full | secp256k1 | CGGMP21/LSS |
 | XRPL (XRP Ledger) | ✅ Full | secp256k1 | CGGMP21/LSS |
 | Lux Network | ✅ Full | secp256k1 | CGGMP21/LSS |
+| Polkadot/Kusama | ✅ Full | ristretto255 | FROST (SR25519) |
 | Solana | ⚠️ Partial | Ed25519 | FROST (Taproot mode) |
 | TON | ⚠️ Partial | Ed25519 | FROST (Taproot mode) |
 
 **Note**: Solana/TON use Ed25519 natively but our FROST implementation produces Taproot/BIP-340 signatures. Native Ed25519 support requires implementing the Ed25519 FROST variant.
+
+### SR25519 (Ristretto255/Schnorrkel) Implementation
+
+SR25519 threshold signing uses the generic FROST protocol over the ristretto255 prime-order group:
+- **Keygen**: `frost.Keygen(Ristretto255{}, ...)` produces `*frost.Config` with ristretto255 curve types
+- **Signing**: `frost.Sign(config, signers, message)` with signing context prepended to message
+- **Signing context**: Default "substrate", configurable per-session (Schnorrkel convention)
+- **Storage**: Key shares stored with `sr25519:` prefix in BadgerDB, serialized via CBOR
+- **Signature format**: R (32 bytes, ristretto point) || z (32 bytes, ristretto scalar) = 64 bytes
+- **Ristretto255 curve types**: Implemented locally in `pkg/mpc/ristretto255.go` using `gtank/ristretto255` library, satisfying the threshold library's `curve.Curve` interface. Will be replaced when threshold library publishes native Ristretto255 support.
 
 ## 🎯 Best Practices
 

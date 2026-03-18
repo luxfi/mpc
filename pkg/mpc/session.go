@@ -26,6 +26,7 @@ const (
 	SessionTypeCGGMP21 SessionType = "session_cggmp21"
 	SessionTypeECDSA   SessionType = "ecdsa"
 	SessionTypeEDDSA   SessionType = "eddsa"
+	SessionTypeSR25519 SessionType = "sr25519"
 )
 
 var (
