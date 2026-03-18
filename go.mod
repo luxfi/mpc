@@ -5,6 +5,7 @@ go 1.26.1
 require (
 	filippo.io/age v1.3.1
 	github.com/avast/retry-go v3.0.0+incompatible
+	github.com/cronokirby/saferith v0.33.0
 	github.com/decred/dcrd/dcrec/edwards/v2 v2.0.4
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.0
 	github.com/fxamacker/cbor/v2 v2.9.0
@@ -12,6 +13,7 @@ require (
 	github.com/go-chi/cors v1.2.2
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
+	github.com/gtank/ristretto255 v0.2.0
 	github.com/hanzoai/kv-go/v9 v9.17.2-hanzo.1
 	github.com/hanzoai/orm v0.3.2
 	github.com/hashicorp/consul/api v1.33.2
@@ -33,8 +35,8 @@ require (
 	github.com/spf13/viper v1.21.0
 	github.com/stretchr/testify v1.11.1
 	github.com/urfave/cli/v3 v3.6.2
-	golang.org/x/crypto v0.48.0
-	golang.org/x/term v0.40.0
+	golang.org/x/crypto v0.49.0
+	golang.org/x/term v0.41.0
 )
 
 require (
@@ -49,7 +51,6 @@ require (
 	github.com/cenkalti/backoff v2.2.1+incompatible // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cloudflare/circl v1.6.3 // indirect
-	github.com/cronokirby/saferith v0.33.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/decred/dcrd/crypto/rand v1.0.1 // indirect
 	github.com/dgraph-io/ristretto/v2 v2.4.0 // indirect
@@ -65,7 +66,6 @@ require (
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/gorilla/rpc v1.2.1 // indirect
 	github.com/grandcat/zeroconf v1.0.0 // indirect
-	github.com/gtank/ristretto255 v0.2.0 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/hashicorp/go-hclog v1.6.3 // indirect
@@ -135,10 +135,10 @@ require (
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/exp v0.0.0-20260212183809-81e46e3db34a // indirect
 	golang.org/x/mod v0.33.0 // indirect
-	golang.org/x/net v0.50.0 // indirect
-	golang.org/x/sync v0.19.0 // indirect
-	golang.org/x/sys v0.41.0 // indirect
-	golang.org/x/text v0.34.0 // indirect
+	golang.org/x/net v0.52.0 // indirect
+	golang.org/x/sync v0.20.0 // indirect
+	golang.org/x/sys v0.42.0 // indirect
+	golang.org/x/text v0.35.0 // indirect
 	golang.org/x/tools v0.42.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
