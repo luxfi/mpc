@@ -53,14 +53,15 @@ type HSMProvider interface {
 }
 
 type Server struct {
-	db          *db.Database
-	mpc         MPCBackend
-	hsm         HSMProvider // optional: server-side HSM co-signing
-	txTracker   *txtracker.Tracker
-	jwtSecret   []byte
-	oidcIssuers []string
-	router      chi.Router
-	server      *http.Server
+	db           *db.Database
+	mpc          MPCBackend
+	hsm          HSMProvider // optional: server-side HSM co-signing
+	txTracker    *txtracker.Tracker
+	jwtSecret    []byte
+	oidcIssuers  []string
+	router       chi.Router
+	server       *http.Server
+	replayGuard  *replayGuard
 }
 
 func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, listenAddr string, oidcIssuers ...string) *Server {
@@ -85,6 +86,7 @@ func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, l
 		txTracker:   tracker,
 		jwtSecret:   []byte(jwtSecret),
 		oidcIssuers: oidcIssuers,
+		replayGuard: newReplayGuard(),
 	}
 
 	r := chi.NewRouter()

@@ -107,7 +107,7 @@ func newEdDSAReshareSession(
 			keyinfoStore:       keyinfoStore,
 			resultQueue:        resultQueue,
 			logger:             zerolog.New(utils.ZerologConsoleWriter()).With().Timestamp().Logger(),
-			processing:         make(map[string]bool),
+			processing:         newDedupMap(),
 			processingLock:     sync.Mutex{},
 			topicComposer: &TopicComposer{
 				ComposeBroadcastTopic: func() string {
@@ -252,12 +252,17 @@ func (s *eddsaReshareSession) ProcessInboundMessage(msgBytes []byte) {
 		return
 	}
 
-	// Deduplication check using body hash
-	msgHashStr := fmt.Sprintf("%x", utils.GetMessageHash(inboundMessage.Body))
-	if s.processing[msgHashStr] {
+	// Verify Ed25519 signature on the wire message
+	if err := s.verifyInboundSignature(inboundMessage); err != nil {
+		s.logger.Warn().Err(err).Str("sender", inboundMessage.SenderNodeID).Msg("Dropping message with invalid signature")
 		return
 	}
-	s.processing[msgHashStr] = true
+
+	// Deduplication check using body hash
+	msgHashStr := fmt.Sprintf("%x", utils.GetMessageHash(inboundMessage.Body))
+	if s.processing.seen(msgHashStr) {
+		return
+	}
 
 	if s.party == nil {
 		s.logger.Warn().Msg("EdDSA reshare: protocol party not initialized, dropping message")

@@ -25,6 +25,8 @@ func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request)
 		Amount    string `json:"amount"`
 		Token     string `json:"token,omitempty"`
 		RawTx     string `json:"raw_tx,omitempty"`
+		RequestID string `json:"request_id"`
+		Timestamp int64  `json:"timestamp"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -32,6 +34,12 @@ func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request)
 	}
 	if req.WalletID == "" || req.Chain == "" || req.TxType == "" {
 		writeError(w, http.StatusBadRequest, "wallet_id, tx_type, and chain are required")
+		return
+	}
+
+	// Replay protection: require request_id and check freshness
+	if reason := s.replayGuard.check(req.RequestID, req.Timestamp); reason != "" {
+		writeError(w, http.StatusConflict, reason)
 		return
 	}
 

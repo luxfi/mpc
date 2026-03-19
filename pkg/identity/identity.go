@@ -34,9 +34,11 @@ type Store interface {
 	// GetPublicKey retrieves a node's public key by its ID
 	GetPublicKey(nodeID string) ([]byte, error)
 	VerifyInitiatorMessage(msg types.InitiatorMessage) error
-	// Legacy methods - commented out as TssMessage is no longer used
-	// SignMessage(msg *types.TssMessage) ([]byte, error)
-	// VerifyMessage(msg *types.TssMessage) error
+	// SignWireMessage signs a protocol wire message with this node's Ed25519 key.
+	SignWireMessage(msg *types.Message)
+	// VerifyWireMessage verifies a protocol wire message's Ed25519 signature
+	// using the sender's public key looked up by SenderNodeID.
+	VerifyWireMessage(msg *types.Message) error
 }
 
 // fileStore implements the Store interface using the filesystem
@@ -219,48 +221,28 @@ func (s *fileStore) GetPublicKey(nodeID string) ([]byte, error) {
 	return nil, fmt.Errorf("public key not found for node ID: %s", nodeID)
 }
 
-// Legacy methods - commented out as TssMessage is no longer used
-/*
-func (s *fileStore) SignMessage(msg *types.TssMessage) ([]byte, error) {
-	// Get deterministic bytes for signing
-	msgBytes, err := msg.MarshalForSigning()
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal message for signing: %w", err)
-	}
-
-	signature := ed25519.Sign(s.privateKey, msgBytes)
-	return signature, nil
+// SignWireMessage signs a wire message with this node's Ed25519 private key.
+func (s *fileStore) SignWireMessage(msg *types.Message) {
+	msg.Sign(ed25519.PrivateKey(s.privateKey))
 }
 
-// VerifyMessage verifies a TSS message's signature using the sender's public key
-func (s *fileStore) VerifyMessage(msg *types.TssMessage) error {
-	if msg.Signature == nil {
+// VerifyWireMessage verifies a wire message's Ed25519 signature using the
+// sender's public key looked up by SenderNodeID.
+func (s *fileStore) VerifyWireMessage(msg *types.Message) error {
+	if len(msg.Signature) == 0 {
 		return fmt.Errorf("message has no signature")
 	}
-
-	// Get the sender's NodeID
-	senderNodeID := partyIDToNodeID(msg.From)
-
-	// Get the sender's public key
-	publicKey, err := s.GetPublicKey(senderNodeID)
+	nodeID := msg.SenderNodeID
+	if nodeID == "" {
+		// Fall back to extracting from SenderID (party ID format "nodeID:purpose:version")
+		nodeID = msg.SenderID
+	}
+	publicKey, err := s.GetPublicKey(nodeID)
 	if err != nil {
-		return fmt.Errorf("failed to get sender's public key: %w", err)
+		return fmt.Errorf("failed to get sender's public key for node %s: %w", nodeID, err)
 	}
-
-	// Get deterministic bytes for verification
-	msgBytes, err := msg.MarshalForSigning()
-	if err != nil {
-		return fmt.Errorf("failed to marshal message for verification: %w", err)
-	}
-
-	// Verify the signature
-	if !ed25519.Verify(publicKey, msgBytes, msg.Signature) {
-		return fmt.Errorf("invalid signature")
-	}
-
-	return nil
+	return msg.Verify(ed25519.PublicKey(publicKey))
 }
-*/
 
 // VerifyInitiatorMessage verifies that a message was signed by the known initiator
 func (s *fileStore) VerifyInitiatorMessage(msg types.InitiatorMessage) error {

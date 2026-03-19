@@ -66,7 +66,7 @@ func newFROSTKeygenSession(
 			keyinfoStore:       keyinfoStore,
 			resultQueue:        resultQueue,
 			logger:             zerolog.New(utils.ZerologConsoleWriter()).With().Timestamp().Logger(),
-			processing:         make(map[string]bool),
+			processing:         newDedupMap(),
 			processingLock:     sync.Mutex{},
 			topicComposer: &TopicComposer{
 				ComposeBroadcastTopic: func() string {
@@ -145,8 +145,8 @@ func (s *frostKeygenSession) Init() {
 	startFunc := frost.KeygenTaproot(s.selfPartyID, s.partyIDs, s.threshold)
 	s.logger.Info().Msg("[FROST] KeygenTaproot start function created")
 
-	// Create handler with proper context, logging, and session ID
-	ctx := context.Background()
+	// Create handler with timeout context for DKG operations
+	ctx, cancel := context.WithTimeout(context.Background(), KeygenTimeout)
 	s.logger.Info().Msg("[FROST] Creating protocol handler")
 	handler, err := protocol.NewHandler(
 		ctx,
@@ -157,6 +157,7 @@ func (s *frostKeygenSession) Init() {
 		protocol.DefaultConfig(),
 	)
 	if err != nil {
+		cancel()
 		s.logger.Error().Err(err).Msg("[FROST] ERROR: Failed to create handler")
 		s.errCh <- err
 		return
@@ -167,6 +168,22 @@ func (s *frostKeygenSession) Init() {
 
 	// Start message handling goroutine
 	go s.handleProtocolMessages()
+
+	// Timeout watchdog
+	go func() {
+		<-ctx.Done()
+		cancel()
+		if ctx.Err() == context.DeadlineExceeded {
+			s.logger.Error().
+				Str("walletID", s.walletID).
+				Dur("timeout", KeygenTimeout).
+				Msg("FROST keygen session timed out")
+			select {
+			case s.externalFinishChan <- "":
+			default:
+			}
+		}
+	}()
 
 	s.logger.Info().
 		Str("partyID", string(s.selfPartyID)).
@@ -277,12 +294,17 @@ func (s *frostKeygenSession) ProcessInboundMessage(msgBytes []byte) {
 		return
 	}
 
-	// Deduplication check using message body hash
-	msgHashStr := fmt.Sprintf("%x", utils.GetMessageHash(inboundMessage.Body))
-	if s.processing[msgHashStr] {
+	// Verify Ed25519 signature on the wire message
+	if err := s.verifyInboundSignature(inboundMessage); err != nil {
+		s.logger.Warn().Err(err).Str("sender", inboundMessage.SenderNodeID).Msg("Dropping message with invalid signature")
 		return
 	}
-	s.processing[msgHashStr] = true
+
+	// Deduplication check using message body hash
+	msgHashStr := fmt.Sprintf("%x", utils.GetMessageHash(inboundMessage.Body))
+	if s.processing.seen(msgHashStr) {
+		return
+	}
 
 	// Deserialize the full protocol message from the body
 	protoMsg := &protocol.Message{}

@@ -261,6 +261,87 @@ func (p *Node) CreateSR25519SignSession(
 	return session, nil
 }
 
+// CreateBLSKeyGenSession creates a BLS threshold keygen session
+func (p *Node) CreateBLSKeyGenSession(
+	walletID string,
+	threshold int,
+	resultQueue messaging.MessageQueue,
+) (BLSKeygenSession, error) {
+	if !p.peerRegistry.ArePeersReady() {
+		return nil, fmt.Errorf(
+			"peers are not ready yet. ready: %d, expected: %d",
+			p.peerRegistry.GetReadyPeersCount(),
+			len(p.peerIDs)+1,
+		)
+	}
+
+	readyPeerIDs := p.peerRegistry.GetReadyPeersIncludeSelf()
+	// BLS uses version 0 for raw party IDs without suffixes
+	selfPartyID, allPartyIDs := p.generatePartyIDs(PurposeKeygen, readyPeerIDs, 0)
+
+	session := newBLSKeygenSession(
+		walletID,
+		p.pubSub,
+		selfPartyID,
+		allPartyIDs,
+		threshold,
+		p.kvstore,
+		p.keyinfoStore,
+		resultQueue,
+		p.identityStore,
+	)
+
+	// Note: Init() is called by the caller (keygen handler)
+	return session, nil
+}
+
+// CreateBLSSignSession creates a BLS threshold signing session
+func (p *Node) CreateBLSSignSession(
+	sessionID string,
+	walletID string,
+	messageHash []byte,
+	signerPeerIDs []string,
+	resultQueue messaging.MessageQueue,
+) (BLSSignSession, error) {
+	// Check if we have enough signers
+	keyInfo, err := p.keyinfoStore.Get(walletID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get key info: %w", err)
+	}
+
+	if len(signerPeerIDs) < keyInfo.Threshold+1 {
+		return nil, ErrNotEnoughParticipants
+	}
+
+	// Check if this node is in the signer list
+	if !contains(signerPeerIDs, p.nodeID) {
+		return nil, ErrNotInParticipantList
+	}
+
+	// Generate party IDs for signers
+	// BLS uses version 0 for raw party IDs without suffixes
+	selfPartyID, signerPartyIDs := p.generatePartyIDs(PurposeKeygen, signerPeerIDs, 0)
+
+	session, err := newBLSSigningSession(
+		sessionID,
+		walletID,
+		messageHash,
+		p.pubSub,
+		selfPartyID,
+		signerPartyIDs,
+		p.kvstore,
+		p.keyinfoStore,
+		resultQueue,
+		p.identityStore,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// Note: Init() is called by the caller (sign handler)
+	return session, nil
+}
+
 func (p *Node) CreateSignSession(
 	sessionID string,
 	walletID string,

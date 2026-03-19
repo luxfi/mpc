@@ -21,7 +21,7 @@ This document provides comprehensive guidance for AI assistants working with the
 - 1 postgres per cluster (MPC gets `mpc_api` db, bridge gets `bridge` db)
 - 1 valkey/redis per cluster for KV cache
 - 1 S3 bucket with org-prefixed paths for all backups
-- All secrets via KMS (NOT plaintext in env vars) — FUTURE WORK
+- ZapDB passwords via HSM PasswordProvider (`--hsm-provider=aws|gcp|azure|env|file`, default `env` for backward compat). Both legacy and consensus modes use `resolveZapDBPassword()` in `cmd/mpcd/main.go`.
 - Customer-controlled encryption: each org's ZapDB encrypted with org's KMS key — FUTURE WORK
 
 ### ORM Filter Behavior

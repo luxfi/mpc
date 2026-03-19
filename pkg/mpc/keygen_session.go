@@ -73,7 +73,7 @@ func newCGGMP21KeygenSession(
 			keyinfoStore:       keyinfoStore,
 			resultQueue:        resultQueue,
 			logger:             zerolog.New(utils.ZerologConsoleWriter()).With().Timestamp().Logger(),
-			processing:         make(map[string]bool),
+			processing:         newDedupMap(),
 			processingLock:     sync.Mutex{},
 			topicComposer: &TopicComposer{
 				ComposeBroadcastTopic: func() string {
@@ -149,8 +149,8 @@ func (s *cggmp21KeygenSession) Init() {
 	// Create CGGMP21 keygen protocol
 	startFunc := cmp.Keygen(curve.Secp256k1{}, s.selfPartyID, s.partyIDs, s.threshold, s.pool)
 
-	// Create handler with proper context, logging, and session ID
-	ctx := context.Background()
+	// Create handler with timeout context for DKG operations
+	ctx, cancel := context.WithTimeout(context.Background(), KeygenTimeout)
 	handler, err := protocol.NewHandler(
 		ctx,
 		s.protocolLogger,
@@ -160,6 +160,7 @@ func (s *cggmp21KeygenSession) Init() {
 		protocol.DefaultConfig(),
 	)
 	if err != nil {
+		cancel()
 		s.logger.Fatal().Err(err).Msg("Failed to create keygen handler")
 		return
 	}
@@ -168,6 +169,22 @@ func (s *cggmp21KeygenSession) Init() {
 
 	// Start message handling goroutine
 	go s.handleProtocolMessages()
+
+	// Timeout watchdog
+	go func() {
+		<-ctx.Done()
+		cancel()
+		if ctx.Err() == context.DeadlineExceeded {
+			s.logger.Error().
+				Str("walletID", s.walletID).
+				Dur("timeout", KeygenTimeout).
+				Msg("CGGMP21 keygen session timed out")
+			select {
+			case s.externalFinishChan <- "":
+			default:
+			}
+		}
+	}()
 
 	s.logger.Info().
 		Str("partyID", string(s.selfPartyID)).
@@ -269,12 +286,17 @@ func (s *cggmp21KeygenSession) ProcessInboundMessage(msgBytes []byte) {
 		return
 	}
 
-	// Deduplication check using message body hash
-	msgHashStr := fmt.Sprintf("%x", utils.GetMessageHash(inboundMessage.Body))
-	if s.processing[msgHashStr] {
+	// Verify Ed25519 signature on the wire message
+	if err := s.verifyInboundSignature(inboundMessage); err != nil {
+		s.logger.Warn().Err(err).Str("sender", inboundMessage.SenderNodeID).Msg("Dropping message with invalid signature")
 		return
 	}
-	s.processing[msgHashStr] = true
+
+	// Deduplication check using message body hash
+	msgHashStr := fmt.Sprintf("%x", utils.GetMessageHash(inboundMessage.Body))
+	if s.processing.seen(msgHashStr) {
+		return
+	}
 
 	// Deserialize the full protocol message from the body
 	protoMsg := &protocol.Message{}
