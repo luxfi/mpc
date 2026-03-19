@@ -3,6 +3,7 @@ package mpc
 import (
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/luxfi/threshold/pkg/party"
 	"github.com/nats-io/nats.go"
@@ -17,6 +18,78 @@ import (
 	"github.com/luxfi/mpc/pkg/types"
 )
 
+const (
+	// KeygenTimeout is the maximum duration for a DKG session.
+	KeygenTimeout = 5 * time.Minute
+	// SigningTimeout is the maximum duration for a signing session.
+	SigningTimeout = 30 * time.Second
+	// ReshareTimeout is the maximum duration for a reshare session.
+	ReshareTimeout = 5 * time.Minute
+)
+
+const (
+	// dedupTTL is how long a dedup entry is retained before cleanup.
+	dedupTTL = 10 * time.Minute
+	// dedupCleanupInterval is how often the cleanup goroutine runs.
+	dedupCleanupInterval = 2 * time.Minute
+)
+
+// dedupMap is a thread-safe map with TTL-based expiry for message dedup.
+type dedupMap struct {
+	mu      sync.Mutex
+	entries map[string]time.Time
+	stopCh  chan struct{}
+}
+
+func newDedupMap() *dedupMap {
+	d := &dedupMap{
+		entries: make(map[string]time.Time),
+		stopCh:  make(chan struct{}),
+	}
+	go d.cleanupLoop()
+	return d
+}
+
+// seen returns true if the key was already seen (not expired). If not seen,
+// it records the key and returns false.
+func (d *dedupMap) seen(key string) bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if t, ok := d.entries[key]; ok && time.Since(t) < dedupTTL {
+		return true
+	}
+	d.entries[key] = time.Now()
+	return false
+}
+
+func (d *dedupMap) cleanupLoop() {
+	ticker := time.NewTicker(dedupCleanupInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			d.mu.Lock()
+			now := time.Now()
+			for k, t := range d.entries {
+				if now.Sub(t) >= dedupTTL {
+					delete(d.entries, k)
+				}
+			}
+			d.mu.Unlock()
+		case <-d.stopCh:
+			return
+		}
+	}
+}
+
+func (d *dedupMap) stop() {
+	select {
+	case <-d.stopCh:
+	default:
+		close(d.stopCh)
+	}
+}
+
 type SessionType string
 
 const (
@@ -27,6 +100,7 @@ const (
 	SessionTypeECDSA   SessionType = "ecdsa"
 	SessionTypeEDDSA   SessionType = "eddsa"
 	SessionTypeSR25519 SessionType = "sr25519"
+	SessionTypeBLS     SessionType = "bls"
 )
 
 var (
@@ -66,8 +140,8 @@ type session struct {
 	keyinfoStore       keyinfo.Store
 	resultQueue        messaging.MessageQueue
 	logger             zerolog.Logger
-	processing         map[string]bool
-	processingLock     sync.Mutex
+	processing         *dedupMap
+	processingLock     sync.Mutex // kept for backward compat in concrete sessions
 	topicComposer      *TopicComposer
 	identityStore      identity.Store
 }
@@ -155,6 +229,12 @@ func extractNodeID(partyID string) string {
 }
 
 func (s *session) sendMsg(message *types.Message) {
+	// Set sender node ID and sign the message with Ed25519 for authentication
+	message.SenderNodeID = extractNodeID(string(s.selfPartyID))
+	if s.identityStore != nil {
+		s.identityStore.SignWireMessage(message)
+	}
+
 	data, err := encoding.StructToJsonBytes(message)
 	if err != nil {
 		s.logger.Error().Err(err).Msg("Failed to marshal message")
@@ -185,6 +265,15 @@ func (s *session) sendMsg(message *types.Message) {
 			}
 		}
 	}
+}
+
+// verifyInboundSignature checks the Ed25519 signature on an inbound wire message.
+// Returns nil if the signature is valid or if the identity store is not configured.
+func (s *session) verifyInboundSignature(msg *types.Message) error {
+	if s.identityStore == nil {
+		return nil
+	}
+	return s.identityStore.VerifyWireMessage(msg)
 }
 
 func (s *session) ErrChan() <-chan error {

@@ -11,6 +11,7 @@ type KeygenResultEvent struct {
 	ECDSAPubKey   []byte `json:"ecdsa_pub_key"`
 	EDDSAPubKey   []byte `json:"eddsa_pub_key"`
 	SR25519PubKey []byte `json:"sr25519_pub_key,omitempty"`
+	BLSPubKey     []byte `json:"bls_pub_key,omitempty"`
 
 	ResultType  ResultType `json:"result_type"`
 	ErrorReason string     `json:"error_reason"`
