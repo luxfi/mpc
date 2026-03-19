@@ -100,7 +100,7 @@ func newLSSSigningSession(
 			keyinfoStore:       keyinfoStore,
 			resultQueue:        resultQueue,
 			logger:             zerolog.New(utils.ZerologConsoleWriter()).With().Timestamp().Logger(),
-			processing:         make(map[string]bool),
+			processing:         newDedupMap(),
 			processingLock:     sync.Mutex{},
 			topicComposer: &TopicComposer{
 				ComposeBroadcastTopic: func() string {
@@ -184,8 +184,8 @@ func (s *lssSigningSession) Init() {
 	// SignWithBlinding() returns *ecdsa.Signature which is what we need
 	startFunc := lss.SignWithBlinding(s.config, s.signerIDs, s.messageHash, lss.BlindingProtocolI, s.pool)
 
-	// Create handler with proper context, logging, and session ID
-	ctx := context.Background()
+	// Create handler with timeout context for signing operations
+	ctx, cancel := context.WithTimeout(context.Background(), SigningTimeout)
 	handler, err := protocol.NewHandler(
 		ctx,
 		s.protocolLogger,
@@ -195,6 +195,7 @@ func (s *lssSigningSession) Init() {
 		protocol.DefaultConfig(),
 	)
 	if err != nil {
+		cancel()
 		s.logger.Fatal().Err(err).Msg("Failed to create LSS signing handler")
 		return
 	}
@@ -203,6 +204,22 @@ func (s *lssSigningSession) Init() {
 
 	// Start message handling goroutine
 	go s.handleProtocolMessages()
+
+	// Timeout watchdog
+	go func() {
+		<-ctx.Done()
+		cancel()
+		if ctx.Err() == context.DeadlineExceeded {
+			s.logger.Error().
+				Str("sessionID", s.sessionID).
+				Dur("timeout", SigningTimeout).
+				Msg("LSS signing session timed out")
+			select {
+			case s.externalFinishChan <- "":
+			default:
+			}
+		}
+	}()
 
 	s.logger.Info().
 		Str("sessionID", s.sessionID).
@@ -298,12 +315,17 @@ func (s *lssSigningSession) ProcessInboundMessage(msgBytes []byte) {
 		return
 	}
 
-	// Deduplication check using message body hash
-	msgHashStr := fmt.Sprintf("%x", utils.GetMessageHash(inboundMessage.Body))
-	if s.processing[msgHashStr] {
+	// Verify Ed25519 signature on the wire message
+	if err := s.verifyInboundSignature(inboundMessage); err != nil {
+		s.logger.Warn().Err(err).Str("sender", inboundMessage.SenderNodeID).Msg("Dropping message with invalid signature")
 		return
 	}
-	s.processing[msgHashStr] = true
+
+	// Deduplication check using message body hash
+	msgHashStr := fmt.Sprintf("%x", utils.GetMessageHash(inboundMessage.Body))
+	if s.processing.seen(msgHashStr) {
+		return
+	}
 
 	// Deserialize the full protocol message from the body
 	protoMsg := &protocol.Message{}
