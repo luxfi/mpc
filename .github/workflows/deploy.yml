@@ -17,7 +17,7 @@ env:
 
 jobs:
   build-api:
-    runs-on: lux-build-linux-amd64
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
@@ -80,7 +80,7 @@ jobs:
             GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
 
   build-dashboard:
-    runs-on: lux-build-linux-amd64
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
@@ -128,7 +128,7 @@ jobs:
 
   deploy:
     needs: [build-api, build-dashboard]
-    runs-on: lux-build-linux-amd64
+    runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
     steps:
       - uses: actions/checkout@v4
