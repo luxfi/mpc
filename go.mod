@@ -20,7 +20,7 @@ require (
 	github.com/jackc/pgx/v5 v5.8.0
 	github.com/luxfi/crypto v1.17.40
 	github.com/luxfi/database v1.17.43
-	github.com/luxfi/fhe v1.7.6
+	github.com/luxfi/fhe v1.7.7
 	github.com/luxfi/hsm v1.1.0
 	github.com/luxfi/log v1.4.1
 	github.com/luxfi/metric v1.5.0
@@ -122,6 +122,7 @@ require (
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/stretchr/objx v0.5.3 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
+	github.com/supranational/blst v0.3.16 // indirect
 	github.com/tinylib/msgp v1.6.3 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/zeebo/blake3 v0.2.4 // indirect
