@@ -1,5 +1,0 @@
-FROM alpine:3.21
-RUN apk add --no-cache ca-certificates
-COPY mpcd /usr/local/bin/mpcd
-EXPOSE 8081 9651 9800
-ENTRYPOINT ["mpcd"]
