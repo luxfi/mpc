@@ -48,9 +48,9 @@ func (ec *eventConsumer) handleSigningEventSR25519(msg *types.SignTxMessage, nat
 	session, err := ec.node.CreateSR25519SignSession(
 		msg.TxID, // Use TxID as sessionID
 		msg.WalletID,
-		msg.Tx,                        // Use transaction bytes as message hash
-		mpc.DefaultSigningContext,      // Substrate signing context
-		keyInfo.ParticipantPeerIDs,    // Use all participants as signers
+		msg.Tx,                     // Use transaction bytes as message hash
+		mpc.DefaultSigningContext,  // Substrate signing context
+		keyInfo.ParticipantPeerIDs, // Use all participants as signers
 		ec.signingResultQueue,
 		false, // Don't use broadcast
 		msg.OrgID,

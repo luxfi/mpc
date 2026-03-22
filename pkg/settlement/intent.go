@@ -59,9 +59,9 @@ type Intent struct {
 
 	// Cryptographic proof
 	IntentHash    string `json:"intentHash"`              // keccak256 of canonical data
-	Signature     string `json:"signature,omitempty"`      // user MPC signature (first signer)
-	CoSignature   string `json:"coSignature,omitempty"`    // platform HSM signature (second signer)
-	CoSignerKeyID string `json:"coSignerKeyId,omitempty"`  // HSM key used
+	Signature     string `json:"signature,omitempty"`     // user MPC signature (first signer)
+	CoSignature   string `json:"coSignature,omitempty"`   // platform HSM signature (second signer)
+	CoSignerKeyID string `json:"coSignerKeyId,omitempty"` // HSM key used
 
 	// On-chain recording
 	OnChainTxHash string     `json:"onChainTxHash,omitempty"` // tx that recorded intent

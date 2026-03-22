@@ -17,7 +17,7 @@ import (
 type oidcUserInfo struct {
 	Sub               string `json:"sub"`
 	Name              string `json:"name"`
-	PreferredUsername  string `json:"preferred_username"`
+	PreferredUsername string `json:"preferred_username"`
 	Email             string `json:"email"`
 	EmailVerified     bool   `json:"email_verified"`
 	DisplayName       string `json:"displayName"`

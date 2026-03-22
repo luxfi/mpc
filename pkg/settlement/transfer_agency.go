@@ -24,8 +24,8 @@ type TransferRecord struct {
 type VerificationResult struct {
 	Verified      bool      `json:"verified"`
 	MatchedAt     time.Time `json:"matchedAt"`
-	RecordHash    string    `json:"recordHash"`    // the hash stored at the agency
-	ComputedHash  string    `json:"computedHash"`  // the hash we computed
+	RecordHash    string    `json:"recordHash"`   // the hash stored at the agency
+	ComputedHash  string    `json:"computedHash"` // the hash we computed
 	Discrepancies []string  `json:"discrepancies,omitempty"`
 }
 

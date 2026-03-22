@@ -16,9 +16,9 @@ const (
 
 // replayGuard prevents duplicate or stale sign requests.
 type replayGuard struct {
-	mu      sync.Mutex
-	seen    map[string]time.Time
-	stopCh  chan struct{}
+	mu     sync.Mutex
+	seen   map[string]time.Time
+	stopCh chan struct{}
 }
 
 func newReplayGuard() *replayGuard {

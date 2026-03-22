@@ -111,7 +111,7 @@ func TestAppConfig_PartialConfig(t *testing.T) {
 		Consul: &ConsulConfig{
 			Address: "localhost:8500",
 		},
-		NATs:           &NATsConfig{}, // Initialize to avoid nil pointer
+		NATs:          &NATsConfig{}, // Initialize to avoid nil pointer
 		ZapDBPassword: "test",
 	}
 

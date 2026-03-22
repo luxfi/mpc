@@ -24,11 +24,11 @@ import (
 
 // blsShareMessage is sent from the dealer to each party with their config share.
 type blsShareMessage struct {
-	SecretShare      []byte                      `json:"secret_share"`
-	PublicKey        []byte                      `json:"public_key"`
-	Threshold        int                         `json:"threshold"`
-	TotalParties     int                         `json:"total_parties"`
-	VerificationKeys map[party.ID][]byte         `json:"verification_keys"`
+	SecretShare      []byte              `json:"secret_share"`
+	PublicKey        []byte              `json:"public_key"`
+	Threshold        int                 `json:"threshold"`
+	TotalParties     int                 `json:"total_parties"`
+	VerificationKeys map[party.ID][]byte `json:"verification_keys"`
 }
 
 // BLSKeygenSession interface for BLS keygen

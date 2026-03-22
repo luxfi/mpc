@@ -163,7 +163,7 @@ func TestBLSKeygenSessionCreation(t *testing.T) {
 		nil, // pubSub - nil for unit test
 		selfPartyID,
 		partyIDs,
-		2, // threshold
+		2,   // threshold
 		nil, // kvstore
 		nil, // keyinfoStore
 		nil, // resultQueue
