@@ -14,14 +14,15 @@ import (
 	"time"
 
 	"github.com/hashicorp/consul/api"
-	"github.com/luxfi/mpc/pkg/client"
-	"github.com/luxfi/mpc/pkg/event"
-	"github.com/luxfi/mpc/pkg/kvstore"
 	badger "github.com/luxfi/zapdb/v4"
 	"github.com/luxfi/zapdb/v4/options"
 	"github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v2"
+
+	"github.com/luxfi/mpc/pkg/client"
+	"github.com/luxfi/mpc/pkg/event"
+	"github.com/luxfi/mpc/pkg/kvstore"
 )
 
 const (
