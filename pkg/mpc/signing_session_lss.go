@@ -58,9 +58,10 @@ func newLSSSigningSession(
 	resultQueue messaging.MessageQueue,
 	identityStore identity.Store,
 	useBroadcast bool,
+	orgID string,
 ) (*lssSigningSession, error) {
-	// Load config from kvstore
-	shareBytes, err := kvstore.Get(walletID)
+	// Load config from kvstore with org-scoped fallback
+	shareBytes, err := GetKeyShareWithFallback(kvstore, orgID, walletID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get key share: %w", err)
 	}

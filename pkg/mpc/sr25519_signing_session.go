@@ -73,10 +73,11 @@ func newSR25519SigningSession(
 	resultQueue messaging.MessageQueue,
 	identityStore identity.Store,
 	useBroadcast bool,
+	orgID string,
 ) (*sr25519SigningSession, error) {
 	// Load config from kvstore - SR25519 keys are stored with sr25519: prefix
 	sr25519Key := fmt.Sprintf("sr25519:%s", walletID)
-	shareBytes, err := kvstore.Get(sr25519Key)
+	shareBytes, err := GetKeyShareWithFallback(kvstore, orgID, sr25519Key)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get SR25519 key share: %w", err)
 	}

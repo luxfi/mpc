@@ -39,9 +39,9 @@ type TestConfig struct {
 	} `yaml:"consul"`
 	MPCThreshold         int    `yaml:"mpc_threshold"`
 	Environment          string `yaml:"environment"`
-	BadgerPassword       string `yaml:"badger_password"`
+	ZapDBPassword       string `yaml:"zapdb_password"`
 	EventInitiatorPubkey string `yaml:"event_initiator_pubkey"`
-	MPCiumVersion        string `yaml:"mpc_version"`
+	MPCVersion        string `yaml:"mpc_version"`
 	MaxConcurrentKeygen  int    `yaml:"max_concurrent_keygen"`
 	DbPath               string `yaml:"db_path"`
 }
@@ -488,7 +488,7 @@ func (s *E2ETestSuite) CheckKeyInAllNodes(t *testing.T, walletID, keyType, keyNa
 		// Open database in read-only mode with recovery options
 		opts := badger.DefaultOptions(dbPath).
 			WithCompression(options.ZSTD).
-			WithEncryptionKey([]byte(s.config.BadgerPassword)).
+			WithEncryptionKey([]byte(s.config.ZapDBPassword)).
 			WithIndexCacheSize(100 << 20).
 			WithReadOnly(true).
 			WithBypassLockGuard(true) // Allow opening even if not properly closed
@@ -501,7 +501,7 @@ func (s *E2ETestSuite) CheckKeyInAllNodes(t *testing.T, walletID, keyType, keyNa
 			t.Logf("Attempting database recovery for %s", nodeName)
 			recoveryOpts := badger.DefaultOptions(dbPath).
 				WithCompression(options.ZSTD).
-				WithEncryptionKey([]byte(s.config.BadgerPassword)).
+				WithEncryptionKey([]byte(s.config.ZapDBPassword)).
 				WithIndexCacheSize(100 << 20)
 
 			recoveryDB, recoveryErr := badger.Open(recoveryOpts)

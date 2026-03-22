@@ -444,19 +444,19 @@ func promptForSensitiveCredentials() {
 	fmt.Println("If you lose this password, you will permanently lose access to your data!")
 
 	// Prompt for ZapDB password with confirmation
-	var badgerPass []byte
+	var zapPass []byte
 	var confirmPass []byte
 	var err error
 
 	for {
 		fmt.Print("Enter ZapDB password: ")
-		badgerPass, err = term.ReadPassword(syscall.Stdin)
+		zapPass, err = term.ReadPassword(syscall.Stdin)
 		if err != nil {
 			logger.Fatal("Failed to read ZapDB password", err)
 		}
 		fmt.Println() // Add newline after password input
 
-		if len(badgerPass) == 0 {
+		if len(zapPass) == 0 {
 			fmt.Println("Password cannot be empty. Please try again.")
 			continue
 		}
@@ -468,7 +468,7 @@ func promptForSensitiveCredentials() {
 		}
 		fmt.Println() // Add newline after password input
 
-		if string(badgerPass) != string(confirmPass) {
+		if string(zapPass) != string(confirmPass) {
 			fmt.Println("Passwords do not match. Please try again.")
 			continue
 		}
@@ -477,10 +477,10 @@ func promptForSensitiveCredentials() {
 	}
 
 	// Show masked password for confirmation
-	maskedPassword := maskString(string(badgerPass))
+	maskedPassword := maskString(string(zapPass))
 	fmt.Printf("Password set: %s\n", maskedPassword)
 
-	viper.Set("zapdb_password", string(badgerPass))
+	viper.Set("zapdb_password", string(zapPass))
 
 	// Prompt for initiator public key (using regular input since it's not as sensitive)
 	var initiatorKey string

@@ -18,10 +18,10 @@ import (
 // handleKeyGenEventCGGMP21 handles key generation events for CGGMP21 protocol
 func (ec *eventConsumer) handleKeyGenEventCGGMP21(msg *event.Message, natMsg *nats.Msg) {
 	// Mark session as active
-	ec.trackSession(msg.WalletID, "")
+	ec.trackSession(msg.OrgID, msg.WalletID, "")
 
 	// Remove session from active list when done
-	defer ec.untrackSession(msg.WalletID, "")
+	defer ec.untrackSession(msg.OrgID, msg.WalletID, "")
 
 	// Create a context with timeout for the entire key generation process
 	baseCtx, cancel := context.WithTimeout(context.Background(), KeyGenTimeOut)
