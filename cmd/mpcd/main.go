@@ -30,6 +30,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/luxfi/hsm"
+
 	mpcapi "github.com/luxfi/mpc/pkg/api"
 	"github.com/luxfi/mpc/pkg/backup"
 	"github.com/luxfi/mpc/pkg/config"
