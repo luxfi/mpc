@@ -2,6 +2,11 @@
 
 BIN_DIR := bin
 
+# Go 1.26 experimental features:
+#   runtimesecret - zeroes stack/register state after secret.Do() for forward secrecy
+#   simd          - SIMD intrinsics (amd64/arm64)
+GOEXPERIMENT ?= runtimesecret,simd
+
 # Default target
 all: build
 
@@ -10,27 +15,27 @@ build: lux-mpc lux-mpc-cli lux-mpc-bridge
 
 # Install lux-mpc (builds and places it in $GOBIN or $GOPATH/bin)
 lux-mpc:
-	GOWORK=off go build -o lux-mpc ./cmd/lux-mpc
+	GOWORK=off GOEXPERIMENT=$(GOEXPERIMENT) go build -o lux-mpc ./cmd/lux-mpc
 
 # Install lux-mpc-cli
 lux-mpc-cli:
-	GOWORK=off go build -o lux-mpc-cli ./cmd/lux-mpc-cli
+	GOWORK=off GOEXPERIMENT=$(GOEXPERIMENT) go build -o lux-mpc-cli ./cmd/lux-mpc-cli
 
 # Install lux-mpc-bridge (bridge compatibility)
 lux-mpc-bridge:
-	GOWORK=off go build -o lux-mpc-bridge ./cmd/lux-mpc-bridge 2>/dev/null || true
+	GOWORK=off GOEXPERIMENT=$(GOEXPERIMENT) go build -o lux-mpc-bridge ./cmd/lux-mpc-bridge 2>/dev/null || true
 
 # Run all tests
 test:
-	go test ./...
+	GOEXPERIMENT=$(GOEXPERIMENT) go test ./...
 
 # Run tests with verbose output
 test-verbose:
-	go test -v ./...
+	GOEXPERIMENT=$(GOEXPERIMENT) go test -v ./...
 
 # Run tests with coverage report
 test-coverage:
-	go test -v -coverprofile=coverage.out ./...
+	GOEXPERIMENT=$(GOEXPERIMENT) go test -v -coverprofile=coverage.out ./...
 	go tool cover -html=coverage.out -o coverage.html
 
 # Run E2E integration tests
