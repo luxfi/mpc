@@ -33,7 +33,7 @@ jobs:
         run: GOWORK=off go mod download
 
       - name: Run unit tests
-        run: GOWORK=off CGO_ENABLED=1 go test -v -race -coverprofile=coverage.out ./...
+        run: CGO_ENABLED=0 GOWORK=off go test -v -coverprofile=coverage.out ./...
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4

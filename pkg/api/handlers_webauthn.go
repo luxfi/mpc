@@ -152,9 +152,9 @@ func (s *Server) handleVerifyWebAuthn(w http.ResponseWriter, r *http.Request) {
 
 	var req struct {
 		TxID     string `json:"tx_id"`
-		ID       string `json:"id"`       // WebAuthn credential ID
-		RawID    string `json:"rawId"`    // base64url
-		Type     string `json:"type"`     // "public-key"
+		ID       string `json:"id"`    // WebAuthn credential ID
+		RawID    string `json:"rawId"` // base64url
+		Type     string `json:"type"`  // "public-key"
 		Response struct {
 			AuthenticatorData string `json:"authenticatorData"`
 			ClientDataJSON    string `json:"clientDataJSON"`

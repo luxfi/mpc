@@ -53,15 +53,15 @@ type HSMProvider interface {
 }
 
 type Server struct {
-	db           *db.Database
-	mpc          MPCBackend
-	hsm          HSMProvider // optional: server-side HSM co-signing
-	txTracker    *txtracker.Tracker
-	jwtSecret    []byte
-	oidcIssuers  []string
-	router       chi.Router
-	server       *http.Server
-	replayGuard  *replayGuard
+	db          *db.Database
+	mpc         MPCBackend
+	hsm         HSMProvider // optional: server-side HSM co-signing
+	txTracker   *txtracker.Tracker
+	jwtSecret   []byte
+	oidcIssuers []string
+	router      chi.Router
+	server      *http.Server
+	replayGuard *replayGuard
 }
 
 func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, listenAddr string, oidcIssuers ...string) *Server {
@@ -253,14 +253,14 @@ func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, l
 			})
 
 			// Bridge admin — owner/admin only
-		r.Group(func(r chi.Router) {
-			r.Use(requireRole("owner", "admin"))
-			r.Get("/bridge/config", s.handleGetBridgeConfig)
-			r.Patch("/bridge/config", s.handleUpdateBridgeConfig)
-			r.Get("/bridge/networks", s.handleListBridgeNetworks)
-		})
+			r.Group(func(r chi.Router) {
+				r.Use(requireRole("owner", "admin"))
+				r.Get("/bridge/config", s.handleGetBridgeConfig)
+				r.Patch("/bridge/config", s.handleUpdateBridgeConfig)
+				r.Get("/bridge/networks", s.handleListBridgeNetworks)
+			})
 
-		// WebAuthn/Biometric — any authenticated user can register devices and approve with biometrics
+			// WebAuthn/Biometric — any authenticated user can register devices and approve with biometrics
 			r.Post("/webauthn/register/begin", s.handleRegisterWebAuthnBegin)
 			r.Post("/webauthn/register/complete", s.handleRegisterWebAuthnComplete)
 			r.Post("/webauthn/verify", s.handleVerifyWebAuthn) // Biometric approval of transactions
