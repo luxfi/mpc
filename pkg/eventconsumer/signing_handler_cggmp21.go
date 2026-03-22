@@ -16,7 +16,7 @@ import (
 // handleSigningEventCGGMP21 handles signing events for CGGMP21 protocol
 func (ec *eventConsumer) handleSigningEventCGGMP21(msg *types.SignTxMessage, natMsg *nats.Msg) {
 	// Check for duplicate session and track if new
-	if ec.checkDuplicateSession(msg.WalletID, msg.TxID) {
+	if ec.checkDuplicateSession(msg.OrgID, msg.WalletID, msg.TxID) {
 		duplicateErr := fmt.Errorf("duplicate signing request detected for walletID=%s txID=%s", msg.WalletID, msg.TxID)
 		ec.handleSigningSessionError(
 			msg.WalletID,
@@ -51,6 +51,7 @@ func (ec *eventConsumer) handleSigningEventCGGMP21(msg *types.SignTxMessage, nat
 		keyInfo.ParticipantPeerIDs, // Use all participants as signers
 		ec.signingResultQueue,
 		false, // Don't use broadcast
+		msg.OrgID,
 	)
 	if err != nil {
 		// Check if the error is due to node not being in participant list
@@ -76,7 +77,7 @@ func (ec *eventConsumer) handleSigningEventCGGMP21(msg *types.SignTxMessage, nat
 	}
 
 	// Mark session as already processed
-	ec.addSession(msg.WalletID, msg.TxID)
+	ec.addSession(msg.OrgID, msg.WalletID, msg.TxID)
 
 	// Initialize the signing session (creates protocol handler)
 	session.Init()

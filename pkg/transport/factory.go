@@ -86,7 +86,7 @@ type FactoryConfig struct {
 	// PublicKey is this node's Ed25519 public key
 	PublicKey ed25519.PublicKey
 
-	// ZapDBPath is the path for local ZapDB storage (embedded, replaces BadgerDB)
+	// ZapDBPath is the path for local ZapDB storage
 	ZapDBPath string
 
 	// ZapDBPassword for at-rest AES-256 encryption

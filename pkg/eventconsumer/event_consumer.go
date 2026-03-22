@@ -136,6 +136,7 @@ func (ec *eventConsumer) handleKeyGenEvent(natMsg *nats.Msg) {
 
 	// Convert to event message format and use CGGMP21 handler
 	eventMsg := &event.Message{
+		OrgID:     msg.OrgID,
 		EventType: MPCGenerateEvent,
 		WalletID:  msg.WalletID,
 	}
@@ -555,19 +556,20 @@ func (ec *eventConsumer) cleanupStaleSessions() {
 	}
 }
 
-// markSessionAsActive marks a session as active with the current timestamp
-func (ec *eventConsumer) addSession(walletID, txID string) {
-	sessionID := fmt.Sprintf("%s-%s", walletID, txID)
+// addSession marks a session as active with the current timestamp.
+// orgID scopes the session to prevent cross-tenant collisions.
+func (ec *eventConsumer) addSession(orgID, walletID, txID string) {
+	sessionID := fmt.Sprintf("%s-%s-%s", orgID, walletID, txID)
 	ec.sessionsLock.Lock()
 	ec.activeSessions[sessionID] = time.Now()
 	ec.sessionsLock.Unlock()
 }
 
-// trackSession tracks a new session
-func (ec *eventConsumer) trackSession(walletID, txID string) {
-	sessionID := walletID
+// trackSession tracks a new session, scoped by orgID.
+func (ec *eventConsumer) trackSession(orgID, walletID, txID string) {
+	sessionID := orgID + "-" + walletID
 	if txID != "" {
-		sessionID = fmt.Sprintf("%s-%s", walletID, txID)
+		sessionID = fmt.Sprintf("%s-%s-%s", orgID, walletID, txID)
 	}
 
 	ec.sessionsLock.Lock()
@@ -575,11 +577,11 @@ func (ec *eventConsumer) trackSession(walletID, txID string) {
 	ec.sessionsLock.Unlock()
 }
 
-// untrackSession removes a session from tracking
-func (ec *eventConsumer) untrackSession(walletID, txID string) {
-	sessionID := walletID
+// untrackSession removes a session from tracking.
+func (ec *eventConsumer) untrackSession(orgID, walletID, txID string) {
+	sessionID := orgID + "-" + walletID
 	if txID != "" {
-		sessionID = fmt.Sprintf("%s-%s", walletID, txID)
+		sessionID = fmt.Sprintf("%s-%s-%s", orgID, walletID, txID)
 	}
 
 	ec.sessionsLock.Lock()
@@ -587,10 +589,10 @@ func (ec *eventConsumer) untrackSession(walletID, txID string) {
 	ec.sessionsLock.Unlock()
 }
 
-// checkAndTrackSession checks if a session already exists and tracks it if new.
-// Returns true if the session is a duplicate.
-func (ec *eventConsumer) checkDuplicateSession(walletID, txID string) bool {
-	sessionID := fmt.Sprintf("%s-%s", walletID, txID)
+// checkDuplicateSession checks if a session already exists.
+// Returns true if the session is a duplicate. orgID scopes sessions per tenant.
+func (ec *eventConsumer) checkDuplicateSession(orgID, walletID, txID string) bool {
+	sessionID := fmt.Sprintf("%s-%s-%s", orgID, walletID, txID)
 
 	// Check for duplicate
 	ec.sessionsLock.RLock()
@@ -598,7 +600,7 @@ func (ec *eventConsumer) checkDuplicateSession(walletID, txID string) bool {
 	ec.sessionsLock.RUnlock()
 
 	if isDuplicate {
-		logger.Info("Duplicate signing request detected", "walletID", walletID, "txID", txID)
+		logger.Info("Duplicate signing request detected", "orgID", orgID, "walletID", walletID, "txID", txID)
 		return true
 	}
 
