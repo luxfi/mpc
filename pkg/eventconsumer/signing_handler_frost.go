@@ -16,7 +16,7 @@ import (
 // handleSigningEventFROST handles signing events for FROST protocol (EdDSA/Ed25519)
 func (ec *eventConsumer) handleSigningEventFROST(msg *types.SignTxMessage, natMsg *nats.Msg) {
 	// Check for duplicate session and track if new
-	if ec.checkDuplicateSession(msg.WalletID, msg.TxID) {
+	if ec.checkDuplicateSession(msg.OrgID, msg.WalletID, msg.TxID) {
 		duplicateErr := fmt.Errorf("duplicate signing request detected for walletID=%s txID=%s", msg.WalletID, msg.TxID)
 		ec.handleSigningSessionError(
 			msg.WalletID,
@@ -51,6 +51,7 @@ func (ec *eventConsumer) handleSigningEventFROST(msg *types.SignTxMessage, natMs
 		keyInfo.ParticipantPeerIDs, // Use all participants as signers
 		ec.signingResultQueue,
 		false, // Don't use broadcast
+		msg.OrgID,
 	)
 	if err != nil {
 		// Check if the error is due to node not being in participant list
@@ -76,7 +77,7 @@ func (ec *eventConsumer) handleSigningEventFROST(msg *types.SignTxMessage, natMs
 	}
 
 	// Mark session as already processed
-	ec.addSession(msg.WalletID, msg.TxID)
+	ec.addSession(msg.OrgID, msg.WalletID, msg.TxID)
 
 	// Initialize the session
 	session.Init()

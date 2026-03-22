@@ -20,7 +20,7 @@ func TestAppConfig_MarshalJSONMask(t *testing.T) {
 			Username: "nats_user",
 			Password: "nats_pass",
 		},
-		BadgerPassword: "badger_secret",
+		ZapDBPassword: "zapdb_secret",
 	}
 
 	masked := config.MarshalJSONMask()
@@ -35,13 +35,13 @@ func TestAppConfig_MarshalJSONMask(t *testing.T) {
 	assert.NotContains(t, masked, "secret123")
 	assert.NotContains(t, masked, "token456")
 	assert.NotContains(t, masked, "nats_pass")
-	assert.NotContains(t, masked, "badger_secret")
+	assert.NotContains(t, masked, "zapdb_secret")
 
 	// Check that asterisks are present for masked fields
 	assert.Contains(t, masked, strings.Repeat("*", len("secret123")))
 	assert.Contains(t, masked, strings.Repeat("*", len("token456")))
 	assert.Contains(t, masked, strings.Repeat("*", len("nats_pass")))
-	assert.Contains(t, masked, strings.Repeat("*", len("badger_secret")))
+	assert.Contains(t, masked, strings.Repeat("*", len("zapdb_secret")))
 }
 
 func TestAppConfig_MarshalJSONMask_EmptyPasswords(t *testing.T) {
@@ -57,7 +57,7 @@ func TestAppConfig_MarshalJSONMask_EmptyPasswords(t *testing.T) {
 			Username: "nats_user",
 			Password: "",
 		},
-		BadgerPassword: "",
+		ZapDBPassword: "",
 	}
 
 	masked := config.MarshalJSONMask()
@@ -112,12 +112,12 @@ func TestAppConfig_PartialConfig(t *testing.T) {
 			Address: "localhost:8500",
 		},
 		NATs:           &NATsConfig{}, // Initialize to avoid nil pointer
-		BadgerPassword: "test",
+		ZapDBPassword: "test",
 	}
 
 	// Should handle partial configuration
 	masked := config.MarshalJSONMask()
 	assert.Contains(t, masked, "localhost:8500")
 	assert.NotContains(t, masked, "test")
-	assert.Contains(t, masked, "****") // masked badger password
+	assert.Contains(t, masked, "****") // masked zapdb password
 }
