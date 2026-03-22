@@ -15,13 +15,13 @@ type AppConfig struct {
 	Consul *ConsulConfig `mapstructure:"consul"`
 	NATs   *NATsConfig   `mapstructure:"nats"`
 
-	BadgerPassword string `mapstructure:"badger_password"`
+	ZapDBPassword string `mapstructure:"zapdb_password"`
 }
 
 // Implement masking serializer AppConfig
 func (c AppConfig) MarshalJSONMask() string {
 	// clone app config
-	c.BadgerPassword = strings.Repeat("*", len(c.BadgerPassword))
+	c.ZapDBPassword = strings.Repeat("*", len(c.ZapDBPassword))
 	c.Consul.Password = strings.Repeat("*", len(c.Consul.Password))
 	c.Consul.Token = strings.Repeat("*", len(c.Consul.Token))
 	c.NATs.Password = strings.Repeat("*", len(c.NATs.Password))
