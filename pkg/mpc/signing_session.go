@@ -62,17 +62,23 @@ func newCGGMP21SigningSession(
 	useBroadcast bool,
 	orgID string,
 ) (*cggmp21SigningSession, error) {
-	// Load config from kvstore with org-scoped fallback
-	shareBytes, err := GetKeyShareWithFallback(kvstore, orgID, walletID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get key share: %w", err)
-	}
-
-	// Create empty config with the correct group - REQUIRED for unmarshalling
+	// Load and unmarshal key share inside withSecretErasure so that raw
+	// share bytes on the stack are zeroed after parsing completes.
 	config := config.EmptyConfig(curve.Secp256k1{})
-	// Use UnmarshalBinary (CBOR) instead of JSON - required for curve.Curve interface
-	if err := config.UnmarshalBinary(shareBytes); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal key share: %w", err)
+	var loadErr error
+	withSecretErasure(func() {
+		shareBytes, err := GetKeyShareWithFallback(kvstore, orgID, walletID)
+		if err != nil {
+			loadErr = fmt.Errorf("failed to get key share: %w", err)
+			return
+		}
+		// Use UnmarshalBinary (CBOR) instead of JSON - required for curve.Curve interface
+		if err := config.UnmarshalBinary(shareBytes); err != nil {
+			loadErr = fmt.Errorf("failed to unmarshal key share: %w", err)
+		}
+	})
+	if loadErr != nil {
+		return nil, loadErr
 	}
 
 	// Create thread pool

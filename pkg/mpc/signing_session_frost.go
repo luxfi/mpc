@@ -64,17 +64,25 @@ func newFROSTSigningSession(
 	useBroadcast bool,
 	orgID string,
 ) (*frostSigningSession, error) {
-	// Load config from kvstore - FROST keys are stored with frost: prefix
+	// Load and unmarshal key share inside withSecretErasure so that raw
+	// share bytes on the stack are zeroed after parsing completes.
 	frostKey := fmt.Sprintf("frost:%s", walletID)
-	shareBytes, err := GetKeyShareWithFallback(kvstore, orgID, frostKey)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get FROST key share: %w", err)
-	}
-
-	// TaprootConfig is stored as CBOR (to properly preserve crypto types)
-	config, err := UnmarshalFROSTConfig(shareBytes)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal FROST key share: %w", err)
+	var config *frost.TaprootConfig
+	var loadErr error
+	withSecretErasure(func() {
+		shareBytes, err := GetKeyShareWithFallback(kvstore, orgID, frostKey)
+		if err != nil {
+			loadErr = fmt.Errorf("failed to get FROST key share: %w", err)
+			return
+		}
+		// TaprootConfig is stored as CBOR (to properly preserve crypto types)
+		config, err = UnmarshalFROSTConfig(shareBytes)
+		if err != nil {
+			loadErr = fmt.Errorf("failed to unmarshal FROST key share: %w", err)
+		}
+	})
+	if loadErr != nil {
+		return nil, loadErr
 	}
 
 	// BIP-340/Taproot requires 32-byte message hash

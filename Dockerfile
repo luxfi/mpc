@@ -12,6 +12,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 
+ENV GOEXPERIMENT=runtimesecret
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o mpcd ./cmd/mpcd
 
 FROM alpine:3.21

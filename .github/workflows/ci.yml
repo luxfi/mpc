@@ -9,6 +9,8 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      GOEXPERIMENT: runtimesecret
 
     steps:
       - name: Checkout code
@@ -294,6 +296,8 @@ jobs:
   build:
     runs-on: lux-build-linux-amd64
     needs: [test, lint, codeql-analysis, sbom]
+    env:
+      GOEXPERIMENT: runtimesecret
 
     steps:
       - name: Checkout code

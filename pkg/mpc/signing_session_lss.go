@@ -60,16 +60,24 @@ func newLSSSigningSession(
 	useBroadcast bool,
 	orgID string,
 ) (*lssSigningSession, error) {
-	// Load config from kvstore with org-scoped fallback
-	shareBytes, err := GetKeyShareWithFallback(kvstore, orgID, walletID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get key share: %w", err)
-	}
-
-	// Unmarshal config using CBOR (not JSON) to preserve curve types
-	config, err := UnmarshalLSSConfig(shareBytes)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal key share: %w", err)
+	// Load and unmarshal key share inside withSecretErasure so that raw
+	// share bytes on the stack are zeroed after parsing completes.
+	var config *lssConfig.Config
+	var loadErr error
+	withSecretErasure(func() {
+		shareBytes, err := GetKeyShareWithFallback(kvstore, orgID, walletID)
+		if err != nil {
+			loadErr = fmt.Errorf("failed to get key share: %w", err)
+			return
+		}
+		// Unmarshal config using CBOR (not JSON) to preserve curve types
+		config, err = UnmarshalLSSConfig(shareBytes)
+		if err != nil {
+			loadErr = fmt.Errorf("failed to unmarshal key share: %w", err)
+		}
+	})
+	if loadErr != nil {
+		return nil, loadErr
 	}
 
 	// Normalize message hash to 32 bytes (LSS requires exactly 32 bytes)
