@@ -62,10 +62,11 @@ func newFROSTSigningSession(
 	resultQueue messaging.MessageQueue,
 	identityStore identity.Store,
 	useBroadcast bool,
+	orgID string,
 ) (*frostSigningSession, error) {
 	// Load config from kvstore - FROST keys are stored with frost: prefix
 	frostKey := fmt.Sprintf("frost:%s", walletID)
-	shareBytes, err := kvstore.Get(frostKey)
+	shareBytes, err := GetKeyShareWithFallback(kvstore, orgID, frostKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get FROST key share: %w", err)
 	}

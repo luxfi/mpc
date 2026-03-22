@@ -157,6 +157,7 @@ func contains(str string, patterns ...string) bool {
 
 // Message represents a generic event message
 type Message struct {
+	OrgID     string `json:"org_id,omitempty"`
 	EventType string `json:"event_type"`
 	WalletID  string `json:"wallet_id"`
 	SessionID string `json:"session_id"`
