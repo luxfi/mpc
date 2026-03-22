@@ -30,7 +30,7 @@ const (
 	DefaultStuckTimeout        = 5 * time.Minute
 	DefaultTargetConfirmations = 12
 	MaxPollAttempts            = 720 // 1 hour at 5s
-	ReorgSafetyMargin          = 6  // extra confirmations after finality before stopping
+	ReorgSafetyMargin          = 6   // extra confirmations after finality before stopping
 )
 
 // WebhookFunc is called when transaction state changes occur.
@@ -46,7 +46,7 @@ type RPCClient interface {
 
 // Receipt represents the subset of an EVM transaction receipt we track.
 type Receipt struct {
-	Status      int    `json:"status"`      // 0=reverted, 1=success
+	Status      int    `json:"status"` // 0=reverted, 1=success
 	BlockNumber int64  `json:"blockNumber"`
 	BlockHash   string `json:"blockHash"`
 	GasUsed     string `json:"gasUsed"`
@@ -69,9 +69,9 @@ type trackedTx struct {
 
 // Tracker monitors broadcast transactions until they reach finality.
 type Tracker struct {
-	database    *db.Database
-	rpcClients  map[string]RPCClient // chain → client
-	webhookFn   WebhookFunc
+	database     *db.Database
+	rpcClients   map[string]RPCClient // chain → client
+	webhookFn    WebhookFunc
 	pollInterval time.Duration
 	stuckTimeout time.Duration
 
@@ -232,11 +232,11 @@ func (t *Tracker) poll(ctx context.Context, tt *trackedTx, rpc RPCClient, chain 
 						tx.FinalizationBlock = nil
 						tx.Update()
 						t.fireWebhook(tt.orgID, "tx.reorged", map[string]string{
-							"tx_id":          tt.txID,
-							"tx_hash":        tt.txHash,
-							"chain":          chain,
-							"former_block":   fmt.Sprintf("%d", tt.lastBlockNumber),
-							"former_hash":    tt.lastBlockHash,
+							"tx_id":        tt.txID,
+							"tx_hash":      tt.txHash,
+							"chain":        chain,
+							"former_block": fmt.Sprintf("%d", tt.lastBlockNumber),
+							"former_hash":  tt.lastBlockHash,
 						})
 					}
 					tt.lastBlockHash = ""
@@ -262,10 +262,10 @@ func (t *Tracker) poll(ctx context.Context, tt *trackedTx, rpc RPCClient, chain 
 					tx.FinalizationBlock = nil
 					tx.Update()
 					t.fireWebhook(tt.orgID, "tx.reorged", map[string]string{
-						"tx_id":       tt.txID,
-						"tx_hash":     tt.txHash,
-						"chain":       chain,
-						"new_block":   fmt.Sprintf("%d", receipt.BlockNumber),
+						"tx_id":     tt.txID,
+						"tx_hash":   tt.txHash,
+						"chain":     chain,
+						"new_block": fmt.Sprintf("%d", receipt.BlockNumber),
 					})
 				}
 			}
