@@ -1,7 +1,7 @@
 go 1.26.1
 
+// For local development with HSM: go work use ../hsm
 use (
 	.
 	./e2e
-	../hsm
 )
