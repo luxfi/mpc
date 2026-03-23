@@ -126,6 +126,7 @@ type Session interface {
 type session struct {
 	walletID           string
 	sessionID          string
+	orgID              string
 	pubSub             messaging.PubSub
 	selfPartyID        party.ID
 	partyIDs           []party.ID
