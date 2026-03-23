@@ -143,14 +143,32 @@ jobs:
         run: |
           # Auth: Universal Auth (preferred) or legacy API key
           if [ -n "${KMS_CLIENT_ID}" ] && [ -n "${KMS_CLIENT_SECRET}" ]; then
-            HANZO_API_KEY=$(curl -sf "${KMS_ENDPOINT}/api/v1/auth/universal-auth/login" \
+            echo "Attempting Universal Auth login..."
+            login_response=$(curl -s -w "\n%{http_code}" "${KMS_ENDPOINT}/api/v1/auth/universal-auth/login" \
               -H "Content-Type: application/json" \
-              -d "{\"clientId\":\"${KMS_CLIENT_ID}\",\"clientSecret\":\"${KMS_CLIENT_SECRET}\"}" | jq -r '.accessToken')
+              -d "{\"clientId\":\"${KMS_CLIENT_ID}\",\"clientSecret\":\"${KMS_CLIENT_SECRET}\"}")
+            login_http_code=$(echo "$login_response" | tail -1)
+            login_body=$(echo "$login_response" | sed '$d')
+            echo "Login HTTP status: ${login_http_code}"
+            if [ "$login_http_code" = "200" ]; then
+              HANZO_API_KEY=$(echo "$login_body" | jq -r '.accessToken')
+              echo "Got access token (length: ${#HANZO_API_KEY})"
+            else
+              echo "Login failed: $(echo "$login_body" | jq -r '.message // .error // "unknown"')"
+            fi
+          else
+            echo "No KMS_CLIENT_ID/SECRET, using HANZO_API_KEY fallback"
           fi
-          response=$(curl -sf "${KMS_ENDPOINT}/api/v3/secrets/raw?workspaceId=e1359bf4-31b4-4dfa-bb90-323e2c298ad8&secretPath=/deploy&environment=prod" \
-            -H "Authorization: Bearer ${HANZO_API_KEY}" 2>/dev/null || echo "")
-          if [ -n "$response" ]; then
-            token=$(echo "$response" | jq -r '.secrets[] | select(.secretKey=="DO_API_TOKEN") | .secretValue // empty')
+          echo "Fetching secrets..."
+          secrets_response=$(curl -s -w "\n%{http_code}" "${KMS_ENDPOINT}/api/v3/secrets/raw?workspaceId=e1359bf4-31b4-4dfa-bb90-323e2c298ad8&secretPath=/deploy&environment=prod" \
+            -H "Authorization: Bearer ${HANZO_API_KEY}")
+          secrets_http_code=$(echo "$secrets_response" | tail -1)
+          secrets_body=$(echo "$secrets_response" | sed '$d')
+          echo "Secrets HTTP status: ${secrets_http_code}"
+          if [ "$secrets_http_code" = "200" ]; then
+            token=$(echo "$secrets_body" | jq -r '.secrets[] | select(.secretKey=="DO_API_TOKEN") | .secretValue // empty')
+          else
+            echo "Secrets fetch failed: $(echo "$secrets_body" | jq -r '.message // .error // "unknown"')"
           fi
           if [ -z "${token:-}" ]; then
             echo "::error::Deploy credentials not found. Set HANZO_API_KEY with KMS access."
