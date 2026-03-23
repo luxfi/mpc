@@ -52,6 +52,7 @@ func newCGGMP21KeygenSession(
 	keyinfoStore keyinfo.Store,
 	resultQueue messaging.MessageQueue,
 	identityStore identity.Store,
+	orgID string,
 ) *cggmp21KeygenSession {
 	// Create thread pool
 	threadPool := pool.NewPool(0) // Use max threads
@@ -59,6 +60,7 @@ func newCGGMP21KeygenSession(
 	return &cggmp21KeygenSession{
 		session: session{
 			walletID:           walletID,
+			orgID:              orgID,
 			pubSub:             pubSub,
 			selfPartyID:        selfPartyID,
 			partyIDs:           partyIDs,
@@ -386,7 +388,7 @@ func (s *cggmp21KeygenSession) publishResult() {
 		return
 	}
 
-	if err := s.kvstore.Put(s.walletID, shareBytes); err != nil {
+	if err := s.kvstore.Put(OrgScopedKey(s.orgID, s.walletID), shareBytes); err != nil {
 		s.logger.Error().Err(err).Msgf("CGGMP21: Failed to save key share for wallet %s", s.walletID)
 		// IMPORTANT: Always send to externalFinishChan so WaitForFinish() doesn't block forever
 		s.externalFinishChan <- ""

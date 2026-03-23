@@ -50,10 +50,12 @@ func newSR25519KeygenSession(
 	keyinfoStore keyinfo.Store,
 	resultQueue messaging.MessageQueue,
 	identityStore identity.Store,
+	orgID string,
 ) *sr25519KeygenSession {
 	return &sr25519KeygenSession{
 		session: session{
 			walletID:           walletID,
+			orgID:              orgID,
 			pubSub:             pubSub,
 			selfPartyID:        selfPartyID,
 			partyIDs:           partyIDs,
@@ -392,7 +394,7 @@ func (s *sr25519KeygenSession) publishResult() {
 
 	// Save with sr25519: prefix to distinguish from ECDSA and FROST keys
 	sr25519Key := fmt.Sprintf("sr25519:%s", s.walletID)
-	if err := s.kvstore.Put(sr25519Key, shareBytes); err != nil {
+	if err := s.kvstore.Put(OrgScopedKey(s.orgID, sr25519Key), shareBytes); err != nil {
 		s.logger.Error().Err(err).Msgf("SR25519: Failed to save key share for wallet %s", s.walletID)
 		s.externalFinishChan <- ""
 		return

@@ -48,10 +48,12 @@ func newFROSTKeygenSession(
 	keyinfoStore keyinfo.Store,
 	resultQueue messaging.MessageQueue,
 	identityStore identity.Store,
+	orgID string,
 ) *frostKeygenSession {
 	return &frostKeygenSession{
 		session: session{
 			walletID:           walletID,
+			orgID:              orgID,
 			pubSub:             pubSub,
 			selfPartyID:        selfPartyID,
 			partyIDs:           partyIDs,
@@ -396,7 +398,7 @@ func (s *frostKeygenSession) publishResult() {
 
 	// Save with frost: prefix to distinguish from ECDSA keys
 	frostKey := fmt.Sprintf("frost:%s", s.walletID)
-	if err := s.kvstore.Put(frostKey, shareBytes); err != nil {
+	if err := s.kvstore.Put(OrgScopedKey(s.orgID, frostKey), shareBytes); err != nil {
 		s.logger.Error().Err(err).Msgf("FROST: Failed to save key share for wallet %s", s.walletID)
 		// IMPORTANT: Always send to externalFinishChan so WaitForFinish() doesn't block forever
 		s.externalFinishChan <- ""

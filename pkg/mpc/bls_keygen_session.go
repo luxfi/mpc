@@ -56,10 +56,12 @@ func newBLSKeygenSession(
 	keyinfoStore keyinfo.Store,
 	resultQueue messaging.MessageQueue,
 	identityStore identity.Store,
+	orgID string,
 ) *blsKeygenSession {
 	return &blsKeygenSession{
 		session: session{
 			walletID:           walletID,
+			orgID:              orgID,
 			pubSub:             pubSub,
 			selfPartyID:        selfPartyID,
 			partyIDs:           partyIDs,
@@ -354,7 +356,7 @@ func (s *blsKeygenSession) publishResult() {
 	}
 
 	blsKey := fmt.Sprintf("bls:%s", s.walletID)
-	if err := s.kvstore.Put(blsKey, shareBytes); err != nil {
+	if err := s.kvstore.Put(OrgScopedKey(s.orgID, blsKey), shareBytes); err != nil {
 		s.logger.Error().Err(err).Msgf("BLS: Failed to save key share for wallet %s", s.walletID)
 		s.externalFinishChan <- ""
 		return

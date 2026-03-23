@@ -2,6 +2,7 @@ package mpc
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/luxfi/mpc/pkg/kvstore"
 )
@@ -12,6 +13,10 @@ import (
 func OrgScopedKey(orgID, baseKey string) string {
 	if orgID == "" {
 		return baseKey
+	}
+	if strings.Contains(orgID, ":") {
+		// Sanitize: replace colons to prevent key injection
+		orgID = strings.ReplaceAll(orgID, ":", "_")
 	}
 	return fmt.Sprintf("org:%s:%s", orgID, baseKey)
 }
