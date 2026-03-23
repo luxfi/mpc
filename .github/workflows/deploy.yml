@@ -177,9 +177,13 @@ jobs:
           echo "::add-mask::${token}"
           echo "token=${token}" >> "$GITHUB_OUTPUT"
 
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ steps.kms.outputs.token }}
+
       - name: Configure kubectl
         run: |
-          doctl auth init -t "${{ steps.kms.outputs.token }}"
           doctl kubernetes cluster kubeconfig save lux-k8s
 
       - name: Apply namespace and secrets first
