@@ -50,6 +50,7 @@ func newLSSKeygenSession(
 	keyinfoStore keyinfo.Store,
 	resultQueue messaging.MessageQueue,
 	identityStore identity.Store,
+	orgID string,
 ) *lssKeygenSession {
 	// Create thread pool
 	threadPool := pool.NewPool(0) // Use max threads
@@ -57,6 +58,7 @@ func newLSSKeygenSession(
 	return &lssKeygenSession{
 		session: session{
 			walletID:           walletID,
+			orgID:              orgID,
 			pubSub:             pubSub,
 			selfPartyID:        selfPartyID,
 			partyIDs:           partyIDs,
@@ -375,7 +377,7 @@ func (s *lssKeygenSession) saveConfig() error {
 	}
 
 	// Save to kvstore
-	if err := s.kvstore.Put(s.walletID, configData); err != nil {
+	if err := s.kvstore.Put(OrgScopedKey(s.orgID, s.walletID), configData); err != nil {
 		return fmt.Errorf("failed to save config to kvstore: %w", err)
 	}
 
