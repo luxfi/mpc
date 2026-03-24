@@ -1,0 +1,4 @@
+# Secrets -- NEVER commit
+keys/
+.env
+peers.json

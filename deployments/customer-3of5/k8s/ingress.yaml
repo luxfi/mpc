@@ -1,0 +1,55 @@
+# IngressRoute for customer MPC P2P and API access.
+# Customer nodes connect to Lux MPC nodes via this endpoint.
+# KMS API is internal only (not exposed externally).
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: mpc-customer-p2p
+  namespace: lux-mpc-customer
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`mpc-customer.lux.network`)
+      kind: Rule
+      services:
+        - name: mpc-lux
+          port: 9651
+          passHostHeader: false
+  tls:
+    certResolver: letsencrypt
+---
+# API endpoint -- authenticated, for KMS and dashboard access.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: mpc-customer-api
+  namespace: lux-mpc-customer
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`mpc-customer-api.lux.network`)
+      kind: Rule
+      services:
+        - name: mpc-lux-api
+          port: 9800
+          passHostHeader: false
+  tls:
+    certResolver: letsencrypt
+---
+# TLS certificate
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: mpc-customer-tls
+  namespace: lux-mpc-customer
+spec:
+  secretName: mpc-customer-tls
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+  dnsNames:
+    - mpc-customer.lux.network
+    - mpc-customer-api.lux.network

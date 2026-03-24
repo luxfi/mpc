@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: lux-mpc-customer
+  labels:
+    app.kubernetes.io/part-of: lux-mpc
+    app.kubernetes.io/managed-by: kustomize

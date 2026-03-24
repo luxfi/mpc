@@ -1,0 +1,159 @@
+# Customer-operated MPC nodes (2 of 5)
+#
+# This manifest is a TEMPLATE for the customer to deploy in their own
+# infrastructure. Customer modifies the peer addresses to point to the
+# Lux MPC nodes' public endpoint.
+#
+# Customer must:
+#   1. Run init.sh to generate their Ed25519 identity keys
+#   2. Share public keys with Lux for peer registration
+#   3. Receive Lux node public keys and configure peers
+#   4. Deploy this StatefulSet in their K8s cluster
+#   5. Participate in DKG (distributed key generation)
+#
+# The customer nodes connect to Lux nodes via the public endpoint
+# mpc-customer.lux.network:9651 (TLS terminated at Lux ingress).
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mpc
+  labels:
+    app.kubernetes.io/part-of: lux-mpc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mpc-customer
+  namespace: mpc
+  labels:
+    app: mpc-customer
+spec:
+  clusterIP: None
+  selector:
+    app: mpc-customer
+  ports:
+    - name: p2p
+      port: 9651
+      targetPort: 9651
+    - name: api
+      port: 9800
+      targetPort: 9800
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mpc-customer
+  namespace: mpc
+  labels:
+    app: mpc-customer
+spec:
+  serviceName: mpc-customer
+  replicas: 2
+  selector:
+    matchLabels:
+      app: mpc-customer
+  template:
+    metadata:
+      labels:
+        app: mpc-customer
+    spec:
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+        - name: mpcd
+          image: ghcr.io/luxfi/mpc:latest
+          args:
+            - mpcd
+            - start
+            - --mode=consensus
+            - --node-id=$(NODE_ID)
+            - --listen=:9651
+            - --api=:9800
+            - --data=/data/mpc
+            - --keys=/keys
+            - --threshold=3
+            # Lux nodes: reachable via public endpoint
+            - --peer=lux-0@mpc-customer.lux.network:9651
+            - --peer=lux-1@mpc-customer.lux.network:9652
+            - --peer=lux-2@mpc-customer.lux.network:9653
+            # Customer nodes: local cluster DNS
+            - --peer=cust-0@mpc-customer-0.mpc-customer.mpc.svc:9651
+            - --peer=cust-1@mpc-customer-1.mpc-customer.mpc.svc:9651
+            - --log-level=info
+            - --hsm-provider=env
+          env:
+            - name: NODE_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: ZAPDB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mpc-secrets
+                  key: zapdb-password
+          ports:
+            - name: p2p
+              containerPort: 9651
+            - name: api
+              containerPort: 9800
+          volumeMounts:
+            - name: data
+              mountPath: /data/mpc
+            - name: keys
+              mountPath: /keys
+              readOnly: true
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 9800
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 9800
+            initialDelaySeconds: 30
+            periodSeconds: 30
+      volumes:
+        - name: keys
+          secret:
+            secretName: mpc-identity
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 5Gi
+---
+# Customer populates these secrets from their own key management system.
+# The zapdb-password MUST be unique per customer deployment and stored securely.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mpc-secrets
+  namespace: mpc
+type: Opaque
+stringData:
+  zapdb-password: "REPLACE_WITH_32_BYTE_HEX_FROM_YOUR_KMS"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mpc-identity
+  namespace: mpc
+type: Opaque
+data: {}
+# Populated by init.sh -- contains Ed25519 private keys for cust-0, cust-1
