@@ -272,7 +272,7 @@ func (s *Server) signAndBroadcast(txID, orgID string) {
 	tx.RecordTransition("signing", "MPC threshold signing initiated", &sys)
 	tx.Update()
 
-	result, err := s.mpc.TriggerSign(wallet.WalletID, tx.RawTx)
+	result, err := s.mpc.TriggerSign(orgID, wallet.WalletID, tx.RawTx)
 	if err != nil {
 		tx.RecordTransition("failed", "signing failed: "+err.Error(), &sys)
 		tx.Update()

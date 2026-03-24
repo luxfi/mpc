@@ -36,7 +36,7 @@ func (ec *eventConsumer) handleKeyGenEventCGGMP21(msg *event.Message, natMsg *na
 	walletID := msg.WalletID
 
 	// Create CGGMP21 keygen session
-	keygenSession, err := ec.node.CreateKeyGenSession(walletID, ec.mpcThreshold, ec.genKeyResultQueue)
+	keygenSession, err := ec.node.CreateKeyGenSession(walletID, ec.mpcThreshold, ec.genKeyResultQueue, msg.OrgID)
 	if err != nil {
 		ec.handleKeygenSessionError(walletID, err, "Failed to create CGGMP21 key generation session", natMsg)
 		return
