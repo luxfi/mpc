@@ -77,7 +77,7 @@ func (p *Node) CreateKeyGenSession(
 	walletID string,
 	threshold int,
 	resultQueue messaging.MessageQueue,
-	orgID ...string,
+	orgID string,
 ) (KeyGenSession, error) {
 	if !p.peerRegistry.ArePeersReady() {
 		return nil, fmt.Errorf(
@@ -100,7 +100,7 @@ func (p *Node) CreateKeyGenSession(
 		p.keyinfoStore,
 		resultQueue,
 		p.identityStore,
-		firstOrEmpty(orgID),
+		orgID,
 	)
 
 	// Note: Init() is called by the caller (keygen handler)
@@ -112,7 +112,7 @@ func (p *Node) CreateEdDSAKeyGenSession(
 	walletID string,
 	threshold int,
 	resultQueue messaging.MessageQueue,
-	orgID ...string,
+	orgID string,
 ) (FROSTKeygenSession, error) {
 	if !p.peerRegistry.ArePeersReady() {
 		return nil, fmt.Errorf(
@@ -137,7 +137,7 @@ func (p *Node) CreateEdDSAKeyGenSession(
 		p.keyinfoStore,
 		resultQueue,
 		p.identityStore,
-		firstOrEmpty(orgID),
+		orgID,
 	)
 
 	// Note: Init() is called by the caller (keygen handler)
@@ -150,7 +150,7 @@ func (p *Node) CreateLSSKeyGenSession(
 	walletID string,
 	threshold int,
 	resultQueue messaging.MessageQueue,
-	orgID ...string,
+	orgID string,
 ) (KeyGenSession, error) {
 	if !p.peerRegistry.ArePeersReady() {
 		return nil, fmt.Errorf(
@@ -175,7 +175,7 @@ func (p *Node) CreateLSSKeyGenSession(
 		p.keyinfoStore,
 		resultQueue,
 		p.identityStore,
-		firstOrEmpty(orgID),
+		orgID,
 	)
 
 	// Note: Init() is called by the caller (keygen handler)
@@ -187,7 +187,7 @@ func (p *Node) CreateSR25519KeyGenSession(
 	walletID string,
 	threshold int,
 	resultQueue messaging.MessageQueue,
-	orgID ...string,
+	orgID string,
 ) (SR25519KeygenSession, error) {
 	if !p.peerRegistry.ArePeersReady() {
 		return nil, fmt.Errorf(
@@ -211,7 +211,7 @@ func (p *Node) CreateSR25519KeyGenSession(
 		p.keyinfoStore,
 		resultQueue,
 		p.identityStore,
-		firstOrEmpty(orgID),
+		orgID,
 	)
 
 	// Note: Init() is called by the caller (keygen handler)
@@ -227,7 +227,7 @@ func (p *Node) CreateSR25519SignSession(
 	signerPeerIDs []string,
 	resultQueue messaging.MessageQueue,
 	useBroadcast bool,
-	orgID ...string,
+	orgID string,
 ) (SR25519SignSession, error) {
 	// Check if we have enough signers
 	keyInfo, err := p.keyinfoStore.Get(walletID)
@@ -248,7 +248,6 @@ func (p *Node) CreateSR25519SignSession(
 	// SR25519 uses version 0 for raw party IDs without suffixes (same as FROST)
 	selfPartyID, signerPartyIDs := p.generatePartyIDs(PurposeKeygen, signerPeerIDs, 0)
 
-	oid := firstOrEmpty(orgID)
 	session, err := newSR25519SigningSession(
 		sessionID,
 		walletID,
@@ -262,7 +261,7 @@ func (p *Node) CreateSR25519SignSession(
 		resultQueue,
 		p.identityStore,
 		useBroadcast,
-		oid,
+		orgID,
 	)
 	if err != nil {
 		return nil, err
@@ -277,7 +276,7 @@ func (p *Node) CreateBLSKeyGenSession(
 	walletID string,
 	threshold int,
 	resultQueue messaging.MessageQueue,
-	orgID ...string,
+	orgID string,
 ) (BLSKeygenSession, error) {
 	if !p.peerRegistry.ArePeersReady() {
 		return nil, fmt.Errorf(
@@ -301,7 +300,7 @@ func (p *Node) CreateBLSKeyGenSession(
 		p.keyinfoStore,
 		resultQueue,
 		p.identityStore,
-		firstOrEmpty(orgID),
+		orgID,
 	)
 
 	// Note: Init() is called by the caller (keygen handler)
@@ -315,7 +314,7 @@ func (p *Node) CreateBLSSignSession(
 	messageHash []byte,
 	signerPeerIDs []string,
 	resultQueue messaging.MessageQueue,
-	orgID ...string,
+	orgID string,
 ) (BLSSignSession, error) {
 	// Check if we have enough signers
 	keyInfo, err := p.keyinfoStore.Get(walletID)
@@ -336,7 +335,6 @@ func (p *Node) CreateBLSSignSession(
 	// BLS uses version 0 for raw party IDs without suffixes
 	selfPartyID, signerPartyIDs := p.generatePartyIDs(PurposeKeygen, signerPeerIDs, 0)
 
-	oid := firstOrEmpty(orgID)
 	session, err := newBLSSigningSession(
 		sessionID,
 		walletID,
@@ -348,7 +346,7 @@ func (p *Node) CreateBLSSignSession(
 		p.keyinfoStore,
 		resultQueue,
 		p.identityStore,
-		oid,
+		orgID,
 	)
 	if err != nil {
 		return nil, err
@@ -365,7 +363,7 @@ func (p *Node) CreateSignSession(
 	signerPeerIDs []string,
 	resultQueue messaging.MessageQueue,
 	useBroadcast bool,
-	orgID ...string,
+	orgID string,
 ) (SignSession, error) {
 	// Check if we have enough signers
 	keyInfo, err := p.keyinfoStore.Get(walletID)
@@ -387,7 +385,6 @@ func (p *Node) CreateSignSession(
 	// were created during keygen with "UUID:keygen:1" format
 	selfPartyID, signerPartyIDs := p.generatePartyIDs(PurposeKeygen, signerPeerIDs, DefaultVersion)
 
-	oid := firstOrEmpty(orgID)
 	session, err := newCGGMP21SigningSession(
 		sessionID,
 		walletID,
@@ -400,7 +397,7 @@ func (p *Node) CreateSignSession(
 		resultQueue,
 		p.identityStore,
 		useBroadcast,
-		oid,
+		orgID,
 	)
 	if err != nil {
 		return nil, err
@@ -418,7 +415,7 @@ func (p *Node) CreateEdDSASignSession(
 	signerPeerIDs []string,
 	resultQueue messaging.MessageQueue,
 	useBroadcast bool,
-	orgID ...string,
+	orgID string,
 ) (FROSTSignSession, error) {
 	// Check if we have enough signers
 	keyInfo, err := p.keyinfoStore.Get(walletID)
@@ -439,7 +436,6 @@ func (p *Node) CreateEdDSASignSession(
 	// FROST uses version 0 for raw party IDs without suffixes
 	selfPartyID, signerPartyIDs := p.generatePartyIDs(PurposeKeygen, signerPeerIDs, 0)
 
-	oid := firstOrEmpty(orgID)
 	session, err := newFROSTSigningSession(
 		sessionID,
 		walletID,
@@ -452,7 +448,7 @@ func (p *Node) CreateEdDSASignSession(
 		resultQueue,
 		p.identityStore,
 		useBroadcast,
-		oid,
+		orgID,
 	)
 	if err != nil {
 		return nil, err
@@ -500,6 +496,7 @@ func (p *Node) CreateReshareSession(
 	newNodeIDs []string,
 	isNewPeer bool,
 	resultQueue messaging.MessageQueue,
+	orgID string,
 ) (ReshareSession, error) {
 	logger.Info("Creating reshare session",
 		"sessionType", sessionType,
@@ -509,6 +506,7 @@ func (p *Node) CreateReshareSession(
 		"newNodeIDs", newNodeIDs,
 		"isNewPeer", isNewPeer,
 		"nodeID", p.nodeID,
+		"orgID", orgID,
 	)
 
 	switch sessionType {
@@ -524,6 +522,7 @@ func (p *Node) CreateReshareSession(
 			p.keyinfoStore,
 			resultQueue,
 			p.nodeID,
+			orgID,
 		)
 		// Explicitly return nil interface if session is nil
 		// (prevents nil pointer inside non-nil interface)
@@ -543,6 +542,7 @@ func (p *Node) CreateReshareSession(
 			p.keyinfoStore,
 			resultQueue,
 			p.nodeID,
+			orgID,
 		)
 		// Explicitly return nil interface if session is nil
 		if session == nil {
@@ -560,6 +560,7 @@ func (p *Node) CreateTFHEKeyGenSession(
 	walletID string,
 	threshold int,
 	resultQueue messaging.MessageQueue,
+	orgID string,
 ) (*tfheKeygenSession, error) {
 	if !p.peerRegistry.ArePeersReady() {
 		return nil, fmt.Errorf(
@@ -590,6 +591,7 @@ func (p *Node) CreateTFHEKeyGenSession(
 		p.keyinfoStore,
 		resultQueue,
 		p.identityStore,
+		orgID,
 	)
 
 	return session, nil
@@ -602,6 +604,7 @@ func (p *Node) CreateTFHEComputeSession(
 	walletID string,
 	participantPeerIDs []string,
 	resultQueue messaging.MessageQueue,
+	orgID string,
 ) (TFHESession, error) {
 	// Check if this node is in the participant list
 	if !contains(participantPeerIDs, p.nodeID) {
@@ -621,6 +624,7 @@ func (p *Node) CreateTFHEComputeSession(
 		p.keyinfoStore,
 		resultQueue,
 		p.identityStore,
+		orgID,
 	)
 	if err != nil {
 		return nil, err
@@ -629,13 +633,6 @@ func (p *Node) CreateTFHEComputeSession(
 	return session, nil
 }
 
-// firstOrEmpty returns the first element of a variadic string slice, or empty string.
-func firstOrEmpty(s []string) string {
-	if len(s) > 0 {
-		return s[0]
-	}
-	return ""
-}
 
 func contains(slice []string, item string) bool {
 	for _, s := range slice {
