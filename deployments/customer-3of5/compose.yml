@@ -1,0 +1,231 @@
+# Local development: 3-of-5 MPC cluster (3 Lux + 2 Customer)
+#
+# Usage:
+#   # Initialize identities and run DKG:
+#   ./init.sh
+#
+#   # Start cluster:
+#   docker compose up -d
+#
+#   # Check health:
+#   curl http://localhost:9800/health
+#   curl http://localhost:9801/health
+
+services:
+  # --- Lux MPC Nodes (3) ---
+
+  lux-0:
+    image: ghcr.io/luxfi/mpc:latest
+    platform: linux/amd64
+    command:
+      - mpcd
+      - start
+      - --mode=consensus
+      - --node-id=lux-0
+      - --listen=:9651
+      - --api=:9800
+      - --data=/data/mpc
+      - --keys=/keys
+      - --threshold=3
+      - --peer=lux-1@lux-1:9651
+      - --peer=lux-2@lux-2:9651
+      - --peer=cust-0@cust-0:9651
+      - --peer=cust-1@cust-1:9651
+      - --log-level=info
+      - --hsm-provider=env
+    environment:
+      ZAPDB_PASSWORD: "${ZAPDB_PASSWORD_LUX_0}"
+    volumes:
+      - lux-0-data:/data/mpc
+      - ./keys/lux-0:/keys:ro
+    ports:
+      - "9800:9800"
+    networks:
+      - mpc
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9800/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  lux-1:
+    image: ghcr.io/luxfi/mpc:latest
+    platform: linux/amd64
+    command:
+      - mpcd
+      - start
+      - --mode=consensus
+      - --node-id=lux-1
+      - --listen=:9651
+      - --api=:9800
+      - --data=/data/mpc
+      - --keys=/keys
+      - --threshold=3
+      - --peer=lux-0@lux-0:9651
+      - --peer=lux-2@lux-2:9651
+      - --peer=cust-0@cust-0:9651
+      - --peer=cust-1@cust-1:9651
+      - --log-level=info
+      - --hsm-provider=env
+    environment:
+      ZAPDB_PASSWORD: "${ZAPDB_PASSWORD_LUX_1}"
+    volumes:
+      - lux-1-data:/data/mpc
+      - ./keys/lux-1:/keys:ro
+    ports:
+      - "9801:9800"
+    networks:
+      - mpc
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9800/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  lux-2:
+    image: ghcr.io/luxfi/mpc:latest
+    platform: linux/amd64
+    command:
+      - mpcd
+      - start
+      - --mode=consensus
+      - --node-id=lux-2
+      - --listen=:9651
+      - --api=:9800
+      - --data=/data/mpc
+      - --keys=/keys
+      - --threshold=3
+      - --peer=lux-0@lux-0:9651
+      - --peer=lux-1@lux-1:9651
+      - --peer=cust-0@cust-0:9651
+      - --peer=cust-1@cust-1:9651
+      - --log-level=info
+      - --hsm-provider=env
+    environment:
+      ZAPDB_PASSWORD: "${ZAPDB_PASSWORD_LUX_2}"
+    volumes:
+      - lux-2-data:/data/mpc
+      - ./keys/lux-2:/keys:ro
+    ports:
+      - "9802:9800"
+    networks:
+      - mpc
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9800/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # --- Customer MPC Nodes (2) ---
+
+  cust-0:
+    image: ghcr.io/luxfi/mpc:latest
+    platform: linux/amd64
+    command:
+      - mpcd
+      - start
+      - --mode=consensus
+      - --node-id=cust-0
+      - --listen=:9651
+      - --api=:9800
+      - --data=/data/mpc
+      - --keys=/keys
+      - --threshold=3
+      - --peer=lux-0@lux-0:9651
+      - --peer=lux-1@lux-1:9651
+      - --peer=lux-2@lux-2:9651
+      - --peer=cust-1@cust-1:9651
+      - --log-level=info
+      - --hsm-provider=env
+    environment:
+      ZAPDB_PASSWORD: "${ZAPDB_PASSWORD_CUST_0}"
+    volumes:
+      - cust-0-data:/data/mpc
+      - ./keys/cust-0:/keys:ro
+    ports:
+      - "9810:9800"
+    networks:
+      - mpc
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9800/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  cust-1:
+    image: ghcr.io/luxfi/mpc:latest
+    platform: linux/amd64
+    command:
+      - mpcd
+      - start
+      - --mode=consensus
+      - --node-id=cust-1
+      - --listen=:9651
+      - --api=:9800
+      - --data=/data/mpc
+      - --keys=/keys
+      - --threshold=3
+      - --peer=lux-0@lux-0:9651
+      - --peer=lux-1@lux-1:9651
+      - --peer=lux-2@lux-2:9651
+      - --peer=cust-0@cust-0:9651
+      - --log-level=info
+      - --hsm-provider=env
+    environment:
+      ZAPDB_PASSWORD: "${ZAPDB_PASSWORD_CUST_1}"
+    volumes:
+      - cust-1-data:/data/mpc
+      - ./keys/cust-1:/keys:ro
+    ports:
+      - "9811:9800"
+    networks:
+      - mpc
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9800/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # --- KMS Service ---
+
+  kms:
+    image: ghcr.io/luxfi/kms:latest
+    platform: linux/amd64
+    environment:
+      KMS_LISTEN: ":8080"
+      MPC_URL: "http://lux-0:9800"
+      MPC_TOKEN: "${MPC_API_TOKEN}"
+      MPC_VAULT_ID: "${MPC_VAULT_ID}"
+      KMS_STORE_PATH: "/data/kms/keys.json"
+    volumes:
+      - kms-data:/data/kms
+    ports:
+      - "8080:8080"
+    networks:
+      - mpc
+    depends_on:
+      lux-0:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  lux-0-data:
+  lux-1-data:
+  lux-2-data:
+  cust-0-data:
+  cust-1-data:
+  kms-data:
+
+networks:
+  mpc:
+    driver: bridge
