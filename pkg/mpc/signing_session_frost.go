@@ -75,6 +75,11 @@ func newFROSTSigningSession(
 			loadErr = fmt.Errorf("failed to get FROST key share: %w", err)
 			return
 		}
+		defer func() {
+			for i := range shareBytes {
+				shareBytes[i] = 0
+			}
+		}()
 		// TaprootConfig is stored as CBOR (to properly preserve crypto types)
 		config, err = UnmarshalFROSTConfig(shareBytes)
 		if err != nil {

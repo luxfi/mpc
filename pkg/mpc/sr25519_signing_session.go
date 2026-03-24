@@ -86,6 +86,11 @@ func newSR25519SigningSession(
 			loadErr = fmt.Errorf("failed to get SR25519 key share: %w", err)
 			return
 		}
+		defer func() {
+			for i := range shareBytes {
+				shareBytes[i] = 0
+			}
+		}()
 		// Config is stored as CBOR (to properly preserve crypto types)
 		config, err = UnmarshalSR25519Config(shareBytes)
 		if err != nil {

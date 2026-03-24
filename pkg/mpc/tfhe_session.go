@@ -52,6 +52,7 @@ type tfheKeygenSession struct {
 	resultMutex  sync.Mutex
 	done         bool
 	resultErr    error
+	orgID        string
 }
 
 // newTFHEKeygenSession creates a new TFHE keygen session
@@ -66,6 +67,7 @@ func newTFHEKeygenSession(
 	keyinfoStore keyinfo.Store,
 	resultQueue messaging.MessageQueue,
 	identityStore identity.Store,
+	orgID string,
 ) *tfheKeygenSession {
 	return &tfheKeygenSession{
 		session: session{
@@ -100,6 +102,7 @@ func newTFHEKeygenSession(
 		threshold:    threshold,
 		totalParties: len(partyIDs),
 		done:         false,
+		orgID:        orgID,
 	}
 }
 
@@ -271,8 +274,9 @@ func (s *tfheKeygenSession) publishResult() {
 		return
 	}
 
-	// Save with tfhe: prefix to distinguish from other key types
-	tfheKey := fmt.Sprintf("tfhe:%s", s.walletID)
+	// Save with tfhe: prefix to distinguish from other key types, org-scoped
+	tfheBaseKey := fmt.Sprintf("tfhe:%s", s.walletID)
+	tfheKey := OrgScopedKey(s.orgID, tfheBaseKey)
 	if err := s.kvstore.Put(tfheKey, configBytes); err != nil {
 		s.logger.Error().Err(err).Msgf("Failed to save TFHE config for %s", s.walletID)
 		s.externalFinishChan <- ""
@@ -313,6 +317,7 @@ type tfheComputeSession struct {
 	session
 	protocol    *tfhe.Protocol
 	resultMutex sync.Mutex
+	orgID       string
 }
 
 // newTFHEComputeSession creates a session for TFHE computation
@@ -326,10 +331,11 @@ func newTFHEComputeSession(
 	keyinfoStore keyinfo.Store,
 	resultQueue messaging.MessageQueue,
 	identityStore identity.Store,
+	orgID string,
 ) (*tfheComputeSession, error) {
-	// Load TFHE config from kvstore
-	tfheKey := fmt.Sprintf("tfhe:%s", walletID)
-	configBytes, err := kvstore.Get(tfheKey)
+	// Load TFHE config from kvstore using org-scoped key
+	tfheBaseKey := fmt.Sprintf("tfhe:%s", walletID)
+	configBytes, err := GetKeyShareWithFallback(kvstore, orgID, tfheBaseKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get TFHE config: %w", err)
 	}
@@ -376,6 +382,7 @@ func newTFHEComputeSession(
 			identityStore: identityStore,
 		},
 		protocol: protocol,
+		orgID:    orgID,
 	}, nil
 }
 
