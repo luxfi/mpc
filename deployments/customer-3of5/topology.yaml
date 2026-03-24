@@ -1,0 +1,84 @@
+# 3-of-5 Threshold Topology: Customer + Lux
+#
+# Topology:
+#   Lux:     3 nodes (lux-0, lux-1, lux-2)     -- operated by Lux
+#   Customer: 2 nodes (cust-0, cust-1)          -- operated by Customer
+#   Threshold: 3 (any 3 nodes produce a valid signature)
+#
+# Security properties:
+#   - Customer alone (2 nodes) CANNOT sign. Prevents rogue customer transactions.
+#   - Lux alone (3 nodes) CAN sign. Required for operational/bridge/emergency use.
+#   - Customer + 1 Lux node (3 nodes) CAN sign. Normal DAO governance flow.
+#   - Single node compromise: attacker has 1 share, needs 2 more. No risk.
+#   - Two node compromise (worst case): attacker needs 1 more. Still safe if
+#     compromised nodes are on the same side (customer or lux).
+#
+# Trust model:
+#   Lux holds signing majority. This is intentional for bridge/operational keys.
+#   For DAO governance keys where customer must co-approve, use Safe multisig
+#   on-chain (see safe-integration.md) to enforce customer participation even
+#   when Lux holds threshold majority.
+#
+# Network topology:
+#   Lux nodes run in lux-k8s cluster (lux-mpc-customer namespace).
+#   Customer nodes run in customer's own infrastructure.
+#   ZAP transport connects all 5 nodes over TLS (mTLS via Ed25519 identity keys).
+#   Customer nodes connect to Lux nodes via public endpoint (mpc-customer.lux.network).
+#
+# Key types generated:
+#   - ECDSA (secp256k1): Bitcoin, Ethereum/EVM, Lux C/X/P chains
+#   - EdDSA (Ed25519):   Solana, TON, Polkadot (via FROST)
+#   - FROST (secp256k1): Bitcoin Taproot, Safe on-chain verification
+
+topology:
+  name: "customer-3of5"
+  threshold: 3
+  total_nodes: 5
+
+  nodes:
+    - id: "lux-0"
+      operator: "lux"
+      p2p_port: 9651
+      api_port: 9800
+      data_dir: "/data/mpc/lux-0"
+
+    - id: "lux-1"
+      operator: "lux"
+      p2p_port: 9652
+      api_port: 9801
+      data_dir: "/data/mpc/lux-1"
+
+    - id: "lux-2"
+      operator: "lux"
+      p2p_port: 9653
+      api_port: 9802
+      data_dir: "/data/mpc/lux-2"
+
+    - id: "cust-0"
+      operator: "customer"
+      p2p_port: 9651
+      api_port: 9800
+      data_dir: "/data/mpc/cust-0"
+
+    - id: "cust-1"
+      operator: "customer"
+      p2p_port: 9652
+      api_port: 9801
+      data_dir: "/data/mpc/cust-1"
+
+  protocols:
+    ecdsa:
+      curve: "secp256k1"
+      protocol: "CGGMP21"
+      chains: ["bitcoin", "ethereum", "lux", "xrpl"]
+
+    eddsa:
+      curve: "ed25519"
+      protocol: "FROST"
+      chains: ["solana", "ton", "polkadot"]
+
+    frost_taproot:
+      curve: "secp256k1"
+      protocol: "FROST"
+      chains: ["bitcoin-taproot"]
+      safe_verifiable: true  # on-chain FROST.sol verification
