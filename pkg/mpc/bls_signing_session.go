@@ -72,6 +72,11 @@ func newBLSSigningSession(
 			loadErr = fmt.Errorf("failed to get BLS key share: %w", err)
 			return
 		}
+		defer func() {
+			for i := range shareBytes {
+				shareBytes[i] = 0
+			}
+		}()
 		config, err = UnmarshalBLSConfig(shareBytes)
 		if err != nil {
 			loadErr = fmt.Errorf("failed to unmarshal BLS key share: %w", err)
