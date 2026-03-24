@@ -220,7 +220,7 @@ func (s *Server) handleProposeSafeTx(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to load MPC wallet")
 		return
 	}
-	signResult, err := s.mpc.TriggerSign(mpcWallet.WalletID, txHash)
+	signResult, err := s.mpc.TriggerSign(orgID, mpcWallet.WalletID, txHash)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "MPC signing failed: "+err.Error())
 		return
