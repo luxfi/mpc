@@ -12,13 +12,21 @@ import (
 
 func (s *Server) handleListWallets(w http.ResponseWriter, r *http.Request) {
 	orgID := getOrgID(r.Context())
+	userID := getUserID(r.Context())
 	vaultID := urlParam(r, "id")
 
-	wallets, err := orm.TypedQuery[db.Wallet](s.db.ORM).
+	q := orm.TypedQuery[db.Wallet](s.db.ORM).
 		Filter("vaultId=", vaultID).
 		Filter("orgId=", orgID).
-		Order("-createdAt").
-		GetAll(r.Context())
+		Order("-createdAt")
+
+	// Per-user isolation: non-admin users only see their own wallets
+	role := getRole(r.Context())
+	if role != "owner" && role != "admin" && userID != "" {
+		q = q.Filter("createdBy=", userID)
+	}
+
+	wallets, err := q.GetAll(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "database error")
 		return
