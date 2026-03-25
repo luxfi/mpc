@@ -1,3 +1,5 @@
+# MPC Node Configuration (local development only)
+# Production: all secrets from KMS via --hsm-provider=env or --hsm-provider=aws
 nats:
   url: nats://127.0.0.1:4222
 consul:
@@ -5,10 +7,10 @@ consul:
 
 mpc_threshold: 2
 environment: local # Options: mainnet, testnet, local
-zapdb_password: "12345678901234567890123456789012" # 32 bytes for AES-256
+# zapdb_password: sourced from ZAPDB_PASSWORD env var or --hsm-provider (NEVER hardcode)
 event_initiator_pubkey: "c3f3511cd2f849fd61e81ea62a842fd33367ee8fb5b867bb900877c7fb72ce3b"
 max_concurrent_keygen: 2
-db_path: "."  
+db_path: "."
 backup_enabled: true
 backup_period_seconds: 300 # 5 minutes
 backup_dir: backups
