@@ -619,21 +619,17 @@ func getAzureMSIToken(ctx context.Context) (string, error) {
 // This is suitable for development and local testing. In production,
 // use one of the cloud KMS providers instead.
 type EnvProvider struct {
-	EnvVar string // defaults to "LUX_MPC_PASSWORD"
+	EnvVar string // defaults to "MPC_PASSWORD"
 }
 
 // GetPassword reads the password from the configured env var.
 func (p *EnvProvider) GetPassword(_ context.Context, _ string) (string, error) {
 	envVar := p.EnvVar
 	if envVar == "" {
-		envVar = "LUX_MPC_PASSWORD"
+		envVar = "MPC_PASSWORD"
 	}
 
 	password := os.Getenv(envVar)
-	if password == "" {
-		// Try legacy config key
-		password = os.Getenv("ZAPDB_PASSWORD")
-	}
 	if password == "" {
 		return "", fmt.Errorf("hsm/env: environment variable %s is not set", envVar)
 	}
