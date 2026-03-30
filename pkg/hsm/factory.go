@@ -15,7 +15,7 @@ import (
 //	aws:   AWS_REGION, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, ZAPDB_ENCRYPTED_PASSWORD
 //	gcp:   GCP_PROJECT_ID, GCP_KMS_LOCATION, GCP_KMS_KEYRING, GCP_KMS_KEY, ZAPDB_ENCRYPTED_PASSWORD
 //	azure: AZURE_VAULT_URL, AZURE_KEY_NAME, AZURE_KEY_VERSION, ZAPDB_ENCRYPTED_PASSWORD
-//	env:   LUX_MPC_PASSWORD or ZAPDB_PASSWORD
+//	env:   MPC_PASSWORD
 //	file:  MPC_PASSWORD_FILE
 //
 // If providerType is empty, it defaults to "env" for backward compatibility.
@@ -58,13 +58,13 @@ func NewPasswordProvider(providerType string, config map[string]string) (Passwor
 		}, nil
 
 	case "env":
-		envVar := get("env_var", "")
-		if envVar == "" {
-			envVar = "LUX_MPC_PASSWORD"
+		envVar := "MPC_PASSWORD"
+		if config != nil {
+			if v, ok := config["env_var"]; ok && v != "" {
+				envVar = v
+			}
 		}
-		return &EnvProvider{
-			EnvVar: envVar,
-		}, nil
+		return &EnvProvider{EnvVar: envVar}, nil
 
 	case "file":
 		return &FileProvider{

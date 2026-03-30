@@ -9,7 +9,7 @@ import (
 
 func TestEnvProvider(t *testing.T) {
 	const testPassword = "test-password-12345"
-	t.Setenv("LUX_MPC_PASSWORD", testPassword)
+	t.Setenv("MPC_PASSWORD", testPassword)
 
 	p := &EnvProvider{}
 	got, err := p.GetPassword(context.Background(), "")
@@ -38,8 +38,8 @@ func TestEnvProviderCustomVar(t *testing.T) {
 func TestEnvProviderFallbackToZAPDB(t *testing.T) {
 	const testPassword = "zapdb-password-abc"
 	// Clear primary var, set fallback
-	t.Setenv("LUX_MPC_PASSWORD", "")
-	t.Setenv("ZAPDB_PASSWORD", testPassword)
+	t.Setenv("MPC_PASSWORD", "")
+	t.Setenv("MPC_PASSWORD", testPassword)
 
 	p := &EnvProvider{}
 	got, err := p.GetPassword(context.Background(), "")
@@ -52,8 +52,8 @@ func TestEnvProviderFallbackToZAPDB(t *testing.T) {
 }
 
 func TestEnvProviderEmpty(t *testing.T) {
-	t.Setenv("LUX_MPC_PASSWORD", "")
-	t.Setenv("ZAPDB_PASSWORD", "")
+	t.Setenv("MPC_PASSWORD", "")
+	t.Setenv("MPC_PASSWORD", "")
 
 	p := &EnvProvider{}
 	_, err := p.GetPassword(context.Background(), "")
@@ -228,7 +228,7 @@ func TestGCPParseResourceName(t *testing.T) {
 // This is the exact code path used by resolveZapDBPassword in cmd/mpcd.
 func TestNewPasswordProviderEnvIntegration(t *testing.T) {
 	const testPassword = "kms-integration-test-pw"
-	t.Setenv("LUX_MPC_PASSWORD", testPassword)
+	t.Setenv("MPC_PASSWORD", testPassword)
 
 	provider, err := NewPasswordProvider("env", nil)
 	if err != nil {
@@ -272,7 +272,7 @@ func TestNewPasswordProviderFileIntegration(t *testing.T) {
 // TestNewPasswordProviderDefaultsToEnv verifies empty string defaults to env provider.
 func TestNewPasswordProviderDefaultsToEnv(t *testing.T) {
 	const testPassword = "default-env-pw"
-	t.Setenv("LUX_MPC_PASSWORD", testPassword)
+	t.Setenv("MPC_PASSWORD", testPassword)
 
 	// Empty string and whitespace should both default to "env"
 	for _, input := range []string{"", " ", "  "} {
