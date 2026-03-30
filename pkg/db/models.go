@@ -396,3 +396,60 @@ type BackupShard struct {
 }
 
 func init() { orm.Register[WalletBackup]("wallet-backup") }
+
+// DeviceEnrollment tracks a user device enrolled for biometric-gated MPC signing.
+// The device holds the user's key shard (shard 1) in its Secure Enclave,
+// gated by Face ID / Touch ID. The server never possesses the user's shard.
+type DeviceEnrollment struct {
+	orm.Model[DeviceEnrollment]
+	OrgID         string     `json:"orgId"`
+	WalletID      string     `json:"walletId"`
+	UserID        string     `json:"userId"`
+	DeviceID      string     `json:"deviceId"`
+	DeviceType    string     `json:"deviceType"`    // ios, android
+	BiometricType string     `json:"biometricType"` // face_id, touch_id, fingerprint
+	PublicKey     string     `json:"publicKey"`      // Base64-encoded P-256 Secure Enclave public key
+	ParticipantID string    `json:"participantId"`  // MPC participant slot (e.g., "user")
+	Challenge     string     `json:"challenge,omitempty"`
+	Attestation   string     `json:"attestation,omitempty"` // Device attestation object
+	PushToken     string     `json:"pushToken,omitempty"`   // FCM or APNS push notification token
+	Status        string     `json:"status"`                // pending, active, revoked
+	LastUsed      *time.Time `json:"lastUsed,omitempty"`
+	BackupExists  bool       `json:"backupExists"`
+}
+
+func init() { orm.Register[DeviceEnrollment]("device-enrollment") }
+
+// PendingTrade represents a trade awaiting user biometric approval before the
+// ATS shard co-signs. The trade is recorded in PostgreSQL; the MPC signing only
+// happens after the user approves via Face ID / Touch ID on their device.
+//
+// Status flow: pending_approval → approved → signing → signed → settled
+//
+//	pending_approval → rejected
+//	pending_approval → expired
+type PendingTrade struct {
+	orm.Model[PendingTrade]
+	OrgID       string     `json:"orgId"`
+	UserID      string     `json:"userId"`
+	WalletID    string     `json:"walletId"`
+	DeviceID    string     `json:"deviceId,omitempty"`
+	Symbol      string     `json:"symbol"`
+	Side        string     `json:"side"` // buy, sell
+	Quantity    string     `json:"quantity"`
+	Price       string     `json:"price"`
+	TotalValue  string     `json:"totalValue"`
+	TradeID     string     `json:"tradeId,omitempty"`     // ATS trade record ID
+	OrderID     string     `json:"orderId,omitempty"`     // ATS order record ID
+	MessageHash string    `json:"messageHash"`           // Settlement tx data to sign (hex)
+	IntentID    *string    `json:"intentId,omitempty"`    // MPC intent created after approval
+	TxHash      *string    `json:"txHash,omitempty"`      // On-chain tx hash after broadcast
+	Status      string     `json:"status"`
+	Reason      *string    `json:"reason,omitempty"`      // Rejection reason
+	ExpiresAt   time.Time  `json:"expiresAt"`             // 5 minute approval window
+	ApprovedAt  *time.Time `json:"approvedAt,omitempty"`
+	SignedAt    *time.Time `json:"signedAt,omitempty"`
+	StatusHistory []StatusTransition `json:"statusHistory,omitempty"`
+}
+
+func init() { orm.Register[PendingTrade]("pending-trade") }
