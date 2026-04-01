@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/luxfi/mpc/pkg/kvstore"
-	"github.com/luxfi/mpc/pkg/logger"
 )
 
 // OrgScopedKey returns the org-namespaced kvstore key.
@@ -30,11 +29,10 @@ func OrgScopedKey(orgID, baseKey string) string {
 // When orgID is empty (truly unscoped callers), the legacy unscoped key is
 // used directly. A warning is logged for this case so operators can migrate.
 func GetKeyShareWithFallback(store kvstore.KVStore, orgID, baseKey string) ([]byte, error) {
-	if orgID != "" {
-		scopedKey := OrgScopedKey(orgID, baseKey)
-		return store.Get(scopedKey)
+	// Fail-closed on empty/whitespace orgID. No legacy fallback to unscoped keys.
+	if strings.TrimSpace(orgID) == "" {
+		return nil, fmt.Errorf("orgID is required; unscoped key access is disabled")
 	}
-	// Legacy unscoped path -- callers should migrate to org-scoped keys.
-	logger.Warn("GetKeyShareWithFallback called with empty orgID, using unscoped key", "baseKey", baseKey)
-	return store.Get(baseKey)
+	scopedKey := OrgScopedKey(orgID, baseKey)
+	return store.Get(scopedKey)
 }
