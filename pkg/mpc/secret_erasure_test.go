@@ -16,16 +16,13 @@ func TestSecretErasure_M3_ShareBytesZeroed(t *testing.T) {
 	original := make([]byte, len(secret))
 	copy(original, secret)
 
-	require.NoError(t, store.Put("wallet1", secret))
+	// Use org-scoped key (empty orgID is now rejected by K-1 fix)
+	require.NoError(t, store.Put(OrgScopedKey("org1", "wallet1"), secret))
 
-	// Simulate the erasure pattern used in signing sessions.
-	// The closure captures shareBytes, and the deferred zero-fill
-	// must overwrite the bytes before the closure returns.
 	var captured []byte
 	withSecretErasure(func() {
-		shareBytes, err := GetKeyShareWithFallback(store, "", "wallet1")
+		shareBytes, err := GetKeyShareWithFallback(store, "org1", "wallet1")
 		require.NoError(t, err)
-		// Save the slice header (points to same backing array)
 		captured = shareBytes
 		defer func() {
 			for i := range shareBytes {
@@ -34,23 +31,19 @@ func TestSecretErasure_M3_ShareBytesZeroed(t *testing.T) {
 		}()
 	})
 
-	// After the closure, the captured slice should be zeroed
 	for i, b := range captured {
 		assert.Equal(t, byte(0), b, "byte %d should be zeroed, got %d", i, b)
 	}
 }
 
-// TestOrgScopedKey_M2_RequiredOrgID verifies orgID is no longer optional.
-// This is a compile-time guarantee (variadic removed), but we test the
-// behavior: empty orgID falls back to legacy, non-empty uses scoped key.
+// TestOrgScopedKey_M2_RequiredOrgID verifies orgID is mandatory (K-1 fix).
+// Empty orgID is rejected to prevent cross-tenant data leakage.
 func TestOrgScopedKey_M2_RequiredOrgID(t *testing.T) {
 	store := newMockKVStore()
 
 	orgShare := []byte("org-share")
-	legacyShare := []byte("legacy-share")
 
 	require.NoError(t, store.Put(OrgScopedKey("org1", "wallet1"), orgShare))
-	require.NoError(t, store.Put("wallet1", legacyShare))
 
 	// With orgID, only org-scoped key returned
 	got, err := GetKeyShareWithFallback(store, "org1", "wallet1")
@@ -61,8 +54,8 @@ func TestOrgScopedKey_M2_RequiredOrgID(t *testing.T) {
 	_, err = GetKeyShareWithFallback(store, "org2", "wallet1")
 	require.Error(t, err)
 
-	// Empty orgID, legacy share returned
-	got, err = GetKeyShareWithFallback(store, "", "wallet1")
-	require.NoError(t, err)
-	assert.Equal(t, legacyShare, got)
+	// Empty orgID must be REJECTED (K-1: fail-closed, no legacy fallback)
+	_, err = GetKeyShareWithFallback(store, "", "wallet1")
+	require.Error(t, err, "empty orgID must be rejected")
+	assert.Contains(t, err.Error(), "orgID is required")
 }
