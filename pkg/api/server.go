@@ -20,6 +20,7 @@ type MPCBackend interface {
 	TriggerKeygen(orgID, walletID string) (*KeygenResult, error)
 	TriggerSign(orgID, walletID string, payload []byte) (*SignResult, error)
 	TriggerReshare(orgID, walletID string, newThreshold int, newParticipants []string) error
+	ExportKeyShare(orgID, walletID string) ([]byte, error) // Returns serialized key share for backup encryption
 	GetClusterStatus() *ClusterStatus
 }
 

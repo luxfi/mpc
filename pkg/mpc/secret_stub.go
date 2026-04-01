@@ -2,6 +2,12 @@
 
 package mpc
 
-// withSecretErasure is a no-op stub when runtime/secret is not available.
-// The signing operation runs identically; secret erasure is simply skipped.
-func withSecretErasure(f func()) { f() }
+import "runtime"
+
+// withSecretErasure runs f then forces a GC to reclaim stack frames that held
+// secret material. This is weaker than runtime/secret (which zeroes registers
+// and stack slots) but still reduces the window for forensic memory extraction.
+func withSecretErasure(f func()) {
+	f()
+	runtime.GC()
+}
