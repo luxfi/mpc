@@ -1,6 +1,7 @@
 package db
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/hanzoai/orm"
@@ -183,7 +184,8 @@ type AddressWhitelist struct {
 
 func init() { orm.Register[AddressWhitelist]("address-whitelist") }
 
-// AuditEntry is an immutable audit log record.
+// AuditEntry is an append-only audit log record.
+// Update() and Delete() are overridden to prevent mutation after creation.
 type AuditEntry struct {
 	orm.Model[AuditEntry]
 	OrgID        string  `json:"orgId"`
@@ -193,6 +195,16 @@ type AuditEntry struct {
 	ResourceID   *string `json:"resourceId,omitempty"`
 	Details      []byte  `json:"details,omitempty"`
 	IPAddress    *string `json:"ipAddress,omitempty"`
+}
+
+// Update is disabled — audit entries are append-only.
+func (a *AuditEntry) Update() error {
+	return fmt.Errorf("audit entries are immutable; updates are not permitted")
+}
+
+// Delete is disabled — audit entries are append-only.
+func (a *AuditEntry) Delete() error {
+	return fmt.Errorf("audit entries are immutable; deletion is not permitted")
 }
 
 func init() { orm.Register[AuditEntry]("audit-entry") }
@@ -381,7 +393,8 @@ type WalletBackup struct {
 	BackupID          string        `json:"backupId"`  // unique backup identifier
 	Threshold         int           `json:"threshold"` // T shards required to reconstruct
 	TotalShards       int           `json:"totalShards"`
-	EncryptedKeyShare      []byte        `json:"encryptedKeyShare,omitempty"`      // AES-256-GCM encrypted wallet key share
+	EncryptedKeyShare      []byte        `json:"encryptedKeyShare,omitempty"`      // AES-256-GCM(ECDH(user_passkey, ephemeral)) encrypted key share
+	EphemeralPublicKey     string        `json:"ephemeralPublicKey,omitempty"`     // P-256 ephemeral pubkey for user-side ECDH decryption
 	Shards                 []BackupShard `json:"shards,omitempty"`
 	Status                 string        `json:"status"`                           // active, recovered, revoked
 	UserPasskeyFingerprint string        `json:"userPasskeyFingerprint,omitempty"` // P-256 pubkey that encrypts the backup shard — company CANNOT decrypt

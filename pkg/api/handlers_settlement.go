@@ -2,7 +2,12 @@ package api
 
 import (
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/ecdh"
+	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -334,24 +339,93 @@ func (s *Server) handleCreateWalletBackup(w http.ResponseWriter, r *http.Request
 		}
 	}
 
+	// Perform P-256 ECDH + AES-256-GCM encryption of the backup shard.
+	// The user's WebAuthn public key (P-256) is used for key agreement. An ephemeral
+	// P-256 keypair is generated server-side; the shared secret derives the AES key.
+	// Only the user's passkey private key (in Secure Enclave) can reverse the ECDH.
+	if userPasskeyPubKey == "" {
+		writeError(w, http.StatusBadRequest, "user_webauthn_pub_key is required for non-custodial backup; register a WebAuthn credential first")
+		return
+	}
+
+	// Decode user's P-256 public key (base64-encoded uncompressed point)
+	userPubBytes, err := base64.StdEncoding.DecodeString(userPasskeyPubKey)
+	if err != nil || len(userPubBytes) < 65 || userPubBytes[0] != 0x04 {
+		writeError(w, http.StatusBadRequest, "invalid P-256 public key; expected base64-encoded uncompressed point (65 bytes, 0x04 prefix)")
+		return
+	}
+	userECDH, err := ecdh.P256().NewPublicKey(userPubBytes)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid P-256 public key: "+err.Error())
+		return
+	}
+
+	// Load the wallet's key share from the MPC backend (org-scoped)
+	keyShareData, err := s.mpc.ExportKeyShare(orgID, walletID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to export key share for backup")
+		return
+	}
+
+	// Ephemeral P-256 keypair for ECDH
+	ephPriv, err := ecdh.P256().GenerateKey(rand.Reader)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to generate ephemeral key")
+		return
+	}
+	ephPub := ephPriv.PublicKey()
+
+	// ECDH shared secret → SHA-256 → AES-256 key
+	sharedSecret, err := ephPriv.ECDH(userECDH)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "ECDH key agreement failed")
+		return
+	}
+	aesKey := sha256.Sum256(sharedSecret)
+
+	// AES-256-GCM encrypt the key share
+	block, err := aes.NewCipher(aesKey[:])
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to create cipher")
+		return
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to create GCM")
+		return
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := rand.Read(nonce); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to generate nonce")
+		return
+	}
+	encrypted := gcm.Seal(nonce, nonce, keyShareData, nil) // nonce || ciphertext || tag
+
+	// Zero sensitive material
+	for i := range sharedSecret {
+		sharedSecret[i] = 0
+	}
+	for i := range aesKey {
+		aesKey[i] = 0
+	}
+	for i := range keyShareData {
+		keyShareData[i] = 0
+	}
+
 	backup := orm.New[db.WalletBackup](s.db.ORM)
 	backup.OrgID = orgID
 	backup.WalletID = walletID
 	backup.Threshold = req.Threshold
 	backup.TotalShards = req.TotalShards
 	backup.Status = "active"
-	backup.UserPasskeyFingerprint = userPasskeyPubKey // Store which passkey encrypts the backup
+	backup.UserPasskeyFingerprint = userPasskeyPubKey
+	backup.EncryptedKeyShare = encrypted // AES-256-GCM ciphertext, decryptable ONLY with user's passkey
+	backup.EphemeralPublicKey = base64.StdEncoding.EncodeToString(ephPub.Bytes()) // needed for user-side ECDH
 
 	if err := backup.Create(); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create backup record: "+err.Error())
 		return
 	}
-
-	// The backup shard is encrypted with the user's passkey public key (P-256 ECDH)
-	// before being stored in HSM. The MPC node performs the ECDH key agreement
-	// and AES-256-GCM encryption using the user's WebAuthn public key.
-	// The encrypted shard is stored in HSM — the company has the ciphertext
-	// but NOT the decryption key (which lives in the user's Secure Enclave).
 
 	s.fireWebhook(r.Context(), orgID, "wallet.backup_created", backup)
 	writeJSON(w, http.StatusCreated, backup)
