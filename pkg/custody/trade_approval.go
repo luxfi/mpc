@@ -194,6 +194,26 @@ func (s *TradeApprovalService) MarkSigned(ctx context.Context, tradeID, intentID
 	return trade.Update()
 }
 
+// MarkSignFailed transitions a trade to sign_failed for retry by the settlement cron.
+func (s *TradeApprovalService) MarkSignFailed(ctx context.Context, tradeID, reason string) error {
+	trade, err := orm.Get[db.PendingTrade](s.db, tradeID)
+	if err != nil {
+		return errors.New("pending trade not found")
+	}
+	trade.Status = "sign_failed"
+	actor := "system"
+	reasonStr := reason
+	trade.Reason = &reasonStr
+	trade.StatusHistory = append(trade.StatusHistory, db.StatusTransition{
+		From:      "approved",
+		To:        "sign_failed",
+		Timestamp: time.Now(),
+		Detail:    "MPC signing failed: " + reason,
+		Actor:     &actor,
+	})
+	return trade.Update()
+}
+
 // MarkSettled transitions a trade to settled and sends a confirmation push.
 func (s *TradeApprovalService) MarkSettled(ctx context.Context, tradeID, txHash string) error {
 	trade, err := orm.Get[db.PendingTrade](s.db, tradeID)
