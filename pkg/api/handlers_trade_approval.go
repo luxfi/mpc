@@ -55,6 +55,21 @@ func (s *Server) handleTradeSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Verify caller is authorized to submit trades for this user.
+	// API key callers must have "trade:submit" permission. JWT callers must
+	// either be the user themselves or have "admin" role.
+	callerRole := getRole(r.Context())
+	callerID := getUserID(r.Context())
+	if callerRole == "api" {
+		if !hasPermission(r.Context(), "trade:submit") {
+			writeError(w, http.StatusForbidden, "api key missing permission: trade:submit")
+			return
+		}
+	} else if callerID != req.UserID && callerRole != "admin" {
+		writeError(w, http.StatusForbidden, "cannot submit trades for other users")
+		return
+	}
+
 	// Verify wallet belongs to this org
 	wallet, err := orm.Get[db.Wallet](s.db.ORM, req.WalletID)
 	if err != nil || wallet.OrgID != orgID {
@@ -170,8 +185,13 @@ func (s *Server) handleTradeApprove(w http.ResponseWriter, r *http.Request) {
 	signedData := append(authData, clientDataHash[:]...)
 	signedHash := sha256.Sum256(signedData)
 
-	pubKeyBytes, _ := base64.StdEncoding.DecodeString(creds[0].PublicKey)
-	if len(pubKeyBytes) >= 65 {
+	// Always verify signature. Reject if key can't parse.
+	pubKeyBytes, decErr := base64.StdEncoding.DecodeString(creds[0].PublicKey)
+	if decErr != nil || len(pubKeyBytes) < 65 || pubKeyBytes[0] != 0x04 {
+		writeError(w, http.StatusUnauthorized, "stored credential has invalid public key; re-register the WebAuthn credential")
+		return
+	}
+	{
 		x := new(big.Int).SetBytes(pubKeyBytes[1:33])
 		y := new(big.Int).SetBytes(pubKeyBytes[33:65])
 		pubKey := &ecdsa.PublicKey{Curve: elliptic.P256(), X: x, Y: y}
@@ -181,6 +201,12 @@ func (s *Server) handleTradeApprove(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Validate origin
+	if cd.Origin != "https://lux.network" && cd.Origin != "https://mpc.lux.network" {
+		writeError(w, http.StatusBadRequest, "origin mismatch: expected lux.network")
+		return
+	}
+
 	// Biometric verified — approve the trade
 	trade, err := s.tradeApproval.ApproveWithBiometric(r.Context(), req.TradeID, orgID, userID)
 	if err != nil {
@@ -188,31 +214,40 @@ func (s *Server) handleTradeApprove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Trigger MPC signing: create an intent for the trade's message hash, then sign it
-	signed := false
-	var intentID string
+	// MPC signing with error handling. On failure, mark trade as
+	// sign_failed so the settlement retry cron can pick it up.
 	go func() {
 		ctx := context.Background()
-		if result, signErr := s.mpc.TriggerSign(orgID, trade.WalletID, []byte(trade.MessageHash)); signErr == nil {
-			// Create intent record linking trade to MPC signature
-			intent := orm.New[db.Intent](s.db.ORM)
-			intent.OrgID = orgID
-			intent.WalletID = trade.WalletID
-			intent.IntentType = trade.Side
-			intent.Chain = "lux"
-			intent.Amount = trade.TotalValue
-			intent.IntentHash = trade.MessageHash
-			sig := result.Signature
-			intent.Signature = &sig
-			intent.Status = "signed"
-			if createErr := intent.Create(); createErr == nil {
-				s.tradeApproval.MarkSigned(ctx, trade.Id(), intent.Id())
-				s.fireWebhook(ctx, orgID, "trade.signed", map[string]string{
-					"trade_id":  trade.Id(),
-					"intent_id": intent.Id(),
-				})
-			}
+		result, signErr := s.mpc.TriggerSign(orgID, trade.WalletID, []byte(trade.MessageHash))
+		if signErr != nil {
+			s.tradeApproval.MarkSignFailed(ctx, trade.Id(), signErr.Error())
+			s.fireWebhook(ctx, orgID, "trade.sign_failed", map[string]string{
+				"trade_id": trade.Id(),
+				"error":    signErr.Error(),
+			})
+			return
 		}
+		intent := orm.New[db.Intent](s.db.ORM)
+		intent.OrgID = orgID
+		intent.WalletID = trade.WalletID
+		intent.IntentType = trade.Side
+		intent.Chain = "lux"
+		intent.Amount = trade.TotalValue
+		intent.IntentHash = trade.MessageHash
+		sigStr := result.Signature
+		intent.Signature = &sigStr
+		intent.Status = "signed"
+		if createErr := intent.Create(); createErr != nil {
+			s.tradeApproval.MarkSignFailed(ctx, trade.Id(), "intent create failed: "+createErr.Error())
+			return
+		}
+		s.tradeApproval.MarkSigned(ctx, trade.Id(), intent.Id())
+		// Audit log the MPC signing event
+		s.writeSigningAuditLog(ctx, orgID, trade.WalletID, trade.MessageHash, intent.Id(), "trade_approve")
+		s.fireWebhook(ctx, orgID, "trade.signed", map[string]string{
+			"trade_id":  trade.Id(),
+			"intent_id": intent.Id(),
+		})
 	}()
 
 	s.fireWebhook(r.Context(), orgID, "trade.approved", map[string]string{
@@ -225,8 +260,7 @@ func (s *Server) handleTradeApprove(w http.ResponseWriter, r *http.Request) {
 		"status":          "approved",
 		"trade_id":        trade.Id(),
 		"biometric":       true,
-		"signing_started": !signed,
-		"intent_id":       intentID,
+		"signing_started": true,
 	})
 }
 
