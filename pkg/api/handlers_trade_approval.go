@@ -202,8 +202,8 @@ func (s *Server) handleTradeApprove(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate origin
-	if cd.Origin != "https://lux.network" && cd.Origin != "https://mpc.lux.network" {
-		writeError(w, http.StatusBadRequest, "origin mismatch: expected lux.network")
+	if !s.webauthnOrigins[cd.Origin] {
+		writeError(w, http.StatusBadRequest, "origin mismatch: "+cd.Origin+" is not an allowed WebAuthn origin")
 		return
 	}
 
