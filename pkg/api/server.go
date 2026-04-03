@@ -3,6 +3,8 @@ package api
 import (
 	"context"
 	"net/http"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -63,6 +65,8 @@ type Server struct {
 	txTracker      *txtracker.Tracker
 	jwtSecret      []byte
 	oidcIssuers    []string
+	webauthnRPID   string
+	webauthnOrigins map[string]bool
 	router         chi.Router
 	server         *http.Server
 	replayGuard    *replayGuard
@@ -79,18 +83,62 @@ func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, l
 		}
 	}
 
+	// WebAuthn RP ID — configurable via env, default lux.network
+	rpID := os.Getenv("MPC_WEBAUTHN_RP_ID")
+	if rpID == "" {
+		rpID = "lux.network"
+	}
+
+	// WebAuthn allowed origins — configurable via env (comma-separated)
+	webauthnOrigins := map[string]bool{}
+	if raw := os.Getenv("MPC_WEBAUTHN_ORIGINS"); raw != "" {
+		for _, o := range strings.Split(raw, ",") {
+			o = strings.TrimSpace(o)
+			if o != "" {
+				webauthnOrigins[o] = true
+			}
+		}
+	}
+	// Always include defaults
+	for _, o := range []string{
+		"https://lux.network",
+		"https://mpc.lux.network",
+		"https://exchange.dev.lux.network",
+		"https://exchange.test.lux.network",
+		"https://exchange.main.lux.network",
+		"https://lux.network",
+		"https://www.lux.network",
+	} {
+		webauthnOrigins[o] = true
+	}
+
 	// Transaction lifecycle tracker (RPC clients added via SetTxTrackerRPC)
 	tracker := txtracker.New(txtracker.Config{
 		Database: database,
 	})
 
 	s := &Server{
-		db:          database,
-		mpc:         mpcBackend,
-		txTracker:   tracker,
-		jwtSecret:   []byte(jwtSecret),
-		oidcIssuers: oidcIssuers,
-		replayGuard: newReplayGuard(),
+		db:              database,
+		mpc:             mpcBackend,
+		txTracker:       tracker,
+		jwtSecret:       []byte(jwtSecret),
+		oidcIssuers:     oidcIssuers,
+		webauthnRPID:    rpID,
+		webauthnOrigins: webauthnOrigins,
+		replayGuard:     newReplayGuard(),
+	}
+
+	// Build CORS origin list from webauthn origins + infrastructure origins
+	corsOrigins := []string{
+		"https://cloud.lux.network",
+		"https://mpc.lux.network",
+		"https://bridge.lux.network",
+		"http://localhost:3000",
+		"https://exchange.dev.lux.network",
+		"https://exchange.test.lux.network",
+		"https://exchange.main.lux.network",
+		"https://lux.network",
+		"https://www.lux.network",
 	}
 
 	r := chi.NewRouter()
@@ -99,7 +147,7 @@ func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, l
 	r.Use(chimw.Recoverer)
 	r.Use(chimw.Timeout(120 * time.Second))
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"https://cloud.lux.network", "https://mpc.lux.network", "https://bridge.lux.network", "http://localhost:3000"},
+		AllowedOrigins:   corsOrigins,
 		AllowedMethods:   []string{"GET", "POST", "PATCH", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-API-Key"},
 		ExposedHeaders:   []string{"Link"},
