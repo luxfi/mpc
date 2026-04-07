@@ -1,0 +1,24 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: lux-mpc
+
+resources:
+  - namespace.yaml
+  - secrets.yaml
+  - certificate.yaml
+  - mpc-statefulset.yaml
+  - api-deployment.yaml
+  - api-service.yaml
+  - dashboard-deployment.yaml
+  - dashboard-service.yaml
+  - ingressroute.yaml
+  - network-policy.yaml
+  # Production data stores (deployed via hanzoai/sql and hanzoai/kv operators
+  # in practice, but manifests kept here for reference/standalone clusters):
+  - postgres.yaml
+  - valkey.yaml
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: lux-mpc
