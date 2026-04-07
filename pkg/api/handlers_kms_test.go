@@ -78,7 +78,7 @@ func decodeKMSError(t *testing.T, rec *httptest.ResponseRecorder) string {
 
 func TestKMSGenerate_EmptyValidatorID(t *testing.T) {
 	s := kmsTestServer()
-	req := kmsRequest(t, http.MethodPost, "/api/v1/keys/generate", kmsGenerateRequest{
+	req := kmsRequest(t, http.MethodPost, "/v1/keys/generate", kmsGenerateRequest{
 		ValidatorID: "",
 		Threshold:   3,
 		Parties:     5,
@@ -97,7 +97,7 @@ func TestKMSGenerate_EmptyValidatorID(t *testing.T) {
 
 func TestKMSGenerate_ThresholdLessThanTwo(t *testing.T) {
 	s := kmsTestServer()
-	req := kmsRequest(t, http.MethodPost, "/api/v1/keys/generate", kmsGenerateRequest{
+	req := kmsRequest(t, http.MethodPost, "/v1/keys/generate", kmsGenerateRequest{
 		ValidatorID: "val-1",
 		Threshold:   1,
 		Parties:     5,
@@ -116,7 +116,7 @@ func TestKMSGenerate_ThresholdLessThanTwo(t *testing.T) {
 
 func TestKMSGenerate_PartiesLessThanThreshold(t *testing.T) {
 	s := kmsTestServer()
-	req := kmsRequest(t, http.MethodPost, "/api/v1/keys/generate", kmsGenerateRequest{
+	req := kmsRequest(t, http.MethodPost, "/v1/keys/generate", kmsGenerateRequest{
 		ValidatorID: "val-1",
 		Threshold:   4,
 		Parties:     3,
@@ -135,7 +135,7 @@ func TestKMSGenerate_PartiesLessThanThreshold(t *testing.T) {
 
 func TestKMSGenerate_ThresholdZero(t *testing.T) {
 	s := kmsTestServer()
-	req := kmsRequest(t, http.MethodPost, "/api/v1/keys/generate", kmsGenerateRequest{
+	req := kmsRequest(t, http.MethodPost, "/v1/keys/generate", kmsGenerateRequest{
 		ValidatorID: "val-1",
 		Threshold:   0,
 		Parties:     5,
@@ -156,7 +156,7 @@ func TestKMSGenerate_ThresholdZero(t *testing.T) {
 
 func TestKMSSign_EmptyMessage(t *testing.T) {
 	s := kmsTestServer()
-	req := kmsRequest(t, http.MethodPost, "/api/v1/keys/val-1/sign", kmsSignRequest{
+	req := kmsRequest(t, http.MethodPost, "/v1/keys/val-1/sign", kmsSignRequest{
 		KeyType: "bls",
 		Message: nil,
 	})
@@ -174,7 +174,7 @@ func TestKMSSign_EmptyMessage(t *testing.T) {
 
 func TestKMSSign_EmptyMessageBytes(t *testing.T) {
 	s := kmsTestServer()
-	req := kmsRequest(t, http.MethodPost, "/api/v1/keys/val-1/sign", kmsSignRequest{
+	req := kmsRequest(t, http.MethodPost, "/v1/keys/val-1/sign", kmsSignRequest{
 		KeyType: "bls",
 		Message: []byte{},
 	})
@@ -194,7 +194,7 @@ func TestKMSSign_EmptyMessageBytes(t *testing.T) {
 
 func TestKMSRotate_EmptyRequest(t *testing.T) {
 	s := kmsTestServer()
-	req := kmsRequest(t, http.MethodPost, "/api/v1/keys/val-1/rotate", kmsRotateRequest{})
+	req := kmsRequest(t, http.MethodPost, "/v1/keys/val-1/rotate", kmsRotateRequest{})
 	rec := httptest.NewRecorder()
 
 	s.handleKMSRotate(rec, req)
@@ -209,7 +209,7 @@ func TestKMSRotate_EmptyRequest(t *testing.T) {
 
 func TestKMSRotate_ZeroThresholdNoParticipants(t *testing.T) {
 	s := kmsTestServer()
-	req := kmsRequest(t, http.MethodPost, "/api/v1/keys/val-1/rotate", kmsRotateRequest{
+	req := kmsRequest(t, http.MethodPost, "/v1/keys/val-1/rotate", kmsRotateRequest{
 		NewThreshold:    0,
 		NewParticipants: nil,
 	})
@@ -237,7 +237,7 @@ func TestKMSGenerate_UsesContextOrgID(t *testing.T) {
 		},
 	}
 
-	req := kmsRequest(t, http.MethodPost, "/api/v1/keys/generate", kmsGenerateRequest{
+	req := kmsRequest(t, http.MethodPost, "/v1/keys/generate", kmsGenerateRequest{
 		ValidatorID: "val-ctx-test",
 		Threshold:   2,
 		Parties:     3,
@@ -260,7 +260,7 @@ func TestKMSGenerate_UsesContextOrgID(t *testing.T) {
 
 func TestKMSGenerate_InvalidJSON(t *testing.T) {
 	s := kmsTestServer()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/keys/generate", bytes.NewReader([]byte("not json")))
+	req := httptest.NewRequest(http.MethodPost, "/v1/keys/generate", bytes.NewReader([]byte("not json")))
 	req.Header.Set("Content-Type", "application/json")
 	ctx := context.WithValue(req.Context(), ctxOrgID, "test-org")
 	req = req.WithContext(ctx)
@@ -278,7 +278,7 @@ func TestKMSGenerate_InvalidJSON(t *testing.T) {
 
 func TestKMSSign_InvalidJSON(t *testing.T) {
 	s := kmsTestServer()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/keys/val-1/sign", bytes.NewReader([]byte("{bad")))
+	req := httptest.NewRequest(http.MethodPost, "/v1/keys/val-1/sign", bytes.NewReader([]byte("{bad")))
 	req.Header.Set("Content-Type", "application/json")
 	ctx := context.WithValue(req.Context(), ctxOrgID, "test-org")
 	req = req.WithContext(ctx)
@@ -293,7 +293,7 @@ func TestKMSSign_InvalidJSON(t *testing.T) {
 
 func TestKMSRotate_InvalidJSON(t *testing.T) {
 	s := kmsTestServer()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/keys/val-1/rotate", bytes.NewReader([]byte("[")))
+	req := httptest.NewRequest(http.MethodPost, "/v1/keys/val-1/rotate", bytes.NewReader([]byte("[")))
 	req.Header.Set("Content-Type", "application/json")
 	ctx := context.WithValue(req.Context(), ctxOrgID, "test-org")
 	req = req.WithContext(ctx)
