@@ -120,28 +120,21 @@ func New(config *Config) (*Transport, error) {
 
 // Start starts the transport (listener and peer connections)
 func (t *Transport) Start(ctx context.Context) error {
-	// Start dual-mode listener: accepts both TLS 1.3+PQ and plaintext connections.
-	// This allows rolling upgrades where some nodes have TLS and others don't yet.
-	var listener net.Listener
-	var err error
-	if t.config.PrivateKey != nil && t.config.PublicKey != nil {
-		tlsConfig, tlsErr := NewServerTLSConfig(t.config.NodeID, t.config.PrivateKey, t.config.PublicKey)
-		if tlsErr != nil {
-			return fmt.Errorf("failed to create TLS config: %w", tlsErr)
-		}
-		listener, err = net.Listen("tcp", t.config.ListenAddr)
-		if err != nil {
-			return fmt.Errorf("failed to listen: %w", err)
-		}
-		listener = NewDualModeListener(listener, tlsConfig)
-		logger.Info("Transport listening with PQ TLS 1.3 (dual-mode)", "addr", listener.Addr().String())
-	} else {
-		listener, err = net.Listen("tcp", t.config.ListenAddr)
-		if err != nil {
-			return fmt.Errorf("failed to listen: %w", err)
-		}
-		logger.Warn("Transport listening WITHOUT TLS (no identity keys)", "addr", listener.Addr().String())
+	// TLS 1.3 with PQ key exchange is mandatory. No plaintext fallback.
+	if t.config.PrivateKey == nil || t.config.PublicKey == nil {
+		return fmt.Errorf("TLS identity keys are required — cannot start transport without Ed25519 keys")
 	}
+	tlsConfig, tlsErr := NewServerTLSConfig(t.config.NodeID, t.config.PrivateKey, t.config.PublicKey)
+	if tlsErr != nil {
+		return fmt.Errorf("failed to create TLS config: %w", tlsErr)
+	}
+	var listener net.Listener
+	listener, err := net.Listen("tcp", t.config.ListenAddr)
+	if err != nil {
+		return fmt.Errorf("failed to listen: %w", err)
+	}
+	listener = NewTLSOnlyListener(listener, tlsConfig)
+	logger.Info("Transport listening with PQ TLS 1.3 (TLS-only)", "addr", listener.Addr().String())
 	t.listener = listener
 
 	logger.Info("Transport listening", "addr", listener.Addr().String())
