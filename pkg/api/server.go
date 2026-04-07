@@ -360,6 +360,9 @@ func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, l
 		})
 	})
 
+	// KMS validator key management routes (merged from standalone KMS).
+	s.registerKMSRoutes(r)
+
 	// Start background intent expiry reaper
 	s.StartIntentReaper(context.Background(), 5*time.Minute)
 
