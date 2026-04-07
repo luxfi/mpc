@@ -354,14 +354,20 @@ func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, l
 				r.Get("/audit", s.handleListAudit)
 			})
 
+			// Validator key management (KMS) — owner/admin only
+			r.Group(func(r chi.Router) {
+				r.Use(requireRole("owner", "admin"))
+				s.registerKMSRoutes(r)
+			})
+
 			// Status — any authenticated (including API keys)
 			r.Get("/status", s.handleStatus)
 			r.Get("/info", s.handleInfo)
 		})
 	})
 
-	// KMS validator key management routes (merged from standalone KMS).
-	s.registerKMSRoutes(r)
+	// KMS routes are registered INSIDE the authenticated route group above.
+	// See registerKMSRoutes — it applies requireRole("owner", "admin").
 
 	// Start background intent expiry reaper
 	s.StartIntentReaper(context.Background(), 5*time.Minute)
