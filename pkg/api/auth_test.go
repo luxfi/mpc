@@ -167,3 +167,150 @@ func TestInvalidJWT_EmptyString(t *testing.T) {
 		t.Fatal("validateJWT should reject empty string")
 	}
 }
+
+// === JWT Issuer / Audience regression tests ===
+
+func TestAccessToken_IssuerAndAudience(t *testing.T) {
+	s := newTestServer("iss-aud-secret")
+
+	tokenStr, err := s.generateJWT("u1", "o1", "admin")
+	if err != nil {
+		t.Fatalf("generateJWT: %v", err)
+	}
+
+	// Parse without validation to inspect raw claims.
+	parser := jwt.NewParser(jwt.WithoutClaimsValidation())
+	token, _, err := parser.ParseUnverified(tokenStr, &JWTClaims{})
+	if err != nil {
+		t.Fatalf("ParseUnverified: %v", err)
+	}
+	claims := token.Claims.(*JWTClaims)
+
+	if claims.Issuer != "mpc.lux.network" {
+		t.Errorf("access token Issuer = %q, want %q", claims.Issuer, "mpc.lux.network")
+	}
+	found := false
+	for _, aud := range claims.Audience {
+		if aud == "mpc-api" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("access token Audience = %v, want to contain %q", claims.Audience, "mpc-api")
+	}
+}
+
+func TestRefreshToken_IssuerAndAudience(t *testing.T) {
+	s := newTestServer("iss-aud-secret")
+
+	tokenStr, err := s.generateRefreshToken("u1", "o1", "admin")
+	if err != nil {
+		t.Fatalf("generateRefreshToken: %v", err)
+	}
+
+	parser := jwt.NewParser(jwt.WithoutClaimsValidation())
+	token, _, err := parser.ParseUnverified(tokenStr, &JWTClaims{})
+	if err != nil {
+		t.Fatalf("ParseUnverified: %v", err)
+	}
+	claims := token.Claims.(*JWTClaims)
+
+	if claims.Issuer != "mpc.lux.network" {
+		t.Errorf("refresh token Issuer = %q, want %q", claims.Issuer, "mpc.lux.network")
+	}
+	found := false
+	for _, aud := range claims.Audience {
+		if aud == "mpc-refresh" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("refresh token Audience = %v, want to contain %q", claims.Audience, "mpc-refresh")
+	}
+}
+
+func TestValidateJWT_RejectsWrongIssuer(t *testing.T) {
+	s := newTestServer("iss-test-secret")
+
+	// Create a token with wrong issuer.
+	claims := JWTClaims{
+		UserID: "u1",
+		OrgID:  "o1",
+		Role:   "admin",
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    "evil.example.com",
+			Audience:  jwt.ClaimStrings{"mpc-api"},
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+		},
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	tokenStr, err := token.SignedString(s.jwtSecret)
+	if err != nil {
+		t.Fatalf("sign token: %v", err)
+	}
+
+	_, err = s.validateJWT(tokenStr)
+	if err == nil {
+		t.Fatal("validateJWT should reject token with wrong issuer")
+	}
+}
+
+func TestValidateJWT_RejectsWrongAudience(t *testing.T) {
+	s := newTestServer("aud-test-secret")
+
+	// Create a token with wrong audience.
+	claims := JWTClaims{
+		UserID: "u1",
+		OrgID:  "o1",
+		Role:   "admin",
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    "mpc.lux.network",
+			Audience:  jwt.ClaimStrings{"wrong-audience"},
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+		},
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	tokenStr, err := token.SignedString(s.jwtSecret)
+	if err != nil {
+		t.Fatalf("sign token: %v", err)
+	}
+
+	_, err = s.validateJWT(tokenStr)
+	if err == nil {
+		t.Fatal("validateJWT should reject token with wrong audience")
+	}
+}
+
+func TestValidateJWT_RejectsRefreshToken(t *testing.T) {
+	s := newTestServer("cross-token-secret")
+
+	// A refresh token (audience "mpc-refresh") must NOT pass validateJWT
+	// (which expects audience "mpc-api").
+	refreshStr, err := s.generateRefreshToken("u1", "o1", "admin")
+	if err != nil {
+		t.Fatalf("generateRefreshToken: %v", err)
+	}
+
+	_, err = s.validateJWT(refreshStr)
+	if err == nil {
+		t.Fatal("validateJWT should reject a refresh token (audience mpc-refresh)")
+	}
+}
+
+func TestValidateRefreshToken_RejectsAccessToken(t *testing.T) {
+	s := newTestServer("cross-token-secret")
+
+	// An access token (audience "mpc-api") must NOT pass validateRefreshToken
+	// (which expects audience "mpc-refresh").
+	accessStr, err := s.generateJWT("u1", "o1", "admin")
+	if err != nil {
+		t.Fatalf("generateJWT: %v", err)
+	}
+
+	_, err = s.validateRefreshToken(accessStr)
+	if err == nil {
+		t.Fatal("validateRefreshToken should reject an access token (audience mpc-api)")
+	}
+}
