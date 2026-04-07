@@ -68,7 +68,7 @@ services:
   #     --api-kv valkey:6379
   #     --api-listen :8081
   #     --data /data/mpc
-  #     --jwt-secret ${JWT_SECRET}
+  #     --jwt-secret ${JWT_SECRET:?JWT_SECRET must be set}
   #   depends_on:
   #     postgres:
   #       condition: service_healthy
