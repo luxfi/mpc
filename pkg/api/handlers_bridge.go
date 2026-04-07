@@ -70,9 +70,11 @@ func (s *Server) handleBridgeSign(w http.ResponseWriter, r *http.Request) {
 
 	// Find a bridge wallet — look for a wallet named "bridge" or use the first active secp256k1 wallet
 	var bridgeWallet *db.Wallet
+	orgID := getOrgID(r.Context())
 
 	// Try to find wallet with "bridge" in name
 	wallets, err := orm.TypedQuery[db.Wallet](s.db.ORM).
+		Filter("orgId=", orgID).
 		Filter("status=", "active").
 		Filter("keyType=", "secp256k1").
 		Order("createdAt").
@@ -112,7 +114,6 @@ func (s *Server) handleBridgeSign(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Trigger MPC signing
-	orgID := getOrgID(r.Context())
 	result, err := s.mpc.TriggerSign(orgID, mpcWalletID, msgHash)
 	if err != nil {
 		json.NewEncoder(w).Encode(bridgeSignResponse{Status: false, Msg: "MPC signing failed: " + err.Error()})
