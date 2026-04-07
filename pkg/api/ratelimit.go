@@ -32,6 +32,12 @@ func NewRateLimiter(requestsPerMinute int) *RateLimiter {
 	return rl
 }
 
+// Allow returns true if the IP has not exceeded the rate limit.
+// Exported for use by other packages (e.g., internal MPC API auth).
+func (rl *RateLimiter) Allow(ip string) bool {
+	return rl.allow(ip)
+}
+
 // allow returns true if the IP has not exceeded the rate limit.
 func (rl *RateLimiter) allow(ip string) bool {
 	now := time.Now().Unix()
