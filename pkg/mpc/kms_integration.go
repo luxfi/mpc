@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/viper"
 
@@ -39,8 +40,13 @@ func NewKMSEnabledKVStore(store kvstore.KVStore, nodeID string) (*KMSEnabledKVSt
 	}
 
 	// If still no project ID, disable KMS
+	// In production, KMS is mandatory — unencrypted key share storage is fatal.
+	environment := os.Getenv("ENVIRONMENT")
 	if kmsConfig.ProjectID == "" {
-		logger.Warn("No Lux KMS project ID configured, falling back to regular storage")
+		if environment != "" && environment != "development" {
+			logger.Fatal("KMS project ID is required in production — refusing to store key shares unencrypted", nil)
+		}
+		logger.Warn("No Lux KMS project ID configured, falling back to regular storage (development only)")
 		return &KMSEnabledKVStore{
 			KVStore: store,
 			enabled: false,
@@ -49,7 +55,10 @@ func NewKMSEnabledKVStore(store kvstore.KVStore, nodeID string) (*KMSEnabledKVSt
 
 	kmsClient, err := kms.NewKMSClient(kmsConfig)
 	if err != nil {
-		logger.Warn("Failed to initialize Lux KMS integration, falling back to regular storage", "error", err)
+		if environment != "" && environment != "development" {
+			logger.Fatal("Failed to initialize Lux KMS in production — refusing to store key shares unencrypted", err)
+		}
+		logger.Warn("Failed to initialize Lux KMS integration, falling back to regular storage (development only)", "error", err)
 		return &KMSEnabledKVStore{
 			KVStore: store,
 			enabled: false,
@@ -88,8 +97,11 @@ func (k *KMSEnabledKVStore) Put(key string, value []byte) error {
 		// Store in Lux KMS
 		ctx := context.Background()
 		if err := k.kmsClient.StoreKeyShare(ctx, key, value); err != nil {
-			logger.Error("Failed to store key share in Lux KMS", err, "walletID", key)
-			// Fallback to regular storage
+			environment := os.Getenv("ENVIRONMENT")
+			if environment != "" && environment != "development" {
+				logger.Fatal("Failed to store key share in Lux KMS (production) — refusing unencrypted fallback", err)
+			}
+			logger.Error("Failed to store key share in Lux KMS, falling back to regular storage (development only)", err, "walletID", key)
 			return k.KVStore.Put(key, value)
 		}
 
@@ -167,9 +179,33 @@ func (k *KMSEnabledKVStore) Delete(key string) error {
 	return k.KVStore.Delete(key)
 }
 
-// isKeyShare checks if a key represents an MPC key share
+// isKeyShare checks if a key represents an MPC key share that requires KMS encryption.
+// Key shares are stored under org-scoped paths ("org:<orgID>:<walletID>") or with
+// known key-type prefixes (frost:, bls:, sr25519:, tfhe:). Metadata keys that do not
+// match these patterns pass through to regular storage unencrypted.
 func isKeyShare(key string) bool {
-	// In the MPC system, wallet IDs are used as keys for storing shares
-	// You might want to add more sophisticated detection logic here
-	return true // For now, treat all keys as potential key shares
+	// Org-scoped keys are always key shares
+	if strings.HasPrefix(key, "org:") {
+		return true
+	}
+	// Known key-type prefixed shares
+	for _, prefix := range []string{"frost:", "bls:", "sr25519:", "tfhe:"} {
+		if strings.HasPrefix(key, prefix) {
+			return true
+		}
+	}
+	// Hex-encoded wallet IDs (32-char hex = 16 bytes, 64-char hex = 32 bytes)
+	if len(key) == 32 || len(key) == 64 {
+		allHex := true
+		for _, c := range key {
+			if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+				allHex = false
+				break
+			}
+		}
+		if allHex {
+			return true
+		}
+	}
+	return false
 }
