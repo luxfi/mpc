@@ -187,9 +187,11 @@ func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, o
 		r.Get("/pay/{token}", s.handlePublicPay)
 
 		// Bridge signing endpoints (API key or JWT auth; API key needs "sign" permission)
+		// Tighter rate limit for signing: 20 RPM per IP (separate from global 100 RPM).
 		r.Group(func(r chi.Router) {
 			r.Use(s.authMiddleware)
 			r.Use(requirePermission("sign"))
+			r.Use(RateLimitMiddleware(20))
 			r.Post("/generate_mpc_sig", s.handleBridgeSign)
 			r.Post("/complete", s.handleBridgeComplete)
 		})
@@ -344,6 +346,7 @@ func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, o
 			r.Get("/settlements/{id}", s.handleGetSettlement)
 			r.Group(func(r chi.Router) {
 				r.Use(requireRole("owner", "admin", "signer", "api"))
+				r.Use(RateLimitMiddleware(20)) // signing rate limit: 20 RPM per IP
 				r.Post("/intents", s.handleCreateIntent)
 				r.Post("/intents/{id}/sign", s.handleSignIntent)
 				r.Post("/intents/{id}/co-sign", s.handleCoSignIntent)

@@ -9,11 +9,11 @@ services:
       start --mode consensus
       --api-listen :8081
       --data /data/mpc
-      --jwt-secret ${JWT_SECRET:-dev-jwt-secret-change-in-production}
+      --jwt-secret ${JWT_SECRET:?JWT_SECRET must be set}
     ports:
       - "8081:8081"
     environment:
-      - JWT_SECRET=${JWT_SECRET:-dev-jwt-secret-change-in-production}
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set}
     volumes:
       - mpc-data:/data/mpc
     healthcheck:
