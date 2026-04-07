@@ -181,7 +181,7 @@ func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, l
 	})
 
 	// Public routes
-	r.Route("/api/v1", func(r chi.Router) {
+	r.Route("/v1", func(r chi.Router) {
 		// Auth (no middleware)
 		r.Post("/auth/register", s.handleRegister)
 		r.Post("/auth/login", s.handleLogin)
@@ -479,7 +479,7 @@ h1{font-size:2.5rem;font-weight:700;margin-bottom:.5rem;background:linear-gradie
 <a href="/healthz">API Status</a>
 <a href="/health">Cluster Health</a>
 <a href="https://bridge.lux.network">Bridge Dashboard</a>
-<a href="/api/v1/bridge/networks">Networks</a>
+<a href="/v1/bridge/networks">Networks</a>
 </div>
 <p class="status">v0.3.3 &bull; Post-Quantum TLS 1.3 &bull; ZapDB Encrypted Storage</p>
 </div>
