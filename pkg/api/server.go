@@ -90,8 +90,6 @@ func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, l
 		oidcIssuers = []string{
 			"https://hanzo.id",
 			"https://lux.id",
-			"https://pars.id",
-			"https://id.zoo.network",
 		}
 	}
 
@@ -111,15 +109,10 @@ func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, l
 			}
 		}
 	}
-	// Always include defaults
+	// Default WebAuthn origins — tenants add their own via MPC_WEBAUTHN_ORIGINS env.
 	for _, o := range []string{
 		"https://lux.network",
 		"https://mpc.lux.network",
-		"https://exchange.dev.",
-		"https://exchange.test.",
-		"https://exchange.main.",
-		"https://",
-		"https://www.",
 	} {
 		webauthnOrigins[o] = true
 	}
@@ -140,17 +133,20 @@ func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, l
 		replayGuard:     newReplayGuard(),
 	}
 
-	// Build CORS origin list from webauthn origins + infrastructure origins
+	// CORS origins — Lux infrastructure only. Tenants add via MPC_CORS_ORIGINS env.
 	corsOrigins := []string{
 		"https://cloud.lux.network",
 		"https://mpc.lux.network",
 		"https://bridge.lux.network",
 		"http://localhost:3000",
-		"https://exchange.dev.",
-		"https://exchange.test.",
-		"https://exchange.main.",
-		"https://",
-		"https://www.",
+	}
+	if raw := os.Getenv("MPC_CORS_ORIGINS"); raw != "" {
+		for _, o := range strings.Split(raw, ",") {
+			o = strings.TrimSpace(o)
+			if o != "" {
+				corsOrigins = append(corsOrigins, o)
+			}
+		}
 	}
 
 	r := chi.NewRouter()
