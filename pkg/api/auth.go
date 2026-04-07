@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -28,6 +29,8 @@ func (s *Server) generateJWT(userID, orgID, role string) (string, error) {
 		OrgID:  orgID,
 		Role:   role,
 		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    "mpc.lux.network",
+			Audience:  jwt.ClaimStrings{"mpc-api"},
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 		},
@@ -42,6 +45,8 @@ func (s *Server) generateRefreshToken(userID, orgID, role string) (string, error
 		OrgID:  orgID,
 		Role:   role,
 		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    "mpc.lux.network",
+			Audience:  jwt.ClaimStrings{"mpc-refresh"},
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(7 * 24 * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 		},
@@ -60,10 +65,40 @@ func (s *Server) validateJWT(tokenStr string) (*JWTClaims, error) {
 	if err != nil {
 		return nil, err
 	}
-	if claims, ok := token.Claims.(*JWTClaims); ok && token.Valid {
-		return claims, nil
+	claims, ok := token.Claims.(*JWTClaims)
+	if !ok || !token.Valid {
+		return nil, fmt.Errorf("invalid token")
 	}
-	return nil, fmt.Errorf("invalid token")
+	if claims.Issuer != "mpc.lux.network" {
+		return nil, fmt.Errorf("invalid token issuer")
+	}
+	if !slices.Contains([]string(claims.Audience),"mpc-api") {
+		return nil, fmt.Errorf("invalid token audience")
+	}
+	return claims, nil
+}
+
+func (s *Server) validateRefreshToken(tokenStr string) (*JWTClaims, error) {
+	token, err := jwt.ParseWithClaims(tokenStr, &JWTClaims{}, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return s.jwtSecret, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	claims, ok := token.Claims.(*JWTClaims)
+	if !ok || !token.Valid {
+		return nil, fmt.Errorf("invalid token")
+	}
+	if claims.Issuer != "mpc.lux.network" {
+		return nil, fmt.Errorf("invalid token issuer")
+	}
+	if !slices.Contains([]string(claims.Audience),"mpc-refresh") {
+		return nil, fmt.Errorf("invalid token audience")
+	}
+	return claims, nil
 }
 
 func hashPassword(password string) (string, error) {
