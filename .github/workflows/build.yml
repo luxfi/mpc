@@ -1,0 +1,34 @@
+# Per-repo CI: build + push Liquid MPC image to GAR
+# On success, fires repository_dispatch to partner/universe
+# which updates the manifest and deploys.
+
+name: Build
+
+on:
+  push:
+    branches: [main, test, dev]
+    paths:
+      - 'cmd/**'
+      - 'pkg/**'
+      - 'go.mod'
+      - 'go.sum'
+      - 'Dockerfile'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+
+jobs:
+  build:
+    uses: partner/universe/.github/workflows/build-service.yml@main
+    with:
+      service_key: mpc
+      app_name: mpc
+      app_type: backend
+      dockerfile: Dockerfile
+    secrets:
+      TOKEN_GITHUB_CICD: ${{ secrets.TOKEN_GITHUB_CICD }}
+      KMS_CLIENT_ID: ${{ secrets.KMS_CLIENT_ID }}
+      KMS_CLIENT_SECRET: ${{ secrets.KMS_CLIENT_SECRET }}
