@@ -1,4 +1,4 @@
-.PHONY: all build clean mpcd lux-mpc-cli test test-verbose test-coverage e2e-test e2e-clean cleanup-test-env test-all clean-all up down logs
+.PHONY: all build clean mpcd mpc-cli test test-verbose test-coverage e2e-test e2e-clean cleanup-test-env test-all clean-all up down logs
 
 # Go 1.26 experimental features:
 #   runtimesecret - zeroes stack/register state after secret.Do() for forward secrecy
@@ -7,13 +7,13 @@ GOEXPERIMENT ?= runtimesecret,simd
 
 all: build
 
-build: mpcd lux-mpc-cli
+build: mpcd mpc-cli
 
 mpcd:
 	GOWORK=off GOEXPERIMENT=$(GOEXPERIMENT) go build -o mpcd ./cmd/mpcd
 
-lux-mpc-cli:
-	GOWORK=off GOEXPERIMENT=$(GOEXPERIMENT) go build -o lux-mpc-cli ./cmd/lux-mpc-cli
+mpc-cli:
+	GOWORK=off GOEXPERIMENT=$(GOEXPERIMENT) go build -o mpc-cli ./cmd/mpc-cli
 
 # Run all tests (json1 enables SQLite JSON functions for ORM JSONB queries)
 test:
@@ -57,7 +57,7 @@ logs:
 
 # Clean
 clean:
-	rm -f mpcd lux-mpc-cli
+	rm -f mpcd mpc-cli
 	rm -f coverage.out coverage.html
 
 clean-all: clean e2e-clean
