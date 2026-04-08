@@ -67,7 +67,7 @@ func NewPasswordProvider(providerType string, config map[string]string) (Passwor
 		return &EnvProvider{EnvVar: envVar}, nil
 
 	case "file":
-		return &FileProvider{
+		return &FilePasswordProvider{
 			Path: get("path", "MPC_PASSWORD_FILE"),
 		}, nil
 
