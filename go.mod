@@ -26,7 +26,6 @@ require (
 	github.com/gtank/ristretto255 v0.2.0
 	github.com/hanzoai/base v0.39.1
 	github.com/hanzoai/dbx v1.13.0
-	github.com/hanzoai/kv-go/v9 v9.18.0
 	github.com/hanzoai/orm v0.3.2
 	github.com/hashicorp/consul/api v1.33.7
 	github.com/luxfi/crypto v1.17.45
@@ -117,6 +116,7 @@ require (
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.3 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.28.0 // indirect
 	github.com/gtank/merlin v0.1.1 // indirect
+	github.com/hanzoai/kv-go/v9 v9.18.0 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/hashicorp/go-hclog v1.6.3 // indirect
@@ -154,7 +154,7 @@ require (
 	github.com/luxfi/sampler v1.0.0 // indirect
 	github.com/luxfi/utils v1.1.4 // indirect
 	github.com/luxfi/zap v0.2.0 // indirect
-	github.com/luxfi/zapdb v1.0.0 // indirect
+	github.com/luxfi/zapdb/v4 v4.9.3 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-sqlite3 v2.0.3+incompatible // indirect
