@@ -1,11 +1,53 @@
+# VCS / CI
 .git
-*.md
-dashboard/node_modules
-dashboard/.next
-node_modules
-.env
+.github/
 
-# Local prebuilt binaries
+# Editor / IDE
+.claude/
+.vscode/
+.idea/
+
+# Build artifacts
+bin/
+mpcd-linux-*
+
+# Not needed for build (ui/ IS needed -- Stage 1 builds it)
+contracts/
+dashboard/
+data/
+deployments/
+docs/
+e2e/
+examples/
+identity/
+images/
+k8s/
+minio/
+scripts/
+
+# ui/ build artifacts (source needed, artifacts not)
+ui/node_modules
+ui/dist
+
+# Test / coverage
+testdata/
+*_test.go
+coverage/
+
+# Vendored deps (go mod download in Dockerfile)
+vendor/
+
+# Go workspace (multi-module dev only)
 go.work
 go.work.sum
-e2e/
+
+# Config / secrets
+.env*
+compose.yml
+cloudbuild.yaml
+config.yaml
+Makefile
+
+# Docs
+*.md
+LICENSE
