@@ -1,3 +1,12 @@
+# Stage 1: Build embedded admin UI
+FROM node:22-alpine AS ui
+RUN corepack enable && corepack prepare pnpm@latest --activate
+WORKDIR /ui
+COPY ui/package.json ui/pnpm-lock.yaml* ./
+RUN pnpm install --frozen-lockfile 2>/dev/null || pnpm install
+COPY ui/ .
+RUN pnpm build
+
 # Lux MPC — single image ships both daemon (mpcd) + CLI (mpc).
 # Default entrypoint: mpcd. Override ENTRYPOINT / CMD with `mpc <cmd>` for CLI.
 # syntax=docker/dockerfile:1
@@ -12,6 +21,7 @@ WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
+COPY --from=ui /ui/dist ./ui/dist/
 
 ENV GOEXPERIMENT=runtimesecret
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o mpcd ./cmd/mpcd
