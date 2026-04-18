@@ -467,3 +467,37 @@ type PendingTrade struct {
 }
 
 func init() { orm.Register[PendingTrade]("pending-trade") }
+
+// Session is a time-bounded signing grant for an MPC wallet.
+//
+// Sessions are specialized short-lived Policy records: a caller (user or
+// service principal) is authorized to sign up to `OperationLimit` operations
+// with cumulative value up to `ValueLimit`, until `ExpiresAt`. Every
+// successful sign decrements `OperationLimit` and accumulates into
+// `ValueAccum` transactionally via `ConsumeForSign`.
+//
+// Status flow:
+//
+//	active → expired    (clock passes ExpiresAt)
+//	active → revoked    (DELETE)
+//	active → exhausted  (operation/value limit hit) — reported as `expired`
+//
+// Spec: mpc.yaml `/v1/mpc/wallets/{id}/sessions`.
+type Session struct {
+	orm.Model[Session]
+	OrgID          string     `json:"orgId"`
+	WalletID       string     `json:"walletId"`
+	GrantedTo      string     `json:"grantedTo"` // principal (userId or serviceId)
+	Scopes         []string   `json:"scopes"`    // sign, authorize, read
+	ValueLimit     *string    `json:"valueLimit,omitempty"`
+	ValueAccum     string     `json:"valueAccum,omitempty"` // accumulated usage
+	OperationLimit *int       `json:"operationLimit,omitempty"`
+	OperationsUsed int        `json:"operationsUsed"`
+	Status         string     `json:"status"` // active, pending_approval, expired, revoked
+	ExpiresAt      time.Time  `json:"expiresAt"`
+	RevokedAt      *time.Time `json:"revokedAt,omitempty"`
+	RevokedBy      *string    `json:"revokedBy,omitempty"`
+	CreatedBy      *string    `json:"createdBy,omitempty"`
+}
+
+func init() { orm.Register[Session]("mpc-session") }
