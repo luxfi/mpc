@@ -25,6 +25,7 @@ COPY go.mod go.sum ./
 RUN sed -i '/luxfi\/lattice/d' go.sum && go mod download
 COPY . .
 COPY --from=ui /ui/dist ./ui/dist/
+RUN sed -i '/luxfi\/lattice/d' go.sum
 
 ENV GOEXPERIMENT=runtimesecret
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o mpcd ./cmd/mpcd
