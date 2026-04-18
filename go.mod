@@ -35,6 +35,7 @@ require (
 	github.com/luxfi/log v1.4.1
 	github.com/luxfi/metric v1.5.1
 	github.com/luxfi/threshold v1.6.0
+	github.com/luxfi/zap v0.2.0
 	github.com/minio/minio-go/v7 v7.0.99
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/mr-tron/base58 v1.2.0
@@ -153,7 +154,6 @@ require (
 	github.com/luxfi/mock v0.1.1 // indirect
 	github.com/luxfi/sampler v1.0.0 // indirect
 	github.com/luxfi/utils v1.1.4 // indirect
-	github.com/luxfi/zap v0.2.0 // indirect
 	github.com/luxfi/zapdb/v4 v4.9.3 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
@@ -227,5 +227,7 @@ require (
 	modernc.org/memory v1.11.0 // indirect
 )
 
-// agl/ed25519 has no packages at the upstream module path; redirect to our fork.
 // Required by decred/dcrd/dcrec/edwards/v2 (all versions). Cannot remove until upstream fixes.
+
+// agl/ed25519 upstream archived; redirect to luxfi fork with go.mod
+replace github.com/agl/ed25519 => github.com/luxfi/edwards25519 v0.1.0
