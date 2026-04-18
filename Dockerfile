@@ -18,18 +18,17 @@ RUN git config --global url."https://${GITHUB_TOKEN}@github.com/".insteadOf "htt
 ENV GOPRIVATE=github.com/luxfi/*,github.com/hanzoai/*
 ENV GONOSUMCHECK=github.com/luxfi/*,github.com/hanzoai/*
 ENV GONOSUMDB=github.com/luxfi/*,github.com/hanzoai/*
-ENV GOFLAGS=-mod=mod
 
 WORKDIR /app
 COPY go.mod go.sum ./
-RUN sed -i '/luxfi\/lattice/d' go.sum && go mod download
+RUN sed -i '/luxfi\/lattice.*h1:/d' go.sum && go mod download
 COPY . .
 COPY --from=ui /ui/dist ./ui/dist/
-RUN sed -i '/luxfi\/lattice/d' go.sum
+RUN sed -i '/luxfi\/lattice.*h1:/d' go.sum
 
 ENV GOEXPERIMENT=runtimesecret
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o mpcd ./cmd/mpcd
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o mpc  ./cmd/mpc
+RUN CGO_ENABLED=0 GOOS=linux go build -mod=mod -ldflags="-s -w" -o mpcd ./cmd/mpcd
+RUN CGO_ENABLED=0 GOOS=linux go build -mod=mod -ldflags="-s -w" -o mpc  ./cmd/mpc
 
 FROM alpine:3.21
 RUN apk add --no-cache ca-certificates tzdata
