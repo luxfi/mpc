@@ -21,7 +21,7 @@ ENV GONOSUMDB=github.com/luxfi/*,github.com/hanzoai/*
 ENV GOFLAGS=-mod=mod
 
 WORKDIR /app
-COPY go.mod go.sum ./
+COPY go.mod ./
 RUN go mod download
 COPY . .
 COPY --from=ui /ui/dist ./ui/dist/
