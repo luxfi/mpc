@@ -21,8 +21,8 @@ ENV GONOSUMDB=github.com/luxfi/*,github.com/hanzoai/*
 ENV GOFLAGS=-mod=mod
 
 WORKDIR /app
-COPY go.mod ./
-RUN go mod download
+COPY go.mod go.sum ./
+RUN sed -i '/luxfi\/lattice/d' go.sum && go mod download
 COPY . .
 COPY --from=ui /ui/dist ./ui/dist/
 
