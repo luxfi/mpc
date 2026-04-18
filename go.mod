@@ -231,3 +231,10 @@ require (
 
 // agl/ed25519 upstream archived; redirect to luxfi fork with go.mod
 replace github.com/agl/ed25519 => github.com/luxfi/edwards25519 v0.1.0
+
+replace github.com/luxfi/log v1.3.0 => github.com/luxfi/log v1.4.1
+
+exclude (
+	github.com/luxfi/genesis v1.5.21
+	github.com/luxfi/genesis v1.5.22
+)
