@@ -51,4 +51,3 @@ Makefile
 # Docs
 *.md
 LICENSE
-go.sum
