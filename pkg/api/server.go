@@ -69,6 +69,11 @@ type Server struct {
 	webauthnOrigins map[string]bool
 	router         chi.Router
 	replayGuard    *replayGuard
+
+	// Events is the broadcast channel for server-side events (intent status,
+	// signing progress, wallet events). Handlers publish here; WebSocket
+	// clients and ZAP subscribers receive.
+	Events *EventBus
 }
 
 // maxBodySize returns middleware that limits request body size to prevent OOM
@@ -130,6 +135,7 @@ func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, o
 		webauthnRPID:    rpID,
 		webauthnOrigins: webauthnOrigins,
 		replayGuard:     newReplayGuard(),
+		Events:          NewEventBus(),
 	}
 
 	// CORS origins — Lux infrastructure only. Tenants add via MPC_CORS_ORIGINS env.
@@ -182,6 +188,9 @@ func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, o
 		r.Post("/auth/login", s.handleLogin)
 		r.Post("/auth/refresh", s.handleRefresh)
 		r.Post("/auth/oidc", s.handleOIDCExchange)
+
+		// WebSocket — auth via query param ?token=<jwt> (headers not sent on WS upgrade)
+		r.Get("/ws", s.handleWebSocket)
 
 		// Public payment page
 		r.Get("/pay/{token}", s.handlePublicPay)
