@@ -72,6 +72,12 @@ type Wallet struct {
 	Version      int      `json:"version"`
 	Status       string   `json:"status"`
 	CreatedBy    *string  `json:"createdBy,omitempty"`
+
+	// DefaultForUserID, when set, marks this wallet as the default wallet for a
+	// specific user within the org. There is at most one default wallet per
+	// (orgId, userId); findDefaultWalletID enforces this at read time and
+	// handleMpcSetDefaultWallet at write time.
+	DefaultForUserID *string `json:"defaultForUserId,omitempty"`
 }
 
 func init() { orm.Register[Wallet]("wallet") }
