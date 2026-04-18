@@ -147,7 +147,7 @@ require (
 	github.com/luxfi/container v0.0.4 // indirect
 	github.com/luxfi/geth v1.16.79 // indirect
 	github.com/luxfi/ids v1.2.9 // indirect
-	github.com/luxfi/lattice/v7 v7.0.1 // indirect
+	github.com/luxfi/lattice/v7 v7.0.2 // indirect
 	github.com/luxfi/math v1.2.4 // indirect
 	github.com/luxfi/math/big v0.1.0 // indirect
 	github.com/luxfi/mdns v0.1.0 // indirect
