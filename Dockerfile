@@ -24,7 +24,7 @@ COPY go.mod ./
 RUN GONOSUMCHECK='*' GONOSUMDB='*' go mod download
 COPY . .
 COPY --from=ui /ui/dist ./ui/dist/
-RUN rm -f go.sum
+RUN rm -f go.sum && GONOSUMCHECK='*' GONOSUMDB='*' go mod tidy
 
 ENV GOEXPERIMENT=runtimesecret
 RUN GONOSUMCHECK='*' GONOSUMDB='*' CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o mpcd ./cmd/mpcd
