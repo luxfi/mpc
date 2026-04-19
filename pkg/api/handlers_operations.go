@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -293,36 +292,15 @@ func (s *Server) handleApproveOperation(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, txToOperation(final))
 }
 
-// tryApproveOperation runs a single CAS attempt. Returns (tx, finalized, err).
-// finalized=true means this attempt satisfied quorum and transitioned to
-// "approved". On policy error (wrong state, dupe approve, self-approve, not
-// found) returns an *httpError — caller must NOT retry.
-func (s *Server) tryApproveOperation(
-	ctx context.Context, orgID, userID, opID string,
-) (*db.Transaction, bool, error) {
+// requiredApprovers computes the wallet-policy-driven required-approver count
+// for the given operation. Resolving policy does not need to happen under the
+// row lock (policies are not racing with approvals here), so we do the read
+// outside the tx; the final approval commit happens inside the locked tx.
+func (s *Server) requiredApprovers(ctx context.Context, orgID, opID string) (int, error) {
 	t, err := orm.Get[db.Transaction](s.db.ORM, opID)
 	if err != nil || t.OrgID != orgID {
-		return nil, false, &httpError{code: http.StatusNotFound, msg: "operation not found"}
+		return 0, &httpError{code: http.StatusNotFound, msg: "operation not found"}
 	}
-	if t.Status != "pending_approval" {
-		return nil, false, &httpError{code: http.StatusConflict, msg: "operation not in pending_approval state"}
-	}
-	for _, id := range t.ApprovedBy {
-		if id == userID {
-			return nil, false, &httpError{code: http.StatusConflict, msg: "already approved"}
-		}
-	}
-	// F23 — block initiator from approving regardless of how many approvals
-	// exist. The initiator is never allowed to count as an approver.
-	if t.InitiatedBy != nil && *t.InitiatedBy == userID {
-		return nil, false, &httpError{code: http.StatusForbidden, msg: "initiator cannot self-approve"}
-	}
-
-	// Snapshot for CAS guard.
-	prevApprovedBy := append([]string(nil), t.ApprovedBy...)
-	prevStatus := t.Status
-
-	// Required approvers — from wallet policy if any, else 1.
 	required := 1
 	if t.WalletID != nil {
 		policies, _ := s.loadPolicies(ctx, orgID, nil)
@@ -339,17 +317,49 @@ func (s *Server) tryApproveOperation(
 			required = decision.RequiredApprovers
 		}
 	}
+	return required, nil
+}
+
+// tryApproveOperation runs a single approval attempt under a row-level lock.
+// All state checks — presence, status, duplicate approver, self-approve —
+// happen inside the serialized transaction against a locked row. Callers do
+// not retry: either the call committed an approval (possibly finalizing the
+// operation) or it returns an *httpError that must be surfaced as-is.
+//
+// R2-2: SELECT FOR UPDATE + READ COMMITTED. Concurrent approvers queue on
+// the row lock; when they unblock READ COMMITTED re-reads the latest
+// committed ApprovedBy so each approver appends to the up-to-date list.
+func (s *Server) tryApproveOperation(
+	ctx context.Context, orgID, userID, opID string,
+) (*db.Transaction, bool, error) {
+	required, reqErr := s.requiredApprovers(ctx, orgID, opID)
+	if reqErr != nil {
+		return nil, false, reqErr
+	}
 
 	finalized := false
 	var tx *db.Transaction
-	err = s.db.ORM.RunInTransaction(ctx, func(txdb orm.DB) error {
-		fresh, gerr := orm.Get[db.Transaction](txdb, opID)
+	err := s.db.ORM.RunInTransactionWith(ctx, &orm.TxOptions{
+		Isolation:   orm.IsolationReadCommitted,
+		MaxAttempts: 3,
+	}, func(txdb orm.DB) error {
+		fresh, gerr := orm.GetForUpdate[db.Transaction](txdb, opID)
 		if gerr != nil {
 			return &httpError{code: http.StatusNotFound, msg: "operation not found"}
 		}
-		// CAS guard — if ApprovedBy or Status has shifted, back off.
-		if !reflect.DeepEqual(fresh.ApprovedBy, prevApprovedBy) || fresh.Status != prevStatus {
-			return errOperationConflict
+		if fresh.OrgID != orgID {
+			return &httpError{code: http.StatusNotFound, msg: "operation not found"}
+		}
+		if fresh.Status != "pending_approval" {
+			return &httpError{code: http.StatusConflict, msg: "operation not in pending_approval state"}
+		}
+		if fresh.InitiatedBy != nil && *fresh.InitiatedBy == userID {
+			return &httpError{code: http.StatusForbidden, msg: "initiator cannot self-approve"}
+		}
+		for _, id := range fresh.ApprovedBy {
+			if id == userID {
+				return &httpError{code: http.StatusConflict, msg: "already approved"}
+			}
 		}
 		fresh.ApprovedBy = append(fresh.ApprovedBy, userID)
 		if len(fresh.ApprovedBy) >= required {

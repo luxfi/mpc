@@ -240,15 +240,16 @@ func (s *Server) handleRevokeWalletSession(w http.ResponseWriter, r *http.Reques
 }
 
 // consumeSessionForSign atomically validates and consumes a signing session:
-//   - OperationsUsed++ and ValueAccum += value, under CAS (F3).
+//   - OperationsUsed++ and ValueAccum += value, under a row-level lock (R2-2).
 //
-// Uses serializable isolation to force PG to detect read-write conflicts and
-// raise SQLSTATE 40001; the outer retry loop re-reads and retries up to
-// maxCASRetries times. On terminal conflict surfaces 409. On policy failure
-// (expired/revoked/limit) surfaces 403 directly without retry.
+// Under Postgres the row lock is acquired via SELECT FOR UPDATE inside a
+// serializable tx. Concurrent consumers of the same session row block until
+// the first tx commits, so no two callers ever observe the same pre-write
+// OperationsUsed — the operationLimit is strictly respected. Under SQLite the
+// driver-level write mutex already provides the same invariant.
 //
 // If `sessionID` is empty callers get a 403 — the handler requires an explicit
-// session (F1), so this function no longer auto-selects.
+// session (F1).
 func (s *Server) consumeSessionForSign(
 	ctx context.Context,
 	orgID, walletID, principal, sessionID, value string,
@@ -257,103 +258,68 @@ func (s *Server) consumeSessionForSign(
 		return nil, &httpError{code: http.StatusForbidden, msg: "sessionId is required"}
 	}
 
-	const maxCASRetries = 5
-	var result *db.Session
-	for attempt := 0; attempt < maxCASRetries; attempt++ {
-		sess, terminal, err := s.tryConsumeSession(ctx, orgID, walletID, principal, sessionID, value)
-		if terminal {
-			return nil, err
-		}
-		if err == nil {
-			result = sess
-			break
-		}
-		if !errors.Is(err, errSessionConflict) {
-			return nil, &httpError{code: http.StatusInternalServerError, msg: err.Error()}
-		}
-		// Backoff briefly before retry.
-		time.Sleep(time.Duration(10*(attempt+1)) * time.Millisecond)
-	}
-	if result == nil {
-		return nil, &httpError{code: http.StatusConflict, msg: "session busy, retry"}
-	}
-	return result, nil
-}
-
-// tryConsumeSession runs a single CAS attempt. Returns (session, terminal,
-// err). When terminal is true the caller must NOT retry — the err is an
-// *httpError describing the permanent policy reason (expired, revoked, etc.).
-// When terminal is false and err is errSessionConflict, the caller retries.
-func (s *Server) tryConsumeSession(
-	ctx context.Context,
-	orgID, walletID, principal, sessionID, value string,
-) (*db.Session, bool, error) {
-	sess, err := orm.Get[db.Session](s.db.ORM, sessionID)
-	if err != nil {
-		return nil, true, &httpError{code: http.StatusForbidden, msg: "session not found"}
-	}
-	if sess.OrgID != orgID || sess.WalletID != walletID {
-		return nil, true, &httpError{code: http.StatusForbidden, msg: "session mismatch"}
-	}
-	if sess.Status == "revoked" {
-		return nil, true, &httpError{code: http.StatusForbidden, msg: "session revoked"}
-	}
-	if time.Now().After(sess.ExpiresAt) {
-		return nil, true, &httpError{code: http.StatusForbidden, msg: "session expired"}
-	}
-	if sess.GrantedTo != "" && sess.GrantedTo != principal {
-		return nil, true, &httpError{code: http.StatusForbidden, msg: "session granted to different principal"}
-	}
-	// F25 — enforce scope strictly. sign scope required for sign/settlement.
-	scopeOK := false
-	for _, scope := range sess.Scopes {
-		if scope == "sign" {
-			scopeOK = true
-			break
-		}
-	}
-	if !scopeOK {
-		return nil, true, &httpError{code: http.StatusForbidden, msg: "session does not grant sign scope"}
-	}
-
-	// Snapshot the CAS-guard values read from the DB.
-	prevUsed := sess.OperationsUsed
-	prevAccum := sess.ValueAccum
-
-	if sess.OperationLimit != nil && prevUsed >= *sess.OperationLimit {
-		return nil, true, &httpError{code: http.StatusForbidden, msg: "session operation limit reached"}
-	}
-
-	newAccum := prevAccum
-	if sess.ValueLimit != nil && value != "" {
-		limit, ok := new(big.Int).SetString(*sess.ValueLimit, 10)
-		used, _ := new(big.Int).SetString(prevAccum, 10)
-		if used == nil {
-			used = new(big.Int)
-		}
-		amt, aok := new(big.Int).SetString(value, 10)
-		if !ok || !aok {
-			return nil, true, &httpError{code: http.StatusForbidden, msg: "session value accounting error"}
-		}
-		next := new(big.Int).Add(used, amt)
-		if next.Cmp(limit) > 0 {
-			return nil, true, &httpError{code: http.StatusForbidden, msg: "session value limit exceeded"}
-		}
-		newAccum = next.String()
-	}
-
-	// Re-read inside the write transaction + CAS guard. If the persisted
-	// OperationsUsed or ValueAccum has shifted since our initial read, the
-	// current Put would overwrite concurrent work — reject and retry.
-	err = s.db.ORM.RunInTransaction(ctx, func(tx orm.DB) error {
-		fresh, gerr := orm.Get[db.Session](tx, sessionID)
+	var sess *db.Session
+	// R2-2: READ COMMITTED + SELECT FOR UPDATE. FOR UPDATE blocks concurrent
+	// consumers on the row; when a waiter unblocks, READ COMMITTED re-reads
+	// the row at the latest committed snapshot. Serializable would instead
+	// abort the waiter with 40001 because its outer snapshot is stale, and
+	// retrying into a fresh tx loses us the accumulated "I'm next in line"
+	// ordering. READ COMMITTED + FOR UPDATE is the right primitive here.
+	err := s.db.ORM.RunInTransactionWith(ctx, &orm.TxOptions{
+		Isolation:   orm.IsolationReadCommitted,
+		MaxAttempts: 3,
+	}, func(tx orm.DB) error {
+		fresh, gerr := orm.GetForUpdate[db.Session](tx, sessionID)
 		if gerr != nil {
 			return &httpError{code: http.StatusForbidden, msg: "session not found"}
 		}
-		if fresh.OperationsUsed != prevUsed || fresh.ValueAccum != prevAccum {
-			return errSessionConflict
+		if fresh.OrgID != orgID || fresh.WalletID != walletID {
+			return &httpError{code: http.StatusForbidden, msg: "session mismatch"}
 		}
-		fresh.OperationsUsed = prevUsed + 1
+		if fresh.Status == "revoked" {
+			return &httpError{code: http.StatusForbidden, msg: "session revoked"}
+		}
+		if time.Now().After(fresh.ExpiresAt) {
+			return &httpError{code: http.StatusForbidden, msg: "session expired"}
+		}
+		if fresh.GrantedTo != "" && fresh.GrantedTo != principal {
+			return &httpError{code: http.StatusForbidden, msg: "session granted to different principal"}
+		}
+		// F25: sign scope required for sign/settlement.
+		scopeOK := false
+		for _, scope := range fresh.Scopes {
+			if scope == "sign" {
+				scopeOK = true
+				break
+			}
+		}
+		if !scopeOK {
+			return &httpError{code: http.StatusForbidden, msg: "session does not grant sign scope"}
+		}
+
+		if fresh.OperationLimit != nil && fresh.OperationsUsed >= *fresh.OperationLimit {
+			return &httpError{code: http.StatusForbidden, msg: "session operation limit reached"}
+		}
+
+		newAccum := fresh.ValueAccum
+		if fresh.ValueLimit != nil && value != "" {
+			limit, ok := new(big.Int).SetString(*fresh.ValueLimit, 10)
+			used, _ := new(big.Int).SetString(fresh.ValueAccum, 10)
+			if used == nil {
+				used = new(big.Int)
+			}
+			amt, aok := new(big.Int).SetString(value, 10)
+			if !ok || !aok {
+				return &httpError{code: http.StatusForbidden, msg: "session value accounting error"}
+			}
+			next := new(big.Int).Add(used, amt)
+			if next.Cmp(limit) > 0 {
+				return &httpError{code: http.StatusForbidden, msg: "session value limit exceeded"}
+			}
+			newAccum = next.String()
+		}
+
+		fresh.OperationsUsed = fresh.OperationsUsed + 1
 		fresh.ValueAccum = newAccum
 		if uerr := fresh.Update(); uerr != nil {
 			return uerr
@@ -363,14 +329,11 @@ func (s *Server) tryConsumeSession(
 	})
 	if err != nil {
 		if herr, ok := err.(*httpError); ok {
-			return nil, true, herr
+			return nil, herr
 		}
-		if errors.Is(err, errSessionConflict) {
-			return nil, false, errSessionConflict
-		}
-		return nil, false, err
+		return nil, &httpError{code: http.StatusConflict, msg: "session busy, retry"}
 	}
-	return sess, false, nil
+	return sess, nil
 }
 
 type httpError struct {
