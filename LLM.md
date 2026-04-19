@@ -471,7 +471,11 @@ make e2e-test
 
 31. **R2-2 CAS under Postgres**: Session consume + operation approve now use `orm.GetForUpdate` (SELECT ... FOR UPDATE) inside READ COMMITTED tx via `orm.RunInTransactionWith(IsolationReadCommitted)`. Requires `hanzoai/orm@v0.4.0`. Postgres-backed regression tests in `cas_postgres_test.go` — skipped when no Postgres available, `TEST_PG_DSN` overrides DSN. `pkg/db.New` now accepts `postgres://...` DSNs alongside SQLite.
 
-32. **R2-3 Tightened API-key gate**: `requireRoleOrAPIPermission([]string{"owner","admin","signer"}, "mpc:sign")` replaces `requireRole("owner","admin","signer","api")` on `/v1/mpc/sign` and `/v1/mpc/settlement/sign`. Role `api` passes only if the key holds the named permission (or `*`). A bare API key with permissions=[] is rejected.
+32. **R2-3 Tightened API-key gate**: `requireRoleOrAPIPermission([]string{"owner","admin","signer"}, "mpc:sign")` replaces `requireRole("owner","admin","signer","api")` on `/v1/mpc/sign` and `/v1/mpc/settlement/sign`. Role `api` passes only if the key holds the named permission. A bare API key with permissions=[] is rejected.
+
+33. **R3-2 No `*` wildcard in API-key permissions**: `hasPermission` no longer honors `*`. Every API key must enumerate explicit permissions. Tests `TestRequireRoleOrAPIPermission_WildcardRejectedOnSensitive` + `TestRequirePermission_WildcardRejected` assert `permissions=["*"]` is REJECTED for every sensitive name (`mpc:sign`, `mpc:settlement:sign`, `mpc:operations:approve`, `mpc:wallet:sweep`, `mpc:policy:write`, plus `trade:submit`). Breaking change: re-issue keys with explicit permissions; bump to v1.7.0.
+
+34. **R3-8 Liveness envelope bound to enrollment**: `LivenessAttestation` now carries `credentialHash = sha256(pubKey)` and/or `challengeId`. `handleBiometricEnroll` passes expected values to `VerifyLiveness` so a stolen envelope cannot be replayed against a different WebAuthn public key. Mode toggle via `MPC_LIVENESS_BINDING=strict|lax` (default `strict`). **Blocker for mainnet biometric enroll**: Signer must ship the extended envelope; while in LAX the server emits a `mpc.biometric.binding_warn` log on every permissive accept. Tests in `pkg/webauthn/liveness_test.go` — matching-hash accept, mismatch-rejects, strict-rejects-missing, lax-warns-missing, challengeId accept/reject.
 
 ### Consensus-Embedded Transport (Jan 2026)
 
