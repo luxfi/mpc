@@ -475,7 +475,22 @@ make e2e-test
 
 33. **R3-2 No `*` wildcard in API-key permissions**: `hasPermission` no longer honors `*`. Every API key must enumerate explicit permissions. Tests `TestRequireRoleOrAPIPermission_WildcardRejectedOnSensitive` + `TestRequirePermission_WildcardRejected` assert `permissions=["*"]` is REJECTED for every sensitive name (`mpc:sign`, `mpc:settlement:sign`, `mpc:operations:approve`, `mpc:wallet:sweep`, `mpc:policy:write`, plus `trade:submit`). Breaking change: re-issue keys with explicit permissions; bump to v1.7.0.
 
-34. **R3-8 Liveness envelope bound to enrollment**: `LivenessAttestation` now carries `credentialHash = sha256(pubKey)` and/or `challengeId`. `handleBiometricEnroll` passes expected values to `VerifyLiveness` so a stolen envelope cannot be replayed against a different WebAuthn public key. Mode toggle via `MPC_LIVENESS_BINDING=strict|lax` (default `strict`). **Blocker for mainnet biometric enroll**:  must ship the extended envelope; while in LAX the server emits a `mpc.biometric.binding_warn` log on every permissive accept. Tests in `pkg/webauthn/liveness_test.go` — matching-hash accept, mismatch-rejects, strict-rejects-missing, lax-warns-missing, challengeId accept/reject.
+34. **R3-8 Liveness envelope bound to enrollment**: `LivenessAttestation` now carries `credentialHash = sha256(pubKey)` and/or `challengeId`. `handleBiometricEnroll` passes expected values to `VerifyLiveness` so a stolen envelope cannot be replayed against a different WebAuthn public key. Mode toggle via `MPC_LIVENESS_BINDING=strict|lax` (default `strict`). **Blocker for mainnet biometric enroll**:  must ship the extended envelope; while in LAX the server emits a `mpc.biometric.binding_warn` log on every permissive accept.
+
+35. **F4 (2026-04-18) LAX tightening — credentialHash floor + both-must-match**: Red round 4 flagged that the previous LAX mode accepted envelopes with ONLY `challengeId` (no `credentialHash`), enabling a cross-ceremony replay: an attacker observing a fresh challenge could trick  into signing an envelope binding to the challenge alone and replay it against any enrollment for the same `userId`. Two tightenings in `VerifyLiveness`:
+    - LAX + server expects `credentialHash` + envelope omits it → **reject** (`credentialHash required in LAX mode`). `credentialHash` is now a hard floor — `challengeId` alone cannot satisfy the binding requirement in LAX.
+    - Envelope supplies BOTH `credentialHash` AND `challengeId` AND server expects both → require BOTH to match (no more "either-or" loophole).
+
+    LAX warn-on-missing still works when the call site does NOT commit a `credentialHash` expectation. Tests in `pkg/webauthn/liveness_test.go`:
+    - `TestLiveness_R38_LaxRejectsMissingCredentialHash` — challengeId-only envelope rejected
+    - `TestLiveness_R38_LaxAcceptsBothMatch` — happy path (extended envelope after  rollout)
+    - `TestLiveness_R38_LaxRejectsMismatchedCredentialHashBothPresent`
+    - `TestLiveness_R38_LaxRejectsMismatchedChallengeIDBothPresent`
+    - `TestLiveness_R38_LaxAcceptsCredentialHashOnly` — current  envelope shape
+    - `TestLiveness_R38_LaxRejectsMissingBindingWhenCredentialHashExpected` — replaces the old lax-warns-missing path
+    - `TestLiveness_R38_LaxWarnsOnMissing_ChallengeIDOnly` — warn path still available when `credentialHash` not expected
+
+    `handleBiometricEnroll` always commits `ExpectedCredentialHash` (derived from the enrollment pubKey via `sha256`), so the LAX floor always engages for WebAuthn enrollment. `v1.7.1` follows `v1.7.0`.
 
 ### Consensus-Embedded Transport (Jan 2026)
 
