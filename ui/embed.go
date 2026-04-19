@@ -1,24 +1,21 @@
-// Package ui embeds the MPC admin dashboard built with Vite + React.
-//
-// The Go HTTP handler serves the admin UI at the /_/mpc/ path.
-// Run `pnpm --dir ui build` in this directory to produce dist/; the
-// //go:embed directive below picks up the resulting static assets.
+//go:build !embedui
+
+// Package ui provides a placeholder dashboard filesystem when the
+// server is built without the `embedui` tag. Default build ships no UI.
+// Production builds that want the bundled dashboard must
+// `pnpm --dir ui build` then build with `-tags embedui`.
 package ui
 
 import (
-	"embed"
 	"io/fs"
+	"testing/fstest"
 )
 
-//go:embed all:dist
-var distFS embed.FS
-
-// DistDirFS returns a rooted fs.FS pointing at dist/ so it can be passed
-// directly to the Base router's Static handler.
-func DistDirFS() fs.FS {
-	sub, err := fs.Sub(distFS, "dist")
-	if err != nil {
-		panic("mpc-ui: dist/ missing — run `pnpm --dir ui build` first: " + err.Error())
-	}
-	return sub
+var emptyFS = fstest.MapFS{
+	"index.html": &fstest.MapFile{Data: []byte(
+		`<!doctype html><title>MPC</title><p>UI not embedded. Build with -tags embedui.</p>`,
+	)},
 }
+
+// DistDirFS returns an empty placeholder dashboard tree.
+func DistDirFS() fs.FS { return emptyFS }
