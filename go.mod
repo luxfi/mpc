@@ -26,7 +26,7 @@ require (
 	github.com/gtank/ristretto255 v0.2.0
 	github.com/hanzoai/base v0.39.1
 	github.com/hanzoai/dbx v1.13.0
-	github.com/hanzoai/orm v0.3.2
+	github.com/hanzoai/orm v0.4.0
 	github.com/hashicorp/consul/api v1.33.7
 	github.com/luxfi/crypto v1.17.45
 	github.com/luxfi/database v1.17.44
@@ -234,6 +234,9 @@ replace github.com/agl/ed25519 => github.com/luxfi/edwards25519 v0.1.0
 
 replace github.com/luxfi/log v1.3.0 => github.com/luxfi/log v1.4.1
 
+// luxfi/genesis v1.5.21 / v1.5.22 are missing from proxy.golang.org; no
+// luxfi/mpc code path imports them, but transitive resolution can pick them
+// up. Excluded until genesis retags.
 exclude (
 	github.com/luxfi/genesis v1.5.21
 	github.com/luxfi/genesis v1.5.22
