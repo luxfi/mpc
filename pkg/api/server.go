@@ -16,6 +16,7 @@ import (
 	"github.com/luxfi/mpc/pkg/custody"
 	"github.com/luxfi/mpc/pkg/db"
 	"github.com/luxfi/mpc/pkg/txtracker"
+	"github.com/luxfi/mpc/pkg/webauthn"
 )
 
 // MPCBackend is the interface the API layer uses to trigger MPC operations.
@@ -74,6 +75,12 @@ type Server struct {
 	// attached to /v1/mpc/biometric/enroll. Nil disables the endpoint.
 	PubKey     ed25519.PublicKey
 	ProviderID string
+	// livenessBindingMode controls the R3-8 envelope→enrollment binding.
+	// BindingStrict (default) rejects envelopes that don't carry
+	// credentialHash/challengeId. BindingLax logs a warning instead —
+	// intended only for the  extended-envelope rollout window.
+	// Configured via MPC_LIVENESS_BINDING=strict|lax (default strict).
+	livenessBindingMode webauthn.BindingMode
 	router         chi.Router
 	replayGuard    *replayGuard
 
@@ -148,6 +155,14 @@ func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, o
 		}
 	}
 
+	// R3-8 binding mode. Default STRICT; ops may toggle to LAX during
+	// the  extended-envelope rollout. LAX emits a warn log on
+	// every permissive accept so rollout progress is observable.
+	bindingMode := webauthn.BindingStrict
+	if strings.ToLower(strings.TrimSpace(os.Getenv("MPC_LIVENESS_BINDING"))) == "lax" {
+		bindingMode = webauthn.BindingLax
+	}
+
 	s := &Server{
 		db:                   database,
 		mpc:                  mpcBackend,
@@ -158,6 +173,7 @@ func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, o
 		webauthnOrigins:      webauthnOrigins,
 		PubKey:     sgKey,
 		ProviderID: os.Getenv("MPC__PROVIDER_ID"),
+		livenessBindingMode:  bindingMode,
 		replayGuard:          newReplayGuard(),
 		Events:               NewEventBus(),
 	}

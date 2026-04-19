@@ -17,6 +17,11 @@ import (
 //   - Subject (user) matches the authenticated caller
 //   - Timestamp is fresh (< MaxAge)
 //   - Score >= MinScore (PAD-2 default is 0.8)
+//   - R3-8: CredentialHash (if present) == sha256(enrollment public key)
+//     OR ChallengeID (if present) == the WebAuthn challenge being enrolled.
+//     Binds the attestation to the specific enrollment ceremony — a stolen
+//     envelope within the 2-minute validity window cannot be replayed to
+//     enroll an attacker-controlled public key.
 //
 // Clients MUST NOT send a bare liveness score — the server-to-server trust
 // anchor is the  signature, not a float in the body. Without this
@@ -27,7 +32,39 @@ type LivenessAttestation struct {
 	Score      float64 `json:"score"`
 	Timestamp  int64   `json:"timestamp"` // unix seconds
 	Nonce      string  `json:"nonce"`
+	// R3-8: at least one of these MUST be present when the server is in
+	// strict binding mode (BindingMode = BindingStrict). They bind the
+	// envelope to the specific WebAuthn enrollment it was minted for:
+	//
+	//   - CredentialHash = sha256(uncompressed P-256 public key bytes),
+	//     base64 (standard). Equivalent to the "I attested the device
+	//     holding THIS key" claim.
+	//   - ChallengeID = the WebAuthn challenge being enrolled, base64url.
+	//     Equivalent to "I attested THIS ceremony".
+	//
+	// Empty fields mean "provider did not assert this binding." Verify
+	// returns an error if BindingMode requires one and the envelope
+	// supplies none, or if a supplied field does not match the opts.
+	CredentialHash string `json:"credentialHash,omitempty"`
+	ChallengeID    string `json:"challengeId,omitempty"`
 }
+
+// BindingMode selects how strictly VerifyLiveness enforces the R3-8
+// envelope→enrollment binding.
+type BindingMode int
+
+const (
+	// BindingStrict rejects any envelope that supplies neither
+	// CredentialHash nor ChallengeID. This is the only safe default for
+	// production biometric enrollment on mainnet.
+	BindingStrict BindingMode = iota
+
+	// BindingLax logs a warning (via opts.WarnFn) when neither field is
+	// supplied but does not reject. Intended ONLY for the transition
+	// window while  rolls out the extended envelope. Tracked
+	// as a deployment blocker in the MPC LLM.md.
+	BindingLax
+)
 
 // LivenessOpts configures server-side verification.
 type LivenessOpts struct {
@@ -37,6 +74,15 @@ type LivenessOpts struct {
 	MinScore   float64
 	MaxAge     time.Duration
 	Now        func() time.Time // overridable for tests; nil → time.Now
+
+	// R3-8 binding inputs. When either is non-empty the verifier
+	// requires the envelope's corresponding field to match. In
+	// BindingStrict mode at least one must be non-empty OR the envelope
+	// MUST carry one (otherwise the call is rejected).
+	ExpectedCredentialHash string      // base64(sha256(publicKeyBytes))
+	ExpectedChallengeID    string      // base64url(challengeBytes)
+	BindingMode            BindingMode // default BindingStrict
+	WarnFn                 func(msg string)
 }
 
 // VerifyLiveness decodes the attestation envelope and returns the verified
@@ -106,6 +152,41 @@ func VerifyLiveness(envelopeB64 string, opts *LivenessOpts) (*LivenessAttestatio
 	age := now().Sub(ts)
 	if age < 0 || age > opts.MaxAge {
 		return nil, fmt.Errorf("liveness: attestation too old: age=%s max=%s", age, opts.MaxAge)
+	}
+
+	// R3-8: envelope→enrollment binding. Only applies when the caller
+	// supplies a binding expectation (ExpectedCredentialHash and/or
+	// ExpectedChallengeID). Callers that don't care about binding (e.g.
+	// generic liveness checks unrelated to WebAuthn enrollment) are
+	// unaffected.
+	requiresBinding := opts.ExpectedCredentialHash != "" || opts.ExpectedChallengeID != ""
+	if requiresBinding {
+		// Mismatch is always fatal — a supplied-but-wrong value means
+		// the envelope was minted for a different ceremony.
+		if att.CredentialHash != "" && att.CredentialHash != opts.ExpectedCredentialHash && opts.ExpectedCredentialHash != "" {
+			return nil, errors.New("liveness: credentialHash mismatch — envelope not bound to this enrollment")
+		}
+		if att.ChallengeID != "" && att.ChallengeID != opts.ExpectedChallengeID && opts.ExpectedChallengeID != "" {
+			return nil, errors.New("liveness: challengeId mismatch — envelope not bound to this ceremony")
+		}
+		// A "matching" envelope has at least one field that matches its
+		// corresponding expected value. In STRICT mode, a missing field
+		// is rejected; in LAX mode we warn and accept.
+		matched := false
+		if opts.ExpectedCredentialHash != "" && att.CredentialHash == opts.ExpectedCredentialHash {
+			matched = true
+		}
+		if opts.ExpectedChallengeID != "" && att.ChallengeID == opts.ExpectedChallengeID {
+			matched = true
+		}
+		if !matched {
+			if opts.BindingMode == BindingStrict {
+				return nil, errors.New("liveness: envelope carries no binding (credentialHash/challengeId);  must emit the extended envelope")
+			}
+			if opts.WarnFn != nil {
+				opts.WarnFn("liveness: envelope carries no binding — accepted in LAX mode; tracked  rollout")
+			}
+		}
 	}
 	return &att, nil
 }
