@@ -41,9 +41,15 @@ func getPermissions(ctx context.Context) []string {
 	return v
 }
 
+// hasPermission reports whether the API key in ctx carries the named
+// permission. Wildcards are NOT honored — R3-2: a misissued key with
+// permissions=["*"] would otherwise act as a god-key, bypassing every
+// named gate including mpc:settlement:sign / mpc:operations:approve /
+// mpc:wallet:sweep / mpc:policy:write. Every API key must list its
+// explicit permissions. One way to express authority — the list.
 func hasPermission(ctx context.Context, perm string) bool {
 	for _, p := range getPermissions(ctx) {
-		if p == perm || p == "*" {
+		if p == perm {
 			return true
 		}
 	}

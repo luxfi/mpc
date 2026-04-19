@@ -225,8 +225,10 @@ func TestRequireRoleOrAPIPermission(t *testing.T) {
 	// API key with the right permission passes.
 	run("api+mpc:sign passes", "api", []string{"mpc:sign"}, http.StatusOK)
 
-	// API key with `*` wildcard passes (backwards-compat superkey).
-	run("api+* passes", "api", []string{"*"}, http.StatusOK)
+	// R3-2: `*` wildcard is NOT honored. A misissued key with perms=["*"]
+	// must be rejected on every named permission check — no god-key.
+	run("api+* rejected (no wildcard)", "api", []string{"*"}, http.StatusForbidden)
+	run("api+*-plus-unrelated rejected", "api", []string{"*", "unrelated:scope"}, http.StatusForbidden)
 
 	// Bare API key without the permission — R2-3 regression.
 	run("api+no-perms rejected", "api", []string{}, http.StatusForbidden)
@@ -237,6 +239,57 @@ func TestRequireRoleOrAPIPermission(t *testing.T) {
 	run("empty rejected", "", nil, http.StatusForbidden)
 
 	_ = called
+}
+
+// R3-2: assert wildcard does not bypass sensitive gates. Every one of
+// these permission names must reject a `*`-only key. Done explicitly so
+// a regression on any one of them fails the table row by name.
+func TestRequireRoleOrAPIPermission_WildcardRejectedOnSensitive(t *testing.T) {
+	sensitivePerms := []string{
+		"mpc:sign",
+		"mpc:settlement:sign",
+		"mpc:operations:approve",
+		"mpc:wallet:sweep",
+		"mpc:policy:write",
+	}
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	for _, perm := range sensitivePerms {
+		perm := perm
+		t.Run("wildcard_rejects_"+perm, func(t *testing.T) {
+			gate := requireRoleOrAPIPermission([]string{"owner", "admin", "signer"}, perm)
+			req := httptest.NewRequest(http.MethodPost, "/sensitive", nil)
+			ctx := context.WithValue(req.Context(), ctxRole, "api")
+			ctx = context.WithValue(ctx, ctxPermissions, []string{"*"})
+			req = req.WithContext(ctx)
+			rec := httptest.NewRecorder()
+			gate(inner).ServeHTTP(rec, req)
+			if rec.Code != http.StatusForbidden {
+				t.Errorf("perm=%q with permissions=[*] must be rejected; got %d body=%s",
+					perm, rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
+// R3-2: assert requirePermission (the lower-level gate used by trade
+// approval etc.) also no longer accepts `*` for a named permission.
+func TestRequirePermission_WildcardRejected(t *testing.T) {
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	gate := requirePermission("trade:submit")
+	req := httptest.NewRequest(http.MethodPost, "/trade", nil)
+	ctx := context.WithValue(req.Context(), ctxRole, "api")
+	ctx = context.WithValue(ctx, ctxPermissions, []string{"*"})
+	req = req.WithContext(ctx)
+	rec := httptest.NewRecorder()
+	gate(inner).ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("requirePermission must reject `*`; got %d body=%s",
+			rec.Code, rec.Body.String())
+	}
 }
 
 func TestRequireRole_MultipleAllowed(t *testing.T) {
