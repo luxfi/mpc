@@ -475,6 +475,24 @@ func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, o
 
 				// Audit — owner/admin
 				r.With(requireRole("owner", "admin")).Get("/audit", s.handleMpcListAudit)
+
+				// Treasury — 3-of-5 org governance surface.
+				// wallet CRUD requires owner/admin role OR API key with
+				// mpc.treasury.admin permission. Sign requires a treasury
+				// signer (principal KeyRef must appear in the signer set).
+				r.Route("/treasury", func(r chi.Router) {
+					r.Group(func(r chi.Router) {
+						r.Use(requireRoleOrAPIPermission(
+							[]string{"owner", "admin"}, treasuryAdminPermission))
+						r.Post("/wallets", s.handleCreateTreasuryWallet)
+						r.Get("/wallets", s.handleListTreasuryWallets)
+						r.Get("/wallets/{id}", s.handleGetTreasuryWallet)
+						r.Post("/wallets/{id}/rotate-signer", s.handleRotateTreasurySigner)
+					})
+					r.With(requireRoleOrAPIPermission(
+						[]string{"owner", "admin", "signer"}, treasurySignPermission)).
+						Post("/sign", s.handleTreasurySign)
+				})
 			})
 		})
 	})
