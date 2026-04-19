@@ -154,7 +154,7 @@ func VerifyLiveness(envelopeB64 string, opts *LivenessOpts) (*LivenessAttestatio
 		return nil, fmt.Errorf("liveness: attestation too old: age=%s max=%s", age, opts.MaxAge)
 	}
 
-	// R3-8: envelope→enrollment binding. Only applies when the caller
+	// R3-8 / F4: envelope→enrollment binding. Only applies when the caller
 	// supplies a binding expectation (ExpectedCredentialHash and/or
 	// ExpectedChallengeID). Callers that don't care about binding (e.g.
 	// generic liveness checks unrelated to WebAuthn enrollment) are
@@ -169,6 +169,55 @@ func VerifyLiveness(envelopeB64 string, opts *LivenessOpts) (*LivenessAttestatio
 		if att.ChallengeID != "" && att.ChallengeID != opts.ExpectedChallengeID && opts.ExpectedChallengeID != "" {
 			return nil, errors.New("liveness: challengeId mismatch — envelope not bound to this ceremony")
 		}
+
+		// F4 (2026-04-18): tighten LAX. Previously LAX accepted an
+		// envelope where EITHER field matched. That permitted a
+		// cross-ceremony replay: an envelope whose challengeId matches
+		// the current ceremony's challenge but whose credentialHash is
+		// absent would be accepted — an attacker who observes a fresh
+		// challenge can trick SecureGate into signing an envelope that
+		// binds to the challenge alone, then replay it against any
+		// ceremony for the same userId that reuses an uncaptured
+		// credentialHash expectation.
+		//
+		// Two tightenings (both layered on top of the existing
+		// "mismatch always rejects" guards above):
+		//
+		//   1. When BOTH expected fields are set AND the envelope
+		//      supplies BOTH, require BOTH to match. This closes the
+		//      "either-or" loophole for the happy path where SecureGate
+		//      has already rolled out the extended envelope.
+		//
+		//   2. credentialHash is mandatory at minimum in LAX. The
+		//      envelope MUST carry CredentialHash whenever the server
+		//      expects one. challengeId alone is insufficient — it can
+		//      be observed and replayed faster than credentialHash can
+		//      be forged against an attacker-controlled pubkey.
+		//
+		// STRICT already enforced the missing-both rejection; these
+		// rules add the LAX-only refinements.
+		if att.CredentialHash != "" && att.ChallengeID != "" &&
+			opts.ExpectedCredentialHash != "" && opts.ExpectedChallengeID != "" {
+			// Both sides have both fields — require both to match.
+			// The prior "mismatch rejects" guards have already caught
+			// any individual mismatch; this is a belt-and-braces
+			// assertion that closes the pathological both-supplied-
+			// one-blank-expected corner.
+			if att.CredentialHash != opts.ExpectedCredentialHash ||
+				att.ChallengeID != opts.ExpectedChallengeID {
+				return nil, errors.New("liveness: binding mismatch — both credentialHash and challengeId must match when both are present")
+			}
+		}
+
+		if opts.BindingMode == BindingLax &&
+			opts.ExpectedCredentialHash != "" &&
+			att.CredentialHash == "" {
+			// F4: LAX + expected credentialHash + envelope omits it =
+			// reject. This is the "challengeId-only replay" gate. The
+			// envelope must commit to the enrollment pubkey hash.
+			return nil, errors.New("liveness: credentialHash required in LAX mode — envelope without credentialHash is replay-vulnerable")
+		}
+
 		// A "matching" envelope has at least one field that matches its
 		// corresponding expected value. In STRICT mode, a missing field
 		// is rejected; in LAX mode we warn and accept.
