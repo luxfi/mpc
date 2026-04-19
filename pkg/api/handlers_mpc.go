@@ -11,14 +11,10 @@ package api
 
 import (
 	"context"
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"math/big"
 	"net/http"
 	"strconv"
 	"strings"
@@ -27,6 +23,7 @@ import (
 	"github.com/hanzoai/orm"
 
 	"github.com/luxfi/mpc/pkg/db"
+	"github.com/luxfi/mpc/pkg/webauthn"
 )
 
 var errUnknownEncoding = errors.New("unknown encoding (must be hex|base64)")
@@ -596,32 +593,51 @@ func (s *Server) handleMpcSignSettlement(w http.ResponseWriter, r *http.Request)
 // --- /v1/mpc/biometric/{enroll,status} ---
 
 // handleBiometricEnroll — biometric enrollment is NOT an "accept arbitrary
-// template bytes" endpoint. The client must first call
-// /v1/mpc/webauthn/challenge to receive a server-issued challenge, then sign
-// the challenge with an authenticator-bound key (per WebAuthn spec) AND
-// provide a SecureGate liveness score above threshold (F5). Raw templates
-// are not accepted because they would allow an attacker with a leaked
-// template to forge enrollments.
+// template bytes" endpoint. R2-1 hardening:
+//
+//  1. The client must first call /v1/mpc/webauthn/challenge. The server
+//     generates random bytes, stores them on the WebAuthnCredential row, and
+//     sends both the row ID ("credentialId") and the base64url-encoded
+//     random challenge ("challenge") back. The attacker does not get a usable
+//     oracle on the row ID because we now compare against the random bytes,
+//     not the ID.
+//  2. clientDataJSON origin is compared against the server origin allowlist.
+//  3. authenticatorData[0:32] is compared against sha256(rpID); the UP and
+//     UV flags are enforced so locked authenticators are rejected.
+//  4. Liveness score is NEVER accepted from the request body. Instead the
+//     client attaches a SecureGate-signed Ed25519 attestation envelope
+//     over (providerId, userId, score, timestamp, nonce). The server verifies
+//     the signature against the configured SecureGate pubkey and enforces
+//     userId match, score floor, and max age.
 func (s *Server) handleBiometricEnroll(w http.ResponseWriter, r *http.Request) {
 	orgID := getOrgID(r.Context())
 	userID := getUserID(r.Context())
 
+	if len(s.secureGatePubKey) == 0 {
+		writeError(w, http.StatusServiceUnavailable, "biometric enrollment unavailable: liveness verifier not configured")
+		return
+	}
+
 	var req struct {
-		ChallengeID        string  `json:"challengeId"`
-		SignedResponse     string  `json:"signedResponse"`
-		AuthenticatorData  string  `json:"authenticatorData"`
-		ClientDataJSON     string  `json:"clientDataJSON"`
-		PublicKey          string  `json:"publicKey"`
-		Modality           string  `json:"modality"`
-		LivenessScore      float64 `json:"livenessScore"`
-		LivenessProviderID string  `json:"livenessProviderId"`
+		CredentialID         string `json:"credentialId"`
+		SignedResponse       string `json:"signedResponse"`
+		AuthenticatorData    string `json:"authenticatorData"`
+		ClientDataJSON       string `json:"clientDataJSON"`
+		PublicKey            string `json:"publicKey"`
+		Modality             string `json:"modality"`
+		LivenessAttestation  string `json:"livenessAttestation"` // base64 envelope
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	if req.ChallengeID == "" || req.SignedResponse == "" || req.PublicKey == "" {
-		writeError(w, http.StatusBadRequest, "challengeId, signedResponse, publicKey are required")
+	if req.CredentialID == "" || req.SignedResponse == "" || req.PublicKey == "" ||
+		req.AuthenticatorData == "" || req.ClientDataJSON == "" {
+		writeError(w, http.StatusBadRequest, "credentialId, signedResponse, authenticatorData, clientDataJSON, publicKey required")
+		return
+	}
+	if req.LivenessAttestation == "" {
+		writeError(w, http.StatusBadRequest, "livenessAttestation is required")
 		return
 	}
 	if req.Modality == "" {
@@ -631,25 +647,46 @@ func (s *Server) handleBiometricEnroll(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "modality must be face or fingerprint")
 		return
 	}
-	// SecureGate liveness threshold (0.8 = typical PAD-2). Reject below.
+
+	// Verify the server-signed liveness attestation. Fails closed.
 	const minLivenessScore = 0.8
-	if req.LivenessScore < minLivenessScore {
-		writeError(w, http.StatusForbidden, "liveness score below required threshold")
+	if _, err := webauthn.VerifyLiveness(req.LivenessAttestation, &webauthn.LivenessOpts{
+		PubKey:     s.secureGatePubKey,
+		ProviderID: s.secureGateProviderID,
+		UserID:     userID,
+		MinScore:   minLivenessScore,
+		MaxAge:     2 * time.Minute,
+	}); err != nil {
+		writeError(w, http.StatusForbidden, "liveness attestation rejected")
 		return
 	}
-	if req.LivenessProviderID == "" {
-		writeError(w, http.StatusBadRequest, "livenessProviderId is required")
-		return
-	}
-	// Consume the server-issued challenge (prevents replay). Challenges are
-	// one-use and bound to the authenticated user.
-	if ok, err := s.consumeBiometricChallenge(r.Context(), orgID, userID, req.ChallengeID); err != nil || !ok {
+
+	// Atomically consume the WebAuthnCredential challenge row and capture the
+	// random challenge bytes we sent.
+	chalBytes, ok, err := s.consumeBiometricChallenge(r.Context(), orgID, userID, req.CredentialID)
+	if err != nil || !ok {
 		writeError(w, http.StatusForbidden, "invalid or expired challenge")
 		return
 	}
-	// Verify the signed response against the claimed public key.
-	if err := verifyBiometricAttestation(req.PublicKey, req.AuthenticatorData, req.ClientDataJSON, req.SignedResponse, req.ChallengeID); err != nil {
-		writeError(w, http.StatusForbidden, "attestation verification failed: "+err.Error())
+
+	// Verify the WebAuthn ceremony against:
+	//   - the random challenge bytes we issued (not the DB row ID),
+	//   - the origin allowlist,
+	//   - the rpID hash,
+	//   - UP+UV flags.
+	if _, err := webauthn.Verify(&webauthn.Opts{
+		Ceremony:          webauthn.CeremonyCreate,
+		ExpectedChallenge: chalBytes,
+		AllowedOrigins:    s.webauthnOrigins,
+		RPID:              s.webauthnRPID,
+		RequireUP:         true,
+		RequireUV:         true,
+		PublicKeyB64:      req.PublicKey,
+		ClientDataJSONB64: req.ClientDataJSON,
+		AuthDataB64:       req.AuthenticatorData,
+		SignatureB64:      req.SignedResponse,
+	}); err != nil {
+		writeError(w, http.StatusForbidden, "attestation verification failed")
 		return
 	}
 
@@ -663,7 +700,7 @@ func (s *Server) handleBiometricEnroll(w http.ResponseWriter, r *http.Request) {
 	enroll.PublicKey = req.PublicKey
 	enroll.Status = "active"
 	if err := enroll.Create(); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to enroll biometric: "+err.Error())
+		writeError(w, http.StatusInternalServerError, "failed to enroll biometric")
 		return
 	}
 	s.recordMpcAudit(r.Context(), orgID, userID, "biometric.enroll", "biometric", enroll.Id())
@@ -674,76 +711,50 @@ func (s *Server) handleBiometricEnroll(w http.ResponseWriter, r *http.Request) {
 }
 
 // consumeBiometricChallenge validates and atomically marks a server-issued
-// WebAuthn challenge as used. Returns (true, nil) iff the challenge exists,
-// belongs to the user, is in pending_registration state, and transitions to
-// consumed. Prevents replay of the same challenge (F5).
-func (s *Server) consumeBiometricChallenge(ctx context.Context, orgID, userID, challengeID string) (bool, error) {
-	cred, err := orm.Get[db.WebAuthnCredential](s.db.ORM, challengeID)
+// WebAuthn challenge as used. Returns (chalBytes, true, nil) iff the challenge
+// exists, belongs to the user, is pending, and transitions to consumed.
+// Prevents replay of the same challenge (R2-1).
+func (s *Server) consumeBiometricChallenge(ctx context.Context, orgID, userID, credentialID string) ([]byte, bool, error) {
+	var out []byte
+	err := s.db.ORM.RunInTransactionWith(ctx, &orm.TxOptions{
+		Isolation:   orm.IsolationSerializable,
+		MaxAttempts: 5,
+	}, func(tx orm.DB) error {
+		cred, gerr := orm.Get[db.WebAuthnCredential](tx, credentialID)
+		if gerr != nil {
+			return gerr
+		}
+		if cred.OrgID != orgID || cred.UserID != userID {
+			return errors.New("challenge mismatch")
+		}
+		if cred.Status != "pending_registration" {
+			return errors.New("challenge already consumed")
+		}
+		if cred.Challenge == "" {
+			return errors.New("challenge missing")
+		}
+		// cred.Challenge is base64url(randomBytes) — decode back to raw bytes
+		// for strict equality against clientDataJSON.challenge (webauthn.Verify
+		// handles encoding variants).
+		raw, decErr := base64.URLEncoding.DecodeString(cred.Challenge)
+		if decErr != nil {
+			if raw2, err2 := base64.RawURLEncoding.DecodeString(cred.Challenge); err2 == nil {
+				raw = raw2
+			} else {
+				return errors.New("invalid stored challenge")
+			}
+		}
+		cred.Status = "consumed"
+		if uerr := cred.Update(); uerr != nil {
+			return uerr
+		}
+		out = raw
+		return nil
+	})
 	if err != nil {
-		return false, nil
+		return nil, false, err
 	}
-	if cred.OrgID != orgID || cred.UserID != userID {
-		return false, nil
-	}
-	if cred.Status != "pending_registration" {
-		return false, nil
-	}
-	cred.Status = "consumed"
-	if err := cred.Update(); err != nil {
-		return false, err
-	}
-	return true, nil
-}
-
-// verifyBiometricAttestation validates the signed challenge response for a
-// biometric enrollment. Clients must submit a P-256 ECDSA signature over
-// SHA256(authenticatorData || SHA256(clientDataJSON)), where clientDataJSON's
-// challenge field equals the server-issued challengeID (base64url). This is
-// the same verification flow used by /v1/mpc/webauthn/verify; centralized
-// here for reuse by biometric enroll (F5).
-func verifyBiometricAttestation(publicKeyB64, authDataB64, clientDataJSONB64, signatureB64, expectedChallenge string) error {
-	clientData, err := base64.URLEncoding.DecodeString(clientDataJSONB64)
-	if err != nil {
-		return errors.New("invalid clientDataJSON")
-	}
-	var cd struct {
-		Challenge string `json:"challenge"`
-		Type      string `json:"type"`
-	}
-	if err := json.Unmarshal(clientData, &cd); err != nil {
-		return errors.New("invalid clientDataJSON structure")
-	}
-	if cd.Challenge != expectedChallenge {
-		return errors.New("challenge mismatch")
-	}
-	if cd.Type != "webauthn.create" {
-		return errors.New("invalid ceremony type")
-	}
-	authData, err := base64.URLEncoding.DecodeString(authDataB64)
-	if err != nil {
-		return errors.New("invalid authenticatorData")
-	}
-	sig, err := base64.URLEncoding.DecodeString(signatureB64)
-	if err != nil {
-		return errors.New("invalid signature")
-	}
-	pubBytes, err := base64.StdEncoding.DecodeString(publicKeyB64)
-	if err != nil || len(pubBytes) < 65 || pubBytes[0] != 0x04 {
-		return errors.New("invalid P-256 public key")
-	}
-	x := new(big.Int).SetBytes(pubBytes[1:33])
-	y := new(big.Int).SetBytes(pubBytes[33:65])
-	if !elliptic.P256().IsOnCurve(x, y) {
-		return errors.New("public key is not a valid P-256 point")
-	}
-	pub := &ecdsa.PublicKey{Curve: elliptic.P256(), X: x, Y: y}
-	clientDataHash := sha256.Sum256(clientData)
-	signed := append(authData, clientDataHash[:]...)
-	signedHash := sha256.Sum256(signed)
-	if !ecdsa.VerifyASN1(pub, signedHash[:], sig) {
-		return errors.New("signature verification failed")
-	}
-	return nil
+	return out, true, nil
 }
 
 func (s *Server) handleBiometricStatus(w http.ResponseWriter, r *http.Request) {
