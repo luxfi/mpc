@@ -467,6 +467,12 @@ make e2e-test
 
 29. **Cluster API key forwarding**: api-deployment now passes `--cluster-api-key $(MPC_CLUSTER_API_KEY)` when proxying to internal MPC API. The `apiOnlyMPCBackend.doRequest` sends it as `Authorization: Bearer` header.
 
+30. **R2-1 Biometric enroll hardened**: `handleBiometricEnroll` now verifies a WebAuthn create ceremony AND a -signed liveness attestation. `pkg/webauthn/verify.go` centralizes: challenge comparison against the random bytes we issued (not the DB row ID), origin allowlist, rpIDHash check, UP+UV flag enforcement. `pkg/webauthn/liveness.go` verifies Ed25519-signed `LivenessAttestation` envelopes against `MPC__PUBKEY_ED25519`; body-supplied scores are rejected. If pubkey is unconfigured, enroll returns 503.
+
+31. **R2-2 CAS under Postgres**: Session consume + operation approve now use `orm.GetForUpdate` (SELECT ... FOR UPDATE) inside READ COMMITTED tx via `orm.RunInTransactionWith(IsolationReadCommitted)`. Requires `hanzoai/orm@v0.4.0`. Postgres-backed regression tests in `cas_postgres_test.go` — skipped when no Postgres available, `TEST_PG_DSN` overrides DSN. `pkg/db.New` now accepts `postgres://...` DSNs alongside SQLite.
+
+32. **R2-3 Tightened API-key gate**: `requireRoleOrAPIPermission([]string{"owner","admin","signer"}, "mpc:sign")` replaces `requireRole("owner","admin","signer","api")` on `/v1/mpc/sign` and `/v1/mpc/settlement/sign`. Role `api` passes only if the key holds the named permission (or `*`). A bare API key with permissions=[] is rejected.
+
 ### Consensus-Embedded Transport (Jan 2026)
 
 20. **ZAP Message Types**: MPC uses ZAP wire protocol message types 60-79:
