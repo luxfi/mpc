@@ -106,3 +106,139 @@ func TestLiveness_RejectsWrongProvider(t *testing.T) {
 		t.Fatalf("want providerId mismatch, got %v", err)
 	}
 }
+
+// R3-8: envelope→enrollment binding. A stolen envelope must not be
+// replayable against a different enrollment.
+
+// Accept: envelope credentialHash matches the enrollment pubkey hash.
+func TestLiveness_R38_AcceptsMatchingCredentialHash(t *testing.T) {
+	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
+	att := LivenessAttestation{
+		ProviderID:     "signer",
+		UserID:         "u-1",
+		Score:          0.9,
+		Timestamp:      time.Now().Unix(),
+		CredentialHash: "ABC123==",
+	}
+	env := signEnvelope(t, priv, att)
+	_, err := VerifyLiveness(env, &LivenessOpts{
+		PubKey: pub, UserID: "u-1", MinScore: 0.8, MaxAge: time.Minute,
+		ExpectedCredentialHash: "ABC123==",
+		BindingMode:            BindingStrict,
+	})
+	if err != nil {
+		t.Fatalf("matching credentialHash should accept: %v", err)
+	}
+}
+
+// Reject: envelope credentialHash present but does not match (replay
+// attempt against a different public key).
+func TestLiveness_R38_RejectsMismatchedCredentialHash(t *testing.T) {
+	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
+	att := LivenessAttestation{
+		ProviderID:     "signer",
+		UserID:         "u-1",
+		Score:          0.9,
+		Timestamp:      time.Now().Unix(),
+		CredentialHash: "EVIL===",
+	}
+	env := signEnvelope(t, priv, att)
+	_, err := VerifyLiveness(env, &LivenessOpts{
+		PubKey: pub, UserID: "u-1", MinScore: 0.8, MaxAge: time.Minute,
+		ExpectedCredentialHash: "VICTIM==",
+		BindingMode:            BindingStrict,
+	})
+	if err == nil || !strings.Contains(err.Error(), "credentialHash mismatch") {
+		t.Fatalf("mismatched credentialHash must reject: got %v", err)
+	}
+}
+
+// Reject (STRICT): server expected binding, envelope carries none.
+// This is the replay-prevention gate.
+func TestLiveness_R38_RejectsMissingBindingStrict(t *testing.T) {
+	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
+	att := LivenessAttestation{
+		ProviderID: "signer",
+		UserID:     "u-1",
+		Score:      0.9,
+		Timestamp:  time.Now().Unix(),
+		// no CredentialHash, no ChallengeID — pre-R3-8 envelope
+	}
+	env := signEnvelope(t, priv, att)
+	_, err := VerifyLiveness(env, &LivenessOpts{
+		PubKey: pub, UserID: "u-1", MinScore: 0.8, MaxAge: time.Minute,
+		ExpectedCredentialHash: "VICTIM==",
+		BindingMode:            BindingStrict,
+	})
+	if err == nil || !strings.Contains(err.Error(), "no binding") {
+		t.Fatalf("STRICT + missing binding must reject: got %v", err)
+	}
+}
+
+// LAX: server expected binding, envelope missing — accept with warning.
+// Used during Signer extended-envelope rollout.
+func TestLiveness_R38_LaxWarnsOnMissing(t *testing.T) {
+	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
+	att := LivenessAttestation{
+		ProviderID: "signer",
+		UserID:     "u-1",
+		Score:      0.9,
+		Timestamp:  time.Now().Unix(),
+	}
+	env := signEnvelope(t, priv, att)
+	var warned string
+	_, err := VerifyLiveness(env, &LivenessOpts{
+		PubKey: pub, UserID: "u-1", MinScore: 0.8, MaxAge: time.Minute,
+		ExpectedCredentialHash: "VICTIM==",
+		BindingMode:            BindingLax,
+		WarnFn:                 func(m string) { warned = m },
+	})
+	if err != nil {
+		t.Fatalf("LAX should accept missing binding: %v", err)
+	}
+	if warned == "" {
+		t.Fatalf("LAX must emit a warn message on missing binding")
+	}
+}
+
+// Accept: envelope challengeId matches the WebAuthn challenge id.
+func TestLiveness_R38_AcceptsMatchingChallengeID(t *testing.T) {
+	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
+	att := LivenessAttestation{
+		ProviderID:  "signer",
+		UserID:      "u-1",
+		Score:       0.9,
+		Timestamp:   time.Now().Unix(),
+		ChallengeID: "chal-xyz",
+	}
+	env := signEnvelope(t, priv, att)
+	_, err := VerifyLiveness(env, &LivenessOpts{
+		PubKey: pub, UserID: "u-1", MinScore: 0.8, MaxAge: time.Minute,
+		ExpectedChallengeID: "chal-xyz",
+		BindingMode:         BindingStrict,
+	})
+	if err != nil {
+		t.Fatalf("matching challengeId should accept: %v", err)
+	}
+}
+
+// Reject: envelope challengeId mismatch.
+func TestLiveness_R38_RejectsMismatchedChallengeID(t *testing.T) {
+	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
+	att := LivenessAttestation{
+		ProviderID:  "signer",
+		UserID:      "u-1",
+		Score:       0.9,
+		Timestamp:   time.Now().Unix(),
+		ChallengeID: "chal-ATTACKER",
+	}
+	env := signEnvelope(t, priv, att)
+	_, err := VerifyLiveness(env, &LivenessOpts{
+		PubKey: pub, UserID: "u-1", MinScore: 0.8, MaxAge: time.Minute,
+		ExpectedChallengeID: "chal-VICTIM",
+		BindingMode:         BindingStrict,
+	})
+	if err == nil || !strings.Contains(err.Error(), "challengeId mismatch") {
+		t.Fatalf("mismatched challengeId must reject: got %v", err)
+	}
+}
