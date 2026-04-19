@@ -162,10 +162,17 @@ func (tx *Transaction) RecordTransition(to, detail string, actor *string) {
 func init() { orm.Register[Transaction]("transaction") }
 
 // Policy is a signing policy rule.
+//
+// `Kind` distinguishes between the generic wallet-approval policies (default
+// empty string or "wallet") and treasury-wallet tier policies (`"treasury"`).
+// Treasury policies store their tier ladder as JSON in `Conditions` using
+// the schema `{"tiers":[{"maxValue":"...","threshold":N,"requireRegulator":bool}]}`.
 type Policy struct {
 	orm.Model[Policy]
 	OrgID             string   `json:"orgId"`
 	VaultID           *string  `json:"vaultId,omitempty"`
+	Kind              string   `json:"kind,omitempty"` // "" (default wallet policy) | "treasury"
+	TreasuryWalletID  *string  `json:"treasuryWalletId,omitempty"`
 	Name              string   `json:"name"`
 	Priority          int      `json:"priority"`
 	Action            string   `json:"action"`
@@ -507,3 +514,74 @@ type Session struct {
 }
 
 func init() { orm.Register[Session]("mpc-session") }
+
+// --- Treasury: 3-of-5 org governance wallets ---
+//
+// A treasury wallet is an organization-level MPC wallet with a fixed signer
+// set (typically 5 roles: compliance officer, treasurer/CFO, platform HSM,
+// backup HSM, optional regulator) and threshold-escalation tiers that raise
+// the required quorum based on operation value.
+//
+// Invariants:
+//  1. Every treasury wallet has ≥ 3 and ≤ 5 signers; the default shape is 5
+//     with `regulatorShard` optional.
+//  2. `platform_hsm` signer's `KeyRef` MUST be the per-org KMS path
+//     `providers/{OrgID}/mpc-cosigner-key`. Cross-org HSM reuse is rejected
+//     at the handler layer (the JWT `owner` claim is the source of truth
+//     for `OrgID`; a treasury wallet owned by `liquidity` can never sign
+//     with `mlc`'s HSM key).
+//  3. Tiers are evaluated highest-to-lowest by `MaxValue`; the first tier
+//     whose value envelope covers the op supplies the required threshold.
+//  4. When `RegulatorShard=true`, tiers with `RequireRegulator=true` MUST
+//     receive the regulator signer's approval in addition to making the
+//     numeric quorum.
+//
+// Treasury signing operations are projected as `db.Transaction` rows with
+// `txType="treasury_sign"`; the unified `/v1/mpc/operations` view sees them.
+
+// TreasurySignerRole enumerates the five canonical roles.
+const (
+	TreasurySignerCompliance  = "compliance_officer"
+	TreasurySignerTreasurer   = "treasurer"
+	TreasurySignerPlatformHSM = "platform_hsm"
+	TreasurySignerBackupHSM   = "backup_hsm"
+	TreasurySignerRegulator   = "regulator"
+)
+
+// TreasurySigner is one member of a treasury wallet's signer set.
+// `KeyRef` is either an IAM user/service-principal ID (for human signers)
+// or a KMS key path (for HSM signers, always `providers/{OrgID}/...`).
+type TreasurySigner struct {
+	Role        string `json:"role"`               // compliance_officer | treasurer | platform_hsm | backup_hsm | regulator
+	KeyRef      string `json:"keyRef"`             // user ID for humans, KMS key path for HSMs
+	DisplayName string `json:"displayName,omitempty"`
+	RotatedAt   *time.Time `json:"rotatedAt,omitempty"`
+}
+
+// TreasuryTier is one rung of the threshold-escalation ladder.
+// `MaxValue` is a base-10 integer string (wei/smallest unit); the special
+// value "inf" matches arbitrarily large operations. `Threshold` is the
+// number of signer approvals required when the op's value falls in this tier.
+type TreasuryTier struct {
+	MaxValue         string `json:"maxValue"`         // "100000", "1000000", "inf"
+	Threshold        int    `json:"threshold"`        // e.g. 3, 4, 5
+	RequireRegulator bool   `json:"requireRegulator,omitempty"`
+}
+
+// TreasuryWallet is an org-scoped 3-of-5 governance MPC wallet.
+type TreasuryWallet struct {
+	orm.Model[TreasuryWallet]
+	OrgID           string            `json:"orgId"`
+	Name            string            `json:"name"`
+	WalletID        string            `json:"walletId"`               // underlying MPC wallet id
+	EthAddress      *string           `json:"ethAddress,omitempty"`
+	Chain           string            `json:"chain"`                  // "evm" default
+	Signers         []TreasurySigner  `json:"signers"`
+	Tiers           []TreasuryTier    `json:"tiers"`                  // sorted by threshold ascending on create
+	RegulatorShard  bool              `json:"regulatorShard"`
+	PolicyID        string            `json:"policyId,omitempty"`     // backing Policy row with kind="treasury"
+	Status          string            `json:"status"`                 // active, frozen, archived
+	CreatedBy       *string           `json:"createdBy,omitempty"`
+}
+
+func init() { orm.Register[TreasuryWallet]("treasury-wallet") }
