@@ -23,11 +23,17 @@ type PeerRegistry interface {
 	// Required for keygen (fresh wallets need every peer's contribution).
 	ArePeersReady() bool
 	// HasSigningQuorum returns true when ready peers (including self) are
-	// sufficient to participate in a signing round for a key with the given
-	// polynomial-degree threshold. Stricter than "any peer reachable",
-	// weaker than ArePeersReady — survives partial node loss up to f = n-t-1
-	// failures without marking the node unhealthy. See pkg/transport/registry.go
-	// for the full rationale.
+	// sufficient to form a t-of-n signing quorum.
+	//
+	// `threshold` uses the operator-facing "signers required" semantics
+	// (matches LiquidMPC CRD `threshold` field and mpcd --threshold CLI
+	// flag). For a 2-of-3 ensemble threshold=2; for 3-of-5 threshold=3.
+	// Quorum holds when readyCount >= threshold.
+	//
+	// NOTE: the CGGMP21 signing APIs still compare against keyInfo.Threshold+1
+	// internally — that's the polynomial degree, off by one from the
+	// operator threshold by protocol library convention. See
+	// pkg/transport/registry.go for the full rationale.
 	HasSigningQuorum(threshold int) bool
 	WatchPeersReady()
 	// Resign is called by the node when it is going to shutdown
@@ -207,12 +213,14 @@ func (r *registry) ArePeersReady() bool {
 	return r.ready
 }
 
-// HasSigningQuorum: see PeerRegistry interface comment. For the Consul-backed
-// legacy registry the readyCount is maintained the same way as the consensus
-// registry, so the check is identical.
+// HasSigningQuorum: see PeerRegistry interface comment and pkg/transport
+// for full semantics. Consul-backed registry behaves identically to the
+// consensus-backed one for this check.
 func (r *registry) HasSigningQuorum(threshold int) bool {
-	required := int64(threshold + 1)
-	return atomic.LoadInt64(&r.readyCount) >= required
+	if threshold <= 0 {
+		return atomic.LoadInt64(&r.readyCount) >= 1
+	}
+	return atomic.LoadInt64(&r.readyCount) >= int64(threshold)
 }
 
 func (r *registry) GetTotalPeersCount() int64 {

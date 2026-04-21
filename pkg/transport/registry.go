@@ -230,25 +230,31 @@ func (r *Registry) ArePeersReady() bool {
 }
 
 // HasSigningQuorum returns true when this node has enough ready peers
-// (including itself) to participate in a threshold signing round.
+// (including itself) to participate in a threshold signing round for the
+// operator-configured t-of-n ensemble.
 //
-// The CGGMP21 / FROST / LSS / SR25519 / BLS signing APIs require
-// `len(signerPeerIDs) >= keyInfo.Threshold + 1` — i.e. threshold+1 parties
-// (where threshold is the degree of the polynomial). A healthy node therefore
-// needs at least `threshold + 1` peers ready (including self) to contribute
-// to any signing round.
+// Semantics match the LiquidMPC CRD `threshold` field and the mpcd
+// --threshold CLI flag: `threshold` is the MINIMUM NUMBER OF SIGNERS
+// REQUIRED to produce a signature (t in t-of-n). A 3-node 2-of-3 ensemble
+// has threshold=2. A 5-node 3-of-5 ensemble has threshold=3.
 //
-// This is stricter than "can reach >= 1 peer" but more permissive than
-// ArePeersReady. For a 3-node ensemble with CGGMP21 `threshold=1` (2-of-3
-// signing), losing 1 peer leaves 2 ready → signing quorum holds. Losing 2
-// peers leaves 1 ready → no quorum, health reports degraded.
+// Quorum therefore holds when `readyCount >= threshold`, where readyCount
+// includes self. A 2-of-3 cluster with one peer down has readyCount=2 and
+// threshold=2 — quorum holds. If two peers drop, readyCount=1 < threshold=2
+// and quorum is lost.
 //
-// Callers should pass the CGGMP21/FROST polynomial-degree threshold, which is
-// what the KeyInfo.Threshold field stores. The "signers required" count is
-// threshold+1.
+// NOTE on the CGGMP21 vs operator-threshold split: pkg/mpc/node.go still
+// compares `len(signerPeerIDs) >= keyInfo.Threshold + 1`, where
+// KeyInfo.Threshold is the CGGMP21 polynomial degree (one below the
+// signers-required count). Those two variables are OFF BY ONE by design
+// of the protocol library: the CLI/CRD surfaces "signers required", while
+// the cryptographic API stores the polynomial degree. HasSigningQuorum
+// uses the operator surface — callers pass the CLI/CRD threshold directly.
 func (r *Registry) HasSigningQuorum(threshold int) bool {
-	required := int64(threshold + 1)
-	return atomic.LoadInt64(&r.readyCount) >= required
+	if threshold <= 0 {
+		return atomic.LoadInt64(&r.readyCount) >= 1
+	}
+	return atomic.LoadInt64(&r.readyCount) >= int64(threshold)
 }
 
 // GetReadyPeersCount returns number of ready peers
