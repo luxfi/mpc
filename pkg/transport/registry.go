@@ -223,9 +223,32 @@ func (r *Registry) logReadyStatus() {
 	}
 }
 
-// ArePeersReady returns true if all peers are ready
+// ArePeersReady returns true if ALL peers are ready. Used by keygen sessions,
+// which genuinely need every participant present to generate a fresh key.
 func (r *Registry) ArePeersReady() bool {
 	return r.ready.Load()
+}
+
+// HasSigningQuorum returns true when this node has enough ready peers
+// (including itself) to participate in a threshold signing round.
+//
+// The CGGMP21 / FROST / LSS / SR25519 / BLS signing APIs require
+// `len(signerPeerIDs) >= keyInfo.Threshold + 1` — i.e. threshold+1 parties
+// (where threshold is the degree of the polynomial). A healthy node therefore
+// needs at least `threshold + 1` peers ready (including self) to contribute
+// to any signing round.
+//
+// This is stricter than "can reach >= 1 peer" but more permissive than
+// ArePeersReady. For a 3-node ensemble with CGGMP21 `threshold=1` (2-of-3
+// signing), losing 1 peer leaves 2 ready → signing quorum holds. Losing 2
+// peers leaves 1 ready → no quorum, health reports degraded.
+//
+// Callers should pass the CGGMP21/FROST polynomial-degree threshold, which is
+// what the KeyInfo.Threshold field stores. The "signers required" count is
+// threshold+1.
+func (r *Registry) HasSigningQuorum(threshold int) bool {
+	required := int64(threshold + 1)
+	return atomic.LoadInt64(&r.readyCount) >= required
 }
 
 // GetReadyPeersCount returns number of ready peers
