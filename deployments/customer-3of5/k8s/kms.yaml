@@ -1,5 +1,5 @@
-# KMS deployment -- connects to Lux MPC nodes for signing operations.
-# Deployed alongside Lux MPC nodes in lux-k8s.
+# KMS deployment -- connects to MPC nodes for signing operations.
+# Deployed alongside MPC nodes in lux-k8s.
 ---
 apiVersion: apps/v1
 kind: Deployment
