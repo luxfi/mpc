@@ -85,16 +85,16 @@ pkg/txtracker/       Transaction lifecycle tracking
 
 ```bash
 # Node 0
-mpcd start --node-id node0 --listen :9651 --api :9800 \
-  --threshold 2 --peer node1:9651 --peer node2:9651
+mpcd start --node-id node0 --listen :9999 --api :9800 \
+  --threshold 2 --peer node1:9999 --peer node2:9999
 
 # Node 1
-mpcd start --node-id node1 --listen :9652 --api :9801 \
-  --threshold 2 --peer node0:9651 --peer node2:9651
+mpcd start --node-id node1 --listen :9999 --api :9801 \
+  --threshold 2 --peer node0:9999 --peer node2:9999
 
 # Node 2
-mpcd start --node-id node2 --listen :9653 --api :9802 \
-  --threshold 2 --peer node0:9651 --peer node1:9651
+mpcd start --node-id node2 --listen :9999 --api :9802 \
+  --threshold 2 --peer node0:9999 --peer node1:9999
 ```
 
 ### Generate a Wallet
