@@ -41,13 +41,13 @@ services:
       - start
       - --mode=consensus
       - --node-id=mpc-0
-      - --listen=:9651
+      - --listen=:9999
       - --api=:9800
       - --data=/data/mpc
       - --keys=/keys
       - --threshold=2
-      - --peer=mpc-1@lux-mpc-1:9651
-      - --peer=mpc-2@lux-mpc-2:9651
+      - --peer=mpc-1@lux-mpc-1:9999
+      - --peer=mpc-2@lux-mpc-2:9999
       - --log-level=info
       - --hsm-provider=env
     environment:
@@ -75,13 +75,13 @@ services:
       - start
       - --mode=consensus
       - --node-id=mpc-1
-      - --listen=:9651
+      - --listen=:9999
       - --api=:9800
       - --data=/data/mpc
       - --keys=/keys
       - --threshold=2
-      - --peer=mpc-0@lux-mpc-0:9651
-      - --peer=mpc-2@lux-mpc-2:9651
+      - --peer=mpc-0@lux-mpc-0:9999
+      - --peer=mpc-2@lux-mpc-2:9999
       - --log-level=info
       - --hsm-provider=env
     environment:
@@ -109,13 +109,13 @@ services:
       - start
       - --mode=consensus
       - --node-id=mpc-2
-      - --listen=:9651
+      - --listen=:9999
       - --api=:9800
       - --data=/data/mpc
       - --keys=/keys
       - --threshold=2
-      - --peer=mpc-0@lux-mpc-0:9651
-      - --peer=mpc-1@lux-mpc-1:9651
+      - --peer=mpc-0@lux-mpc-0:9999
+      - --peer=mpc-1@lux-mpc-1:9999
       - --log-level=info
       - --hsm-provider=env
     environment:
