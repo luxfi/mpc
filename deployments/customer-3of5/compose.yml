@@ -12,7 +12,7 @@
 #   curl http://localhost:9801/health
 
 services:
-  # --- Lux MPC Nodes (3) ---
+  # --- MPC Nodes (3) ---
 
   lux-0:
     image: ghcr.io/luxfi/mpc:latest
