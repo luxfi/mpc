@@ -44,7 +44,7 @@ spec:
               PEERS=""
               for i in 0 1 2 3 4; do
                 if [ "$i" != "$INDEX" ]; then
-                  PEERS="${PEERS}node${i}@mpc-node-${i}.mpc-node-headless.lux-mpc.svc:9651,"
+                  PEERS="${PEERS}node${i}@mpc-node-${i}.mpc-node-headless.lux-mpc.svc:9999,"
                 fi
               done
               # Remove trailing comma
@@ -53,7 +53,7 @@ spec:
               # Write args file
               cat > /config/args.env <<EOF
               NODE_ID=${NODE_ID}
-              LISTEN=:9651
+              LISTEN=:9999
               PEERS=${PEERS}
               EOF
 
@@ -81,12 +81,12 @@ spec:
               PEERS=""
               for i in 0 1 2 3 4; do
                 if [ "$i" != "$INDEX" ]; then
-                  PEERS="${PEERS} --peer node${i}@mpc-node-${i}.mpc-node-headless.lux-mpc.svc:9651"
+                  PEERS="${PEERS} --peer node${i}@mpc-node-${i}.mpc-node-headless.lux-mpc.svc:9999"
                 fi
               done
 
               # Build command
-              CMD="mpcd start --mode consensus --node-id ${NODE_ID} --listen :9651 --api :9800 --data /data/mpc --threshold 3 ${PEERS}"
+              CMD="mpcd start --mode consensus --node-id ${NODE_ID} --listen :9999 --api :9800 --data /data/mpc --threshold 3 ${PEERS}"
 
               # Node 0 also serves the Dashboard API
               if [ "$INDEX" = "0" ]; then
@@ -96,7 +96,7 @@ spec:
               echo "Starting: ${CMD}"
               exec ${CMD}
           ports:
-            - containerPort: 9651
+            - containerPort: 9999
               name: p2p
               protocol: TCP
             - containerPort: 9800
@@ -224,8 +224,8 @@ spec:
     app: mpc-node
   ports:
     - name: p2p
-      port: 9651
-      targetPort: 9651
+      port: 9999
+      targetPort: 9999
     - name: mpc-api
       port: 9800
       targetPort: 9800

@@ -70,8 +70,8 @@ func main() {
 					},
 					&cli.StringFlag{
 						Name:  "listen",
-						Usage: "P2P listen address",
-						Value: ":9651",
+						Usage: "P2P ZAP listen address",
+						Value: ":9999",
 					},
 					&cli.StringFlag{
 						Name:  "api",
