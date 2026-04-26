@@ -31,7 +31,7 @@ type Config struct {
 	// NodeID is this node's identifier
 	NodeID string
 
-	// ListenAddr is the address to listen on (e.g., ":9651")
+	// ListenAddr is the address to listen on (e.g., ":9999" — canonical ZAP)
 	ListenAddr string
 
 	// Peers maps node IDs to their addresses
