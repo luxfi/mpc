@@ -23,7 +23,7 @@ steps:
         WORKDIR /app
         COPY mpcd /usr/local/bin/mpcd
         COPY mpc  /usr/local/bin/mpc
-        EXPOSE 8081 9651 9800
+        EXPOSE 8081 9800 9999
         ENTRYPOINT ["mpcd"]
         DOCKER
         docker build -t us-docker.pkg.dev/-devnet/backend/mpc:v1.1.4 -f /workspace/Dockerfile.slim /workspace
