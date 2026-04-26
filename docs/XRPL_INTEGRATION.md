@@ -1,10 +1,10 @@
 # XRPL Integration Guide
 
-This guide explains how to use the Lux MPC library for XRP Ledger (XRPL) transaction signing.
+This guide explains how to use the MPC library for XRP Ledger (XRPL) transaction signing.
 
 ## Overview
 
-The Lux MPC library now includes explicit support for XRPL networks. XRPL uses secp256k1 signatures for transaction authorization, which is fully supported by our threshold signature implementation.
+The MPC library now includes explicit support for XRPL networks. XRPL uses secp256k1 signatures for transaction authorization, which is fully supported by our threshold signature implementation.
 
 ## Supported Networks
 

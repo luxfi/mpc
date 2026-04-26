@@ -21,7 +21,7 @@ func main() {
 		log.Printf("Warning: Could not read config file: %v", err)
 	}
 
-	// Create Lux KMS client
+	// Create KMS client
 	config := kms.KMSConfig{
 		ClientID:     viper.GetString("kms.client_id"),
 		ClientSecret: viper.GetString("kms.client_secret"),
@@ -36,7 +36,7 @@ func main() {
 		config.ProjectID = os.Getenv("KMS_PROJECT_ID")
 	}
 
-	fmt.Printf("Lux KMS Configuration:\n")
+	fmt.Printf("KMS Configuration:\n")
 	fmt.Printf("  Site URL: %s\n", config.SiteURL)
 	fmt.Printf("  Project ID: %s\n", config.ProjectID)
 	fmt.Printf("  Environment: %s\n", config.Environment)
@@ -46,10 +46,10 @@ func main() {
 
 	client, err := kms.NewKMSClient(config)
 	if err != nil {
-		log.Fatalf("Failed to create Lux KMS client: %v", err)
+		log.Fatalf("Failed to create KMS client: %v", err)
 	}
 
-	fmt.Println("\n✅ Successfully connected to Lux KMS!")
+	fmt.Println("\n✅ Successfully connected to KMS!")
 
 	// Test storing a dummy key share
 	testNodeID := "test-node"
@@ -97,5 +97,5 @@ func main() {
 		fmt.Println("✅ Successfully cleaned up test key!")
 	}
 
-	fmt.Println("\n🎉 All tests passed! Lux KMS integration is working correctly.")
+	fmt.Println("\n🎉 All tests passed! KMS integration is working correctly.")
 }

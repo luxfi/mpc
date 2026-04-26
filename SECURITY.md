@@ -1,8 +1,8 @@
-# Lux MPC Security Model
+# MPC Security Model
 
 ## Core Security Principles
 
-Lux MPC implements a threshold signature scheme with industry-standard security practices to protect cryptographic operations:
+MPC implements a threshold signature scheme with industry-standard security practices to protect cryptographic operations:
 
 1. **Distributed Trust**: No single entity possesses complete private keys
 2. **Threshold Cryptography**: Requires t-out-of-n nodes to participate in signing operations
@@ -23,7 +23,7 @@ Lux MPC implements a threshold signature scheme with industry-standard security 
 
 ### Message Authentication
 
-Every message in the Lux MPC network undergoes rigorous verification:
+Every message in the MPC network undergoes rigorous verification:
 
 ```go
 // Messages are signed before transmission
