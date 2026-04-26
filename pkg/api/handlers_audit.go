@@ -36,7 +36,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleInfo(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"name":    "Lux MPC",
+		"name":    "MPC",
 		"version": "0.3.3",
 		"supported_chains": []map[string]interface{}{
 			{"id": "ethereum", "curve": "secp256k1", "protocol": "CGGMP21", "address_type": "eth"},

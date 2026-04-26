@@ -32,7 +32,7 @@ func newSelfSignedCert(nodeID string, privKey ed25519.PrivateKey, pubKey ed25519
 		SerialNumber: new(big.Int).SetInt64(1),
 		Subject: pkix.Name{
 			CommonName:   "mpc-" + nodeID,
-			Organization: []string{"Lux MPC"},
+			Organization: []string{"MPC"},
 		},
 		NotBefore:             time.Now().Add(-1 * time.Hour),
 		NotAfter:              time.Now().Add(10 * 365 * 24 * time.Hour), // 10 years
