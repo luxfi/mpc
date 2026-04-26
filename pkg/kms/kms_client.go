@@ -17,7 +17,7 @@ import (
 	"github.com/luxfi/mpc/pkg/logger"
 )
 
-// KMSClient wraps the Lux KMS SDK for MPC key management.
+// KMSClient wraps the KMS SDK for MPC key management.
 // All secrets are encrypted at rest with AES-256-GCM using a master key
 // derived from client credentials via Argon2id.
 type KMSClient struct {
@@ -31,7 +31,7 @@ type KMSClient struct {
 	secrets map[string][]byte
 }
 
-// KMSConfig holds configuration for Lux KMS integration
+// KMSConfig holds configuration for KMS integration
 type KMSConfig struct {
 	ClientID     string
 	ClientSecret string
@@ -50,7 +50,7 @@ type SecretMetadata struct {
 	Type        string `json:"type"`
 }
 
-// NewKMSClient creates a new Lux KMS client for secure key operations.
+// NewKMSClient creates a new KMS client for secure key operations.
 // A 32-byte master key is derived from ClientID + ClientSecret via Argon2id.
 // If no credentials are provided, a deterministic fallback key is used (development only).
 func NewKMSClient(config KMSConfig) (*KMSClient, error) {

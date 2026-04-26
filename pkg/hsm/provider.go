@@ -6,7 +6,7 @@
 //   - gcp: Google Cloud KMS (build tag: gcp)
 //   - azure: Azure Key Vault / Managed HSM (build tag: azure)
 //   - zymbit: Zymbit ZYMKEY/HSM6 REST API (build tag: zymbit)
-//   - kms: Hanzo KMS secret manager (always available, net/http only)
+//   - kms: KMS secret manager (always available, net/http only)
 package hsm
 
 import "context"
@@ -97,7 +97,7 @@ type ZymbitConfig struct {
 	APIEndpoint string `yaml:"api_endpoint" mapstructure:"api_endpoint"` // REST API if using Zymbit SCM
 }
 
-// KMSConfig configures the Hanzo KMS (kms.hanzo.ai) provider.
+// KMSConfig configures the KMS (kms.hanzo.ai) provider.
 type KMSConfig struct {
 	SiteURL      string `yaml:"site_url" mapstructure:"site_url"`           // default "https://kms.hanzo.ai"
 	ClientID     string `yaml:"client_id" mapstructure:"client_id"`         // Machine Identity client ID
