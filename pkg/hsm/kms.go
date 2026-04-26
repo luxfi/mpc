@@ -15,7 +15,7 @@ import (
 	"github.com/luxfi/mpc/pkg/logger"
 )
 
-// KMSProvider implements Provider using the Hanzo KMS API (kms.hanzo.ai).
+// KMSProvider implements Provider using the KMS API (kms.hanzo.ai).
 // KMS is a secret manager; signing is always done locally after fetching the Ed25519 seed.
 type KMSProvider struct {
 	siteURL      string
@@ -33,7 +33,7 @@ type KMSProvider struct {
 	tokenExpiry time.Time
 }
 
-// NewKMSProvider creates a Hanzo KMS secret manager provider.
+// NewKMSProvider creates a KMS secret manager provider.
 func NewKMSProvider(cfg *KMSConfig) (*KMSProvider, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("hsm/kms: config is nil")
