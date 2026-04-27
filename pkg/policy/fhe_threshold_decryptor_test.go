@@ -12,7 +12,7 @@ import (
 	"errors"
 	"testing"
 
-	fhethr "github.com/luxfi/fhe/threshold"
+	fhethr "github.com/luxfi/threshold/protocols/tfhe"
 )
 
 // stubParty implements PartyClient over a local PartialDecrypter +
