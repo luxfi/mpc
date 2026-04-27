@@ -42,6 +42,7 @@ require (
 	github.com/nats-io/nats.go v1.50.0
 	github.com/pquerna/otp v1.5.0
 	github.com/rs/zerolog v1.35.0
+	github.com/luxfi/lattice/v7 v7.0.2
 	github.com/samber/lo v1.53.0
 	github.com/spf13/viper v1.21.0
 	github.com/stretchr/testify v1.11.1
@@ -147,7 +148,6 @@ require (
 	github.com/luxfi/container v0.0.4 // indirect
 	github.com/luxfi/geth v1.16.79 // indirect
 	github.com/luxfi/ids v1.2.9 // indirect
-	github.com/luxfi/lattice/v7 v7.0.2 // indirect
 	github.com/luxfi/math v1.2.4 // indirect
 	github.com/luxfi/math/big v0.1.0 // indirect
 	github.com/luxfi/mdns v0.1.0 // indirect
@@ -238,6 +238,11 @@ replace github.com/luxfi/log v1.3.0 => github.com/luxfi/log v1.4.1
 // luxfi/fhe (LP-137-FHE-THRESHOLD). Drop this once luxfi/fhe cuts a
 // release tag that includes the threshold/ package.
 replace github.com/luxfi/fhe => ../fhe
+
+// Local development against the trust enums added in
+// luxfi/lattice/v7/types (LP-137-TRUST-REGISTRY). Drop this once
+// luxfi/lattice cuts a release tag that includes types/trust.go.
+replace github.com/luxfi/lattice/v7 => ../lattice
 
 // luxfi/genesis v1.5.21 / v1.5.22 are missing from proxy.golang.org; no
 // luxfi/mpc code path imports them, but transitive resolution can pick them
