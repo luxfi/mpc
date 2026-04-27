@@ -27,6 +27,7 @@ import (
 
 	"github.com/luxfi/mpc/pkg/intent"
 	"github.com/luxfi/mpc/pkg/policy"
+	"github.com/luxfi/mpc/pkg/scheduler"
 )
 
 // AttestationSink persists node attestations (positive or negative) to
@@ -77,11 +78,25 @@ func (m *memAttestationSink) All() []intent.NodeAttestation {
 // SignGate is the per-node authorization gate. One instance per MPC
 // node, holding the node's identity key and the LocalVerifier wired
 // to that node's copy of the policy + approval keyset.
+//
+// Scheduler + Worker are optional. When Scheduler is non-nil, the gate
+// runs scheduler.Eligible(Worker, ci.PolicyID) BEFORE the policy
+// verifier. A scheduler refusal short-circuits the policy check and
+// records a reject attestation with reason="scheduler: ...". This is
+// how confidential-compute trust posture (TrustGPU, IOPrivateLane,
+// approved kernel roots, attested CPU+GPU) is enforced at sign time.
+//
+// Scheduler == nil keeps the original behavior (legacy deployments
+// that have not adopted workload-policy yet). One MPC binary, two
+// modes — but the trust-posture-enforced path is the default whenever
+// the operator wires a PolicySource into the daemon.
 type SignGate struct {
-	NodeID     string
-	NodeKey    ed25519.PrivateKey
-	Verifier   *policy.LocalVerifier
-	Attest     AttestationSink
+	NodeID    string
+	NodeKey   ed25519.PrivateKey
+	Verifier  *policy.LocalVerifier
+	Attest    AttestationSink
+	Scheduler *scheduler.Scheduler // optional; nil = no trust-posture gate
+	Worker    scheduler.Worker     // this node's attested posture
 }
 
 // NewSignGate constructs a SignGate. nodeKey is the node's Ed25519
@@ -98,6 +113,20 @@ func NewSignGate(nodeID string, nodeKey ed25519.PrivateKey, verifier *policy.Loc
 		Verifier: verifier,
 		Attest:   sink,
 	}
+}
+
+// WithScheduler wires the workload-policy gate into the SignGate.
+// sch resolves WorkloadPolicy by intent.PolicyID; w is this node's
+// attested posture (populated from the NVIDIA composite attestation
+// and the SEV-SNP/TDX quote). Returns g for chaining.
+//
+// Calling WithScheduler is the single switch that turns on
+// confidential-compute enforcement for this node. There is no
+// "best effort" mode — once on, fail-closed.
+func (g *SignGate) WithScheduler(sch *scheduler.Scheduler, w scheduler.Worker) *SignGate {
+	g.Scheduler = sch
+	g.Worker = w
+	return g
 }
 
 // ErrSignBlocked is returned by AuthorizeSign when policy verification
@@ -122,7 +151,24 @@ func (g *SignGate) AuthorizeSign(ctx context.Context, ci *intent.CanonicalIntent
 		return intent.NodeAttestation{}, errors.New("sign: nil intent")
 	}
 
-	verifyErr := g.Verifier.Verify(ctx, ci)
+	// Stage 1 — workload-policy gate (scheduler). Runs first so a node
+	// with an inadequate trust posture rejects BEFORE any approval-keyset
+	// or policy-bundle work. ci.PolicyID is the canonical workload key.
+	//
+	// When Scheduler is nil, the stage is skipped entirely — no
+	// behavior change for legacy callers.
+	var verifyErr error
+	if g.Scheduler != nil {
+		if elig := g.Scheduler.Eligible(g.Worker, ci.PolicyID); elig != nil {
+			verifyErr = fmt.Errorf("scheduler: %w", elig)
+		}
+	}
+
+	// Stage 2 — per-node policy verifier. Skipped only if the scheduler
+	// already rejected; otherwise both checks must pass.
+	if verifyErr == nil {
+		verifyErr = g.Verifier.Verify(ctx, ci)
+	}
 
 	// Build the attestation regardless of outcome — both positive and
 	// negative attestations are non-repudiable evidence.
@@ -138,8 +184,9 @@ func (g *SignGate) AuthorizeSign(ctx context.Context, ci *intent.CanonicalIntent
 	}
 
 	if verifyErr != nil {
-		// Wrap BOTH ErrSignBlocked and the underlying verifier error so
-		// callers can use errors.Is() against either layer.
+		// Wrap BOTH ErrSignBlocked and the underlying error so callers
+		// can use errors.Is() against either layer. ErrInsufficientTrust
+		// (from the scheduler) propagates through this join.
 		return att, errors.Join(ErrSignBlocked, verifyErr)
 	}
 	return att, nil
