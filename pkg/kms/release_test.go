@@ -1,12 +1,15 @@
 package kms
 
 import (
+	"context"
 	"crypto/rand"
 	"errors"
 	"testing"
 	"time"
 
 	"golang.org/x/crypto/curve25519"
+
+	"github.com/luxfi/mpc/cc/attest"
 )
 
 // x25519Basepoint multiplies priv by the curve25519 basepoint.
@@ -17,12 +20,17 @@ func x25519Basepoint(priv []byte) ([]byte, error) {
 // fakeAttestation is a deterministic stub. Verify() succeeds iff
 // expectedNonce equals the nonce captured at construction. RIM and
 // hardware are caller-supplied so the test exercises Permits().
+//
+// VerifyEvidence simulates the cc/attest chain dispatch. Default is
+// success. Set failChain=true to force a chain-verify failure — used
+// by TestRelease_RefusesOnChainFailure.
 type fakeAttestation struct {
 	expectNonce [32]byte
 	rim         [32]byte
 	hw          [32]byte
 	teePub      [32]byte
 	failVerify  bool
+	failChain   bool
 }
 
 func (f *fakeAttestation) Verify(expectedNonce [32]byte) (bool, error) {
@@ -30,6 +38,13 @@ func (f *fakeAttestation) Verify(expectedNonce [32]byte) (bool, error) {
 		return false, nil
 	}
 	return f.expectNonce == expectedNonce, nil
+}
+
+func (f *fakeAttestation) VerifyEvidence(ctx context.Context, opts ...attest.Option) ([]*attest.VerifiedReport, error) {
+	if f.failChain {
+		return nil, attest.ErrChainInvalid
+	}
+	return []*attest.VerifiedReport{{Kind: attest.KindSEVSNP, Vendor: "amd.sev.snp"}}, nil
 }
 func (f *fakeAttestation) RIMDigest() [32]byte           { return f.rim }
 func (f *fakeAttestation) HardwareFingerprint() [32]byte { return f.hw }
@@ -59,7 +74,6 @@ func newTestGate(t *testing.T) (*LocalReleaseGate, *MemoryNonceStore, [32]byte, 
 		t.Fatalf("NewLocalReleaseGate: %v", err)
 	}
 	var teePub [32]byte
-	// Use a real curve25519 pubkey so ECDH succeeds in seal.
 	priv := mustRand(t, 32)
 	priv[0] &= 248
 	priv[31] &= 127
@@ -72,9 +86,6 @@ func newTestGate(t *testing.T) (*LocalReleaseGate, *MemoryNonceStore, [32]byte, 
 	return gate, store, rim, hw, teePub
 }
 
-// curve25519X25519Basepoint wraps the basepoint multiplication so the
-// test file does not import curve25519 directly (avoid duplicate import
-// surfaces; release.go already pulls it).
 func curve25519X25519Basepoint(priv []byte) ([]byte, error) {
 	return x25519Basepoint(priv)
 }
@@ -119,8 +130,6 @@ func TestRelease_WrongNonce(t *testing.T) {
 		t.Fatalf("Issue: %v", err)
 	}
 
-	// Worker presents a forged nonce (e.g. the worker chose its own
-	// random challenge instead of using the gate-issued one).
 	var forged [32]byte
 	copy(forged[:], mustRand(t, 32))
 	if forged == nonce {
@@ -141,8 +150,7 @@ func TestRelease_WrongNonce(t *testing.T) {
 	}
 }
 
-// Test 3: Issue → KMS restart (re-construct gate from store) → Release
-// still works (no replay-window reset).
+// Test 3: Issue → KMS restart → Release still works.
 func TestRelease_SurvivesRestart(t *testing.T) {
 	policy := NewReleasePolicy(
 		[][32]byte{[32]byte(mustRand(t, 32))},
@@ -151,12 +159,10 @@ func TestRelease_SurvivesRestart(t *testing.T) {
 	for k := range policy.RequiredRIM {
 		_ = k
 	}
-	// Reuse the same store across two gate constructions.
 	var rootKey [32]byte
 	copy(rootKey[:], mustRand(t, 32))
 	store := NewMemoryNonceStore()
 
-	// First gate: Issue.
 	g1, err := NewLocalReleaseGate(policy, store, rootKey)
 	if err != nil {
 		t.Fatalf("NewLocalReleaseGate: %v", err)
@@ -168,14 +174,11 @@ func TestRelease_SurvivesRestart(t *testing.T) {
 		t.Fatalf("Issue: %v", err)
 	}
 
-	// "Restart": construct a second gate over the same store. The
-	// pending nonce + epoch must round-trip.
 	g2, err := NewLocalReleaseGate(policy, store, rootKey)
 	if err != nil {
 		t.Fatalf("NewLocalReleaseGate (restart): %v", err)
 	}
 
-	// Pull the policy's RIM/HW so the attestation matches.
 	var rim, hw [32]byte
 	for k := range policy.RequiredRIM {
 		rim = k
@@ -222,7 +225,6 @@ func TestRelease_AlreadyConsumed(t *testing.T) {
 		t.Fatalf("Release #1: %v", err)
 	}
 
-	// Replay: same jobID + nonce. Must refuse.
 	_, err = gate.Release(ReleaseRequest{
 		JobID: jobID, Epoch: epoch, Nonce: nonce, Attestation: att,
 	})
@@ -249,7 +251,6 @@ func TestRelease_Expired(t *testing.T) {
 		t.Fatalf("Issue: %v", err)
 	}
 
-	// Wait past the TTL.
 	time.Sleep(50 * time.Millisecond)
 
 	att := &fakeAttestation{expectNonce: nonce, rim: rim, hw: hw, teePub: teePub}
@@ -266,12 +267,9 @@ func TestRelease_Expired(t *testing.T) {
 		t.Fatalf("Release: expected ErrExpired wrapped, got %v", err)
 	}
 
-	// GC should reclaim the pending entry.
 	if err := gate.GC(); err != nil {
 		t.Fatalf("GC: %v", err)
 	}
-	// After GC the jobID is "unknown" rather than "expired"; either is
-	// a valid hard refusal.
 	_, err = gate.Release(ReleaseRequest{
 		JobID: jobID, Epoch: epoch, Nonce: nonce, Attestation: att,
 	})
@@ -280,9 +278,6 @@ func TestRelease_Expired(t *testing.T) {
 	}
 }
 
-// Bonus: nonce binding — nonce derived for jobID A must NOT match
-// jobID B even with identical fresh entropy. The HMAC binding is what
-// the audit calls out; this asserts it directly.
 func TestNonce_BoundToJobID(t *testing.T) {
 	gate, _, _, _, _ := newTestGate(t)
 
@@ -303,8 +298,6 @@ func TestNonce_BoundToJobID(t *testing.T) {
 	}
 }
 
-// Bonus: AAD includes the issued nonce. Re-deriving AAD with a
-// different IssuedNonce must produce different bytes.
 func TestAAD_BindsIssuedNonce(t *testing.T) {
 	var jobID, n1, n2, teePub [32]byte
 	copy(jobID[:], mustRand(t, 32))
@@ -318,5 +311,76 @@ func TestAAD_BindsIssuedNonce(t *testing.T) {
 	aadB := b.AAD(teePub)
 	if string(aadA) == string(aadB) {
 		t.Fatalf("AAD did not bind IssuedNonce (collision)")
+	}
+}
+
+// Test (Red Final N1): an attestation that passes the cheap nonce
+// Verify() but FAILS the cc/attest chain verifier (AMD KDS / VCEK,
+// NRAS, TDX) MUST be refused. Without the chain step a worker can
+// craft a forged envelope whose Verify(nonce) returns true but whose
+// evidence blobs do not chain to the pinned vendor root, harvesting a
+// session key.
+func TestRelease_RefusesOnChainFailure(t *testing.T) {
+	gate, _, rim, hw, teePub := newTestGate(t)
+	var jobID [32]byte
+	copy(jobID[:], mustRand(t, 32))
+
+	nonce, epoch, err := gate.Issue(jobID)
+	if err != nil {
+		t.Fatalf("Issue: %v", err)
+	}
+
+	// nonce binding passes (failVerify=false) but the chain check
+	// fails — the forged-evidence path the audit flagged.
+	att := &fakeAttestation{
+		expectNonce: nonce,
+		rim:         rim,
+		hw:          hw,
+		teePub:      teePub,
+		failVerify:  false,
+		failChain:   true,
+	}
+	_, err = gate.Release(ReleaseRequest{
+		JobID:       jobID,
+		Epoch:       epoch,
+		Nonce:       nonce,
+		Attestation: att,
+	})
+	if err == nil {
+		t.Fatalf("Release: expected chain-verify refusal, got nil")
+	}
+	if !errors.Is(err, ErrPolicyRefused) {
+		t.Fatalf("Release: expected ErrPolicyRefused wrapped, got %v", err)
+	}
+	if !errors.Is(err, ErrAttestationChain) {
+		t.Fatalf("Release: expected ErrAttestationChain wrapped, got %v", err)
+	}
+}
+
+// Test (Red Final N1, paired): the SAME attestation with chain check
+// passing must succeed.
+func TestRelease_AcceptsOnChainPass(t *testing.T) {
+	gate, _, rim, hw, teePub := newTestGate(t)
+	var jobID [32]byte
+	copy(jobID[:], mustRand(t, 32))
+
+	nonce, epoch, err := gate.Issue(jobID)
+	if err != nil {
+		t.Fatalf("Issue: %v", err)
+	}
+	att := &fakeAttestation{
+		expectNonce: nonce,
+		rim:         rim,
+		hw:          hw,
+		teePub:      teePub,
+		failChain:   false,
+	}
+	if _, err := gate.Release(ReleaseRequest{
+		JobID:       jobID,
+		Epoch:       epoch,
+		Nonce:       nonce,
+		Attestation: att,
+	}); err != nil {
+		t.Fatalf("Release: expected success, got %v", err)
 	}
 }
