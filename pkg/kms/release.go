@@ -74,7 +74,27 @@ type CompositeAttestation interface {
 	// lives only inside the worker's GPU TEE. Used to seal the session
 	// key so only the attested TEE can unwrap it.
 	TEEPublicKey() [32]byte
+
+	// EvidenceIssuers returns the canonical issuer strings present in
+	// the composite envelope. Stable wire values:
+	//   - IssuerSEVSNP ("amd.sev.snp")     — AMD SEV-SNP CPU TEE
+	//   - IssuerTDX    ("intel.tdx")       — Intel TDX CPU TEE
+	//   - IssuerNVNRAS ("nvidia.nras.v1")  — NVIDIA NRAS GPU
+	// ReleasePolicy.Permits uses this to enforce RequireSEVSNP /
+	// RequireTDX / RequireNVNRAS gates: a missing issuer string when
+	// the corresponding flag is set is a hard refusal. Order is
+	// caller-supplied; Permits() does set-membership only.
+	EvidenceIssuers() []string
 }
+
+// Canonical evidence issuer strings. Mirrors pkg/attestation issuer
+// values and the cc/attest verifier dispatch keys. Stable on the wire;
+// any change here is a breaking interface change.
+const (
+	IssuerSEVSNP = "amd.sev.snp"
+	IssuerTDX    = "intel.tdx"
+	IssuerNVNRAS = "nvidia.nras.v1"
+)
 
 // ReleasePolicy is the static allowlist a gate enforces. Bind one
 // policy per workload kind — e.g. "training-confidential" gets a
@@ -82,13 +102,28 @@ type CompositeAttestation interface {
 //
 // RequiredRIM and AllowedHardware are sets — membership semantics, not
 // ordered. Empty sets fail closed (no RIM ⇒ no release).
+//
+// RequireSEVSNP / RequireTDX / RequireNVNRAS are hard floors that mirror
+// the C++ AttestationBaseline.require_* fields (#203 O5 fix). A flag set
+// to true means: the attestation's evidence MUST include that issuer's
+// blob, or the policy refuses release. Production deployments hardcode
+// all three to true (CPU SEV-SNP and TDX + NVIDIA NRAS GPU); tests
+// opt-out by leaving the flags false. Setting RequireSEVSNP and
+// RequireTDX simultaneously is valid — strict policies running on
+// heterogeneous fleets want both axes asserted.
 type ReleasePolicy struct {
 	RequiredRIM     map[[32]byte]struct{}
 	AllowedHardware map[[32]byte]struct{}
+
+	RequireSEVSNP bool // require AMD SEV-SNP CPU evidence (issuer "amd.sev.snp")
+	RequireTDX    bool // require Intel TDX CPU evidence (issuer "intel.tdx")
+	RequireNVNRAS bool // require NVIDIA NRAS GPU evidence (issuer "nvidia.nras.v1")
 }
 
 // NewReleasePolicy builds a policy from slices of digests, deduplicating
-// into the allowlist sets.
+// into the allowlist sets. Require* flags default to false; production
+// callers MUST use NewReleasePolicyStrict or set the flags by direct
+// field assignment immediately after this call.
 func NewReleasePolicy(rims, hardware [][32]byte) ReleasePolicy {
 	p := ReleasePolicy{
 		RequiredRIM:     make(map[[32]byte]struct{}, len(rims)),
@@ -103,9 +138,27 @@ func NewReleasePolicy(rims, hardware [][32]byte) ReleasePolicy {
 	return p
 }
 
+// NewReleasePolicyStrict builds a production-ready policy: RequiredRIM +
+// AllowedHardware as in NewReleasePolicy, AND RequireSEVSNP +
+// RequireTDX + RequireNVNRAS all set to true. This is the default-deny
+// posture mandated for any non-test deployment — every release MUST
+// present a CPU TEE quote (SEV-SNP and TDX both required for
+// heterogeneous fleets) and an NVIDIA NRAS GPU report. Tests should
+// call NewReleasePolicy and leave the flags false.
+func NewReleasePolicyStrict(rims, hardware [][32]byte) ReleasePolicy {
+	p := NewReleasePolicy(rims, hardware)
+	p.RequireSEVSNP = true
+	p.RequireTDX = true
+	p.RequireNVNRAS = true
+	return p
+}
+
 // Permits reports whether the attestation's measurements satisfy the
 // policy. Membership-check only; nonce + signature verification is the
 // gate's job.
+//
+// Default-deny: when any Require* flag is true and the corresponding
+// issuer is absent from att.EvidenceIssuers(), the release is refused.
 func (p ReleasePolicy) Permits(att CompositeAttestation) bool {
 	if len(p.RequiredRIM) == 0 || len(p.AllowedHardware) == 0 {
 		return false
@@ -116,7 +169,35 @@ func (p ReleasePolicy) Permits(att CompositeAttestation) bool {
 	if _, ok := p.AllowedHardware[att.HardwareFingerprint()]; !ok {
 		return false
 	}
+	if p.RequireSEVSNP || p.RequireTDX || p.RequireNVNRAS {
+		issuers := issuerSet(att.EvidenceIssuers())
+		if p.RequireSEVSNP {
+			if _, ok := issuers[IssuerSEVSNP]; !ok {
+				return false
+			}
+		}
+		if p.RequireTDX {
+			if _, ok := issuers[IssuerTDX]; !ok {
+				return false
+			}
+		}
+		if p.RequireNVNRAS {
+			if _, ok := issuers[IssuerNVNRAS]; !ok {
+				return false
+			}
+		}
+	}
 	return true
+}
+
+// issuerSet folds a slice into a lookup map. Empty / nil input returns
+// an empty (non-nil) map so subsequent membership checks short-circuit.
+func issuerSet(in []string) map[string]struct{} {
+	out := make(map[string]struct{}, len(in))
+	for _, s := range in {
+		out[s] = struct{}{}
+	}
+	return out
 }
 
 // SealedSessionKey is the artifact returned to the worker. It contains
