@@ -22,6 +22,7 @@ require (
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/go-chi/cors v1.2.2
 	github.com/golang-jwt/jwt/v5 v5.3.1
+	github.com/google/go-sev-guest v0.14.1
 	github.com/google/uuid v1.6.0
 	github.com/gtank/ristretto255 v0.2.0
 	github.com/hanzoai/base v0.39.1
@@ -32,6 +33,7 @@ require (
 	github.com/luxfi/database v1.17.44
 	github.com/luxfi/fhe v1.7.7
 	github.com/luxfi/hsm v1.1.3
+	github.com/luxfi/lattice/v7 v7.0.2
 	github.com/luxfi/log v1.4.1
 	github.com/luxfi/metric v1.5.1
 	github.com/luxfi/threshold v1.6.0
@@ -42,7 +44,6 @@ require (
 	github.com/nats-io/nats.go v1.50.0
 	github.com/pquerna/otp v1.5.0
 	github.com/rs/zerolog v1.35.0
-	github.com/luxfi/lattice/v7 v7.0.2
 	github.com/samber/lo v1.53.0
 	github.com/spf13/viper v1.21.0
 	github.com/stretchr/testify v1.11.1
@@ -67,7 +68,6 @@ require (
 	github.com/Azure/azure-sdk-for-go/sdk/internal v1.11.2 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/internal v1.2.0 // indirect
 	github.com/AzureAD/microsoft-authentication-library-for-go v1.6.0 // indirect
-	github.com/ChainSafe/go-schnorrkel v1.1.0 // indirect
 	github.com/ProjectZKM/Ziren/crates/go-runtime/zkvm_runtime v0.0.0-20260311194731-d5b7577c683d // indirect
 	github.com/agl/ed25519 v0.0.0-20200225211852-fd4d107ace12 // indirect
 	github.com/ansel1/merry v1.8.1 // indirect
@@ -114,6 +114,7 @@ require (
 	github.com/golang/mock v1.6.0 // indirect
 	github.com/google/flatbuffers v25.12.19+incompatible // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
+	github.com/google/logger v1.1.1 // indirect
 	github.com/google/s2a-go v0.1.9 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.14 // indirect
 	github.com/googleapis/gax-go/v2 v2.21.0 // indirect
