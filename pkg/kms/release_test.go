@@ -17,12 +17,18 @@ func x25519Basepoint(priv []byte) ([]byte, error) {
 // fakeAttestation is a deterministic stub. Verify() succeeds iff
 // expectedNonce equals the nonce captured at construction. RIM and
 // hardware are caller-supplied so the test exercises Permits().
+//
+// issuers is the set of canonical evidence-issuer strings the
+// attestation envelope claims to carry. Permits() inspects this when
+// ReleasePolicy.Require* flags are set. nil / empty issuers ⇒ Require*
+// gates refuse.
 type fakeAttestation struct {
 	expectNonce [32]byte
 	rim         [32]byte
 	hw          [32]byte
 	teePub      [32]byte
 	failVerify  bool
+	issuers     []string
 }
 
 func (f *fakeAttestation) Verify(expectedNonce [32]byte) (bool, error) {
@@ -34,6 +40,7 @@ func (f *fakeAttestation) Verify(expectedNonce [32]byte) (bool, error) {
 func (f *fakeAttestation) RIMDigest() [32]byte           { return f.rim }
 func (f *fakeAttestation) HardwareFingerprint() [32]byte { return f.hw }
 func (f *fakeAttestation) TEEPublicKey() [32]byte        { return f.teePub }
+func (f *fakeAttestation) EvidenceIssuers() []string     { return f.issuers }
 
 func mustRand(t *testing.T, n int) []byte {
 	t.Helper()
@@ -318,5 +325,105 @@ func TestAAD_BindsIssuedNonce(t *testing.T) {
 	aadB := b.AAD(teePub)
 	if string(aadA) == string(aadB) {
 		t.Fatalf("AAD did not bind IssuedNonce (collision)")
+	}
+}
+
+// newRequireFlagPolicy builds a policy with all three Require* flags set
+// to true (production posture per #203 O5 fix). Any test that asserts
+// strict default-deny behavior calls this.
+func newRequireFlagPolicy(rim, hw [32]byte) ReleasePolicy {
+	return NewReleasePolicyStrict([][32]byte{rim}, [][32]byte{hw})
+}
+
+// Test: happy path — SEV-SNP + TDX + NVNRAS all present + valid →
+// Permits returns true. Asserts the strict policy posture accepts a
+// fully attested envelope.
+func TestPermits_RequireFlags_AllPresent(t *testing.T) {
+	var rim, hw, teePub [32]byte
+	copy(rim[:], mustRand(t, 32))
+	copy(hw[:], mustRand(t, 32))
+	copy(teePub[:], mustRand(t, 32))
+
+	policy := newRequireFlagPolicy(rim, hw)
+	att := &fakeAttestation{
+		rim:    rim,
+		hw:     hw,
+		teePub: teePub,
+		issuers: []string{
+			IssuerSEVSNP,
+			IssuerTDX,
+			IssuerNVNRAS,
+		},
+	}
+	if !policy.Permits(att) {
+		t.Fatalf("Permits: strict policy rejected envelope with all required issuers present")
+	}
+}
+
+// Test: missing SEV-SNP when RequireSEVSNP=true → Permits refuses.
+// Default-deny: a strict policy MUST refuse if the SEV-SNP CPU TEE
+// quote is absent, even when TDX and NVNRAS are present.
+func TestPermits_RequireFlags_MissingSEVSNP(t *testing.T) {
+	var rim, hw, teePub [32]byte
+	copy(rim[:], mustRand(t, 32))
+	copy(hw[:], mustRand(t, 32))
+	copy(teePub[:], mustRand(t, 32))
+
+	policy := newRequireFlagPolicy(rim, hw)
+	att := &fakeAttestation{
+		rim:     rim,
+		hw:      hw,
+		teePub:  teePub,
+		issuers: []string{IssuerTDX, IssuerNVNRAS}, // no SEV-SNP
+	}
+	if policy.Permits(att) {
+		t.Fatalf("Permits: strict policy accepted envelope missing SEV-SNP")
+	}
+}
+
+// Test: missing TDX when RequireTDX=true → Permits refuses.
+func TestPermits_RequireFlags_MissingTDX(t *testing.T) {
+	var rim, hw, teePub [32]byte
+	copy(rim[:], mustRand(t, 32))
+	copy(hw[:], mustRand(t, 32))
+	copy(teePub[:], mustRand(t, 32))
+
+	policy := newRequireFlagPolicy(rim, hw)
+	att := &fakeAttestation{
+		rim:     rim,
+		hw:      hw,
+		teePub:  teePub,
+		issuers: []string{IssuerSEVSNP, IssuerNVNRAS}, // no TDX
+	}
+	if policy.Permits(att) {
+		t.Fatalf("Permits: strict policy accepted envelope missing TDX")
+	}
+}
+
+// Test: missing NVNRAS when RequireNVNRAS=true → Permits refuses.
+// Empty issuer list also tests the nil-slice path: Permits MUST treat
+// an attestation that publishes no evidence issuers as a hard refusal
+// under any Require* flag.
+func TestPermits_RequireFlags_MissingNVNRAS(t *testing.T) {
+	var rim, hw, teePub [32]byte
+	copy(rim[:], mustRand(t, 32))
+	copy(hw[:], mustRand(t, 32))
+	copy(teePub[:], mustRand(t, 32))
+
+	policy := newRequireFlagPolicy(rim, hw)
+	att := &fakeAttestation{
+		rim:     rim,
+		hw:      hw,
+		teePub:  teePub,
+		issuers: []string{IssuerSEVSNP, IssuerTDX}, // no NVNRAS
+	}
+	if policy.Permits(att) {
+		t.Fatalf("Permits: strict policy accepted envelope missing NVNRAS")
+	}
+
+	// Belt-and-suspenders: empty issuer list ⇒ refuse.
+	att2 := &fakeAttestation{rim: rim, hw: hw, teePub: teePub, issuers: nil}
+	if policy.Permits(att2) {
+		t.Fatalf("Permits: strict policy accepted envelope with no issuers at all")
 	}
 }
