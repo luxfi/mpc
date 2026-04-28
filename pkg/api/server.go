@@ -16,6 +16,7 @@ import (
 	"github.com/luxfi/mpc/pkg/custody"
 	"github.com/luxfi/mpc/pkg/db"
 	"github.com/luxfi/mpc/pkg/txtracker"
+	"github.com/luxfi/mpc/pkg/wallet"
 	"github.com/luxfi/mpc/pkg/webauthn"
 )
 
@@ -83,6 +84,17 @@ type Server struct {
 	livenessBindingMode webauthn.BindingMode
 	router         chi.Router
 	replayGuard    *replayGuard
+
+	// approval is the registry of human-and-programmatic approval providers
+	// + the orchestrator + in-memory pending sessions. Optional — when nil,
+	// /v1/approval/* returns 503. Wired via SetApproval().
+	approval *ApprovalRegistry
+
+	// tieredWallets is the 9-tier wallet registry backing /v1/wallet/*. Lazy:
+	// nil until first /v1/wallet request, then a default in-memory
+	// registry is installed by tieredWalletsRegistry(). Tests preseed via
+	// SetTieredWalletRegistry().
+	tieredWallets wallet.Registry
 
 	// Events is the broadcast channel for server-side events (intent status,
 	// signing progress, wallet events). Handlers publish here; WebSocket
