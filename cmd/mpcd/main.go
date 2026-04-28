@@ -725,15 +725,24 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 			apiServer := mpcapi.NewServer(database, mpcBackend, jwtSecret)
 			apiServer.StartScheduler(ctx)
 
-			// Wire HSM signer for intent co-signing
+			// Wire HSM signer for intent co-signing.
+			// Provider-specific config is folded into a single map; each
+			// underlying provider reads only the keys it understands
+			// and falls back to MPC_HSM_<PROVIDER>_* env vars for the
+			// rest of its tuning surface.
 			signerType := c.String("hsm-signer")
 			if signerType != "" {
-				signer, signerErr := hsm.NewSigner(signerType, nil)
-				if signerErr != nil {
-					logger.Error("Failed to create HSM signer", signerErr, "provider", signerType)
+				signerConfig, cfgErr := buildHSMSignerConfig(c, signerType)
+				if cfgErr != nil {
+					logger.Error("Failed to build HSM signer config", cfgErr, "provider", signerType)
 				} else {
-					apiServer.SetHSM(signer)
-					logger.Info("HSM signer configured for co-signing", "provider", signer.Provider())
+					signer, signerErr := hsm.NewSigner(signerType, signerConfig)
+					if signerErr != nil {
+						logger.Error("Failed to create HSM signer", signerErr, "provider", signerType)
+					} else {
+						apiServer.SetHSM(signer)
+						logger.Info("HSM signer configured for co-signing", "provider", signer.Provider())
+					}
 				}
 			}
 
