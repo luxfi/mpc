@@ -6,6 +6,19 @@ This document narrates the original Dec 2025 implementation timeline. All work w
 
 ---
 
+## Published tags
+
+### v1.11.0 — 2026-04-28
+- cc/attest canonical TEE attestation verifier wired into KMS Release path (#222 + N1)
+- kms/release Require* flags mirroring AttestationBaseline — RequireSEVSNP/TDX/NVNRAS strict policy (D2 + #203 O5)
+- experimental_tfhe build tag gates TFHE wallet keygen (N2 fail-closed)
+- mpcd buildHSMSignerConfig helper recovered (refs #227)
+- airgap_command Coldcard/Foundation BBQr/Keystone+NGRAVE flows
+- nonce binding to (epoch, jobID) with durable NonceStore (B4)
+- canonical edwards25519 v0.1.0 hashes in go.sum
+
+---
+
 ## 2025-12-23 — KMS release nonce binding
 
 Bound every key-release nonce to `(epoch, jobID)` via `HMAC-SHA256(rootKey, "kms/release/v1" || epoch || jobID || rand32)`. The nonce is now part of the AAD on the released payload, and a durable `NonceStore` rejects replays across process restarts. Seven regression tests cover replay, restart, epoch-rollover, and concurrent-job paths.
