@@ -10,10 +10,22 @@ package policy
 import (
 	"context"
 	"errors"
+	"os"
 	"testing"
 
 	fhethr "github.com/luxfi/threshold/protocols/tfhe"
 )
+
+// TestMain opts into the fake-threshold tfhe implementation for the
+// duration of these unit tests. The threshold library's
+// PartialDecrypter/ShareAggregator panic without this opt-in to make the
+// real-threshold cutover unmissable in production. The stub party path
+// here is by definition a unit-test simulation, so opting in is correct
+// — the real RPC-backed PartyClient does not transit this guard.
+func TestMain(m *testing.M) {
+	os.Setenv("LUX_ALLOW_FAKE_TFHE_FOR_TESTING_ONLY", "1")
+	os.Exit(m.Run())
+}
 
 // stubParty implements PartyClient over a local PartialDecrypter +
 // fixed KeyShare. Used by tests only.

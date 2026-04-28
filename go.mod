@@ -34,7 +34,7 @@ require (
 	github.com/luxfi/hsm v1.1.2
 	github.com/luxfi/log v1.4.1
 	github.com/luxfi/metric v1.5.1
-	github.com/luxfi/threshold v1.6.0
+	github.com/luxfi/threshold v1.6.4
 	github.com/luxfi/zap v0.2.0
 	github.com/minio/minio-go/v7 v7.0.99
 	github.com/mitchellh/mapstructure v1.5.0
