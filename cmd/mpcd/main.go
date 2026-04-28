@@ -36,12 +36,10 @@ import (
 	uimpc "github.com/luxfi/mpc/ui"
 
 	mpcapi "github.com/luxfi/mpc/pkg/api"
-	"github.com/luxfi/mpc/pkg/audit"
 	"github.com/luxfi/mpc/pkg/backup"
 	"github.com/luxfi/mpc/pkg/db"
 	"github.com/luxfi/mpc/pkg/event"
 	"github.com/luxfi/mpc/pkg/eventconsumer"
-	mpcidentity "github.com/luxfi/mpc/pkg/identity"
 	"github.com/luxfi/mpc/pkg/keyinfo"
 	"github.com/luxfi/mpc/pkg/kvstore"
 	"github.com/luxfi/mpc/pkg/logger"
@@ -126,102 +124,21 @@ func main() {
 					},
 					// HSM signer flags (for co-signing)
 					&cli.StringFlag{
-						Name: "hsm-signer",
-						Usage: "Signer provider for intent co-signing. " +
-							"Cloud KMS: aws|gcp|azure. " +
-							"Network HSM: zymbit|gridplus. " +
-							"USB HSM: yubihsm|nitrokey. " +
-							"Universal PKCS#11 (Thales/Utimaco/Entrust/CloudHSM/SoftHSM2): pkcs11. " +
-							"Airgapped wallets (require AirgapTransport): coldcard|foundation|keystone|ngrave. " +
-							"Online wallets: ledger|trezor. " +
-							"Post-quantum: mldsa. " +
-							"Dev only: local (default).",
+						Name:    "hsm-signer",
+						Usage:   "Signer provider for intent co-signing: aws|gcp|azure|zymbit|mldsa|local (default: local)",
 						Sources: cli.EnvVars("MPC_HSM_SIGNER"),
 						Value:   "local",
 					},
 					&cli.StringFlag{
 						Name:    "hsm-signer-key-id",
-						Usage:   "HSM signer key ARN/name/object-ID for co-signing operations",
+						Usage:   "HSM signer key ARN/name for co-signing operations",
 						Sources: cli.EnvVars("MPC_HSM_SIGNER_KEY_ID"),
-					},
-					// YubiHSM-specific flags (only consulted when --hsm-signer=yubihsm).
-					// Wire-protocol details (session auth, AES-CMAC, AES-CBC) are
-					// handled by yubihsm-shell via luxfi/hsm.YubiHSMSigner.
-					&cli.StringFlag{
-						Name:    "hsm-yubihsm-connector-url",
-						Usage:   "YubiHSM connector URL (default http://127.0.0.1:12345)",
-						Sources: cli.EnvVars("MPC_HSM_YUBIHSM_CONNECTOR_URL"),
-					},
-					&cli.StringFlag{
-						Name:    "hsm-yubihsm-auth-key-id",
-						Usage:   "YubiHSM authentication object ID (decimal, default 1)",
-						Sources: cli.EnvVars("MPC_HSM_YUBIHSM_AUTH_KEY_ID"),
-					},
-					&cli.StringFlag{
-						Name:    "hsm-yubihsm-password",
-						Usage:   "YubiHSM session password (KMS-supplied; prefer env var)",
-						Sources: cli.EnvVars("MPC_HSM_YUBIHSM_PASSWORD"),
-					},
-					&cli.StringFlag{
-						Name:    "hsm-yubihsm-algorithm",
-						Usage:   "YubiHSM signing algorithm (ecdsa-sha256|ed25519, default ecdsa-sha256)",
-						Sources: cli.EnvVars("MPC_HSM_YUBIHSM_ALGORITHM"),
 					},
 					&cli.BoolFlag{
 						Name:    "hsm-attest",
 						Usage:   "Enable HSM attestation on threshold signature shares (binds shares to hardware)",
 						Sources: cli.EnvVars("MPC_HSM_ATTEST"),
 						Value:   false,
-					},
-					// Deployment topology flags. See pkg/identity/bootstrap.go
-					// and pkg/audit/dispatcher.go for the contract.
-					&cli.StringFlag{
-						Name:    "network",
-						Usage:   "Deployment mode: primary (registers with Lux M-Chain registrar) or private (fund-only cluster, no external registration)",
-						Sources: cli.EnvVars("MPC_NETWORK"),
-						Value:   "primary",
-					},
-					&cli.StringFlag{
-						Name:    "registrar-url",
-						Usage:   "Primary-mode registrar URL (Lux M-Chain audit/validator-manager API). Empty = announce-skipped.",
-						Sources: cli.EnvVars("MPC_REGISTRAR_URL"),
-					},
-					&cli.StringFlag{
-						Name:    "registrar-auth",
-						Usage:   "Bearer token for the registrar URL.",
-						Sources: cli.EnvVars("MPC_REGISTRAR_AUTH"),
-					},
-					&cli.StringFlag{
-						Name:    "audit-store",
-						Usage:   "Audit log target: mchain | local-worm | s3-glacier-vault | azure-immutable | gcs-object-lock | composite",
-						Sources: cli.EnvVars("MPC_AUDIT_STORE"),
-						Value:   "local-worm",
-					},
-					&cli.StringFlag{
-						Name:    "audit-worm-path",
-						Usage:   "Filesystem path for local-worm audit log (mount on hardware-WORM volume).",
-						Sources: cli.EnvVars("MPC_AUDIT_WORM_PATH"),
-					},
-					&cli.StringFlag{
-						Name:    "audit-mchain-url",
-						Usage:   "M-Chain anchor RPC URL (POSTed batch hashes).",
-						Sources: cli.EnvVars("MPC_AUDIT_MCHAIN_URL"),
-					},
-					&cli.StringFlag{
-						Name:    "audit-mchain-auth",
-						Usage:   "Bearer token for the M-Chain anchor RPC.",
-						Sources: cli.EnvVars("MPC_AUDIT_MCHAIN_AUTH"),
-					},
-					&cli.IntFlag{
-						Name:    "audit-mchain-batch",
-						Usage:   "Events per M-Chain anchor batch.",
-						Sources: cli.EnvVars("MPC_AUDIT_MCHAIN_BATCH"),
-						Value:   32,
-					},
-					&cli.StringSliceFlag{
-						Name:    "audit-composite-leg",
-						Usage:   "Composite legs (e.g. --audit-composite-leg=local-worm --audit-composite-leg=mchain).",
-						Sources: cli.EnvVars("MPC_AUDIT_COMPOSITE_LEGS"),
 					},
 					&cli.BoolFlag{
 						Name:  "debug",
@@ -241,7 +158,6 @@ func main() {
 					return nil
 				},
 			},
-			airgapCommand(),
 		},
 	}
 
@@ -403,64 +319,10 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 		return fmt.Errorf("failed to create keys directory: %w", err)
 	}
 
-	// Deployment topology. The mode flag selects how this node announces
-	// itself: ModePrimary POSTs the public key to a registrar; ModePrivate
-	// stays silent. Both modes use the SAME on-disk identity format and
-	// the SAME consensus transport. The mode is recorded in the on-disk
-	// JSON for later inspection.
-	mode := mpcidentity.BootstrapMode(c.String("network"))
-	if mode == "" {
-		mode = mpcidentity.ModePrivate
-	}
-	bootstrapped, err := mpcidentity.Bootstrap(ctx, mpcidentity.Config{
-		NodeID:        nodeID,
-		KeysDir:       keysDir,
-		Mode:          mode,
-		RegistrarURL:  c.String("registrar-url"),
-		RegistrarAuth: c.String("registrar-auth"),
-	})
+	// Load or generate identity
+	privKey, pubKey, err := loadOrGenerateIdentity(keysDir, nodeID)
 	if err != nil {
-		return fmt.Errorf("identity bootstrap: %w", err)
-	}
-	privKey := bootstrapped.PrivateKey
-	pubKey := bootstrapped.PublicKey
-	logger.Info("Identity bootstrapped", "nodeID", nodeID, "mode", string(mode))
-
-	// Audit dispatcher. Same dispatcher interface for both deployment
-	// modes — only the target differs. Defaults: local-worm under the
-	// node's data dir.
-	auditCfg := audit.Config{
-		Store:        c.String("audit-store"),
-		WORMPath:     c.String("audit-worm-path"),
-		MChainURL:    c.String("audit-mchain-url"),
-		MChainAPIKey: c.String("audit-mchain-auth"),
-		MChainBatch:  int(c.Int("audit-mchain-batch")),
-		Composite:    c.StringSlice("audit-composite-leg"),
-	}
-	if auditCfg.WORMPath == "" {
-		auditCfg.WORMPath = filepath.Join(dataDir, "audit.log")
-	}
-	auditor, err := audit.NewDispatcher(ctx, auditCfg)
-	if err != nil {
-		return fmt.Errorf("audit init (store=%s): %w", auditCfg.Store, err)
-	}
-	defer auditor.Close()
-
-	// First entry every boot: bootstrap event. Records mode + node pubkey
-	// hash. Verifiers can replay this to check the operator did not
-	// silently switch modes between restarts.
-	bootPayload, _ := json.Marshal(map[string]any{
-		"mode":        string(mode),
-		"registrar":   c.String("registrar-url"),
-		"audit_store": auditCfg.Store,
-		"public_key":  hex.EncodeToString(pubKey),
-	})
-	if _, err := auditor.Append(ctx, &audit.Event{
-		NodeID:  nodeID,
-		Kind:    audit.KindBootstrap,
-		Payload: bootPayload,
-	}); err != nil {
-		return fmt.Errorf("audit bootstrap event: %w", err)
+		return fmt.Errorf("failed to load/generate identity: %w", err)
 	}
 
 	// Create consensus identity store for verifying messages
@@ -863,13 +725,10 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 			apiServer := mpcapi.NewServer(database, mpcBackend, jwtSecret)
 			apiServer.StartScheduler(ctx)
 
-			// Wire HSM signer for intent co-signing.
-			// Provider-specific config is folded into a single map; each
-			// underlying provider reads only the keys it understands.
+			// Wire HSM signer for intent co-signing
 			signerType := c.String("hsm-signer")
 			if signerType != "" {
-				signerConfig := buildHSMSignerConfig(c, signerType)
-				signer, signerErr := hsm.NewSigner(signerType, signerConfig)
+				signer, signerErr := hsm.NewSigner(signerType, nil)
 				if signerErr != nil {
 					logger.Error("Failed to create HSM signer", signerErr, "provider", signerType)
 				} else {
@@ -1090,6 +949,53 @@ func (b *ConsensusMPCBackend) GetClusterStatus() *mpcapi.ClusterStatus {
 		Threshold:      b.threshold,
 		Version:        Version,
 	}
+}
+
+// loadOrGenerateIdentity loads or generates Ed25519 identity
+func loadOrGenerateIdentity(keysDir, nodeID string) (ed25519.PrivateKey, ed25519.PublicKey, error) {
+	identityPath := filepath.Join(keysDir, nodeID+"_identity.json")
+
+	// Try to load existing identity
+	data, err := os.ReadFile(identityPath)
+	if err == nil {
+		var identityData struct {
+			NodeID     string `json:"node_id"`
+			PublicKey  string `json:"public_key"`
+			PrivateKey string `json:"private_key"`
+		}
+		if err := json.Unmarshal(data, &identityData); err == nil {
+			privKeyBytes, err := hex.DecodeString(identityData.PrivateKey)
+			if err == nil && len(privKeyBytes) == ed25519.PrivateKeySize {
+				privKey := ed25519.PrivateKey(privKeyBytes)
+				pubKey := privKey.Public().(ed25519.PublicKey)
+				logger.Info("Loaded existing identity", "nodeID", nodeID)
+				return privKey, pubKey, nil
+			}
+		}
+	}
+
+	// Generate new identity
+	pubKey, privKey, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Save identity
+	identityData := map[string]string{
+		"node_id":     nodeID,
+		"public_key":  hex.EncodeToString(pubKey),
+		"private_key": hex.EncodeToString(privKey),
+	}
+	data, err = json.MarshalIndent(identityData, "", "  ")
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := os.WriteFile(identityPath, data, 0600); err != nil {
+		return nil, nil, err
+	}
+
+	logger.Info("Generated new identity", "nodeID", nodeID)
+	return privKey, pubKey, nil
 }
 
 // ConsensusIdentityStore implements identity.Store for consensus mode
