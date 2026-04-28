@@ -37,13 +37,16 @@
 package attestation
 
 import (
+	"context"
 	"crypto/sha256"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
 	"github.com/fxamacker/cbor/v2"
 	lattice "github.com/luxfi/lattice/v7/types"
+	"github.com/luxfi/mpc/cc/attest"
 )
 
 // EnvelopeVersion is the schema version of the CompositeAttestation
@@ -293,6 +296,69 @@ func (c *CompositeAttestation) validate() error {
 		return errors.New("attestation: envelope issued_at required")
 	}
 	return nil
+}
+
+// VerifyEvidence cryptographically verifies every CPU TEE / GPU evidence
+// blob in the envelope using cc/attest. This is the wire-in point for
+// the canonical verifier: callers MUST invoke VerifyEvidence (or a
+// direct call into cc/attest.Dispatch) before trusting any
+// MEASUREMENT, REPORT_DATA, or HOST_DATA value the C-ABI parser
+// exposed. Validate() must succeed first; this method assumes
+// structural integrity.
+//
+// Behaviour by issuer:
+//
+//   - "amd.sev.snp"    → cc/attest.SEVSNP{} (PRODUCTION)
+//   - "intel.tdx"      → cc/attest.TDX{}    (panics; tracked at #222 stage 2)
+//   - "nvidia.nras.v1" → cc/attest.NRAS{}   (panics; tracked at #222 stage 3)
+//   - other issuers    → out[i] is nil (no verifier registered yet)
+//
+// The returned slice has the same length and order as c.Evidence;
+// callers map verified[i] back to c.Evidence[i] by index. On any
+// cryptographic failure VerifyEvidence returns (nil, err) and the
+// caller MUST refuse the originating request.
+func (c *CompositeAttestation) VerifyEvidence(ctx context.Context, opts ...attest.Option) ([]*attest.VerifiedReport, error) {
+	if c == nil {
+		return nil, ErrNilEnvelope
+	}
+	if err := c.validate(); err != nil {
+		return nil, err
+	}
+	out := make([]*attest.VerifiedReport, len(c.Evidence))
+	for i := range c.Evidence {
+		ev := &c.Evidence[i]
+		kind, ok := evidenceKindForIssuer(ev.Issuer)
+		if !ok {
+			// Issuer has no registered cc/attest verifier yet; leave
+			// out[i] nil. Callers asserting composite trust must
+			// enforce that all expected issuers have non-nil verified
+			// reports — see kms release-gate policy.
+			continue
+		}
+		rep, err := attest.Dispatch(ctx, kind, ev.Blob, opts...)
+		if err != nil {
+			return nil, fmt.Errorf("attestation: evidence[%d] issuer=%q: %w",
+				i, ev.Issuer, err)
+		}
+		out[i] = rep
+	}
+	return out, nil
+}
+
+// evidenceKindForIssuer maps a wire-stable issuer string to the
+// cc/attest verifier Kind that handles it. Returns ("", false) when
+// the issuer has no production verifier registered yet.
+func evidenceKindForIssuer(issuer string) (attest.Kind, bool) {
+	switch issuer {
+	case "amd.sev.snp":
+		return attest.KindSEVSNP, true
+	case "intel.tdx":
+		return attest.KindTDX, true
+	case "nvidia.nras.v1":
+		return attest.KindNRAS, true
+	default:
+		return "", false
+	}
 }
 
 // hasGPUEvidence reports whether at least one evidence entry is a GPU
