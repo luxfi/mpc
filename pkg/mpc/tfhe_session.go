@@ -1,5 +1,17 @@
-// Copyright (c) 2024-2025, Lux Industries Inc
+// Copyright (c) 2024-2026, Lux Industries Inc
 // SPDX-License-Identifier: BSD-3-Clause
+
+//go:build experimental_tfhe
+
+// Package-level note: this file is the EXPERIMENTAL threshold-FHE wallet
+// keygen / compute path. It is gated behind the `experimental_tfhe` build tag
+// because the underlying primitive in luxfi/threshold/protocols/tfhe is a
+// fail-loud placeholder that does NOT implement real Shamir/LWE threshold
+// decryption (every party stores the full master key — see
+// lps/LP-137-TFHE-REAL-THRESHOLD-SPEC.md §2.6). Default builds compile the
+// stubs in tfhe_node_stub.go which return ErrTFHENotImplemented from every
+// entry point. Real-threshold wiring (luxfi/lattice Shamir/LWE) is tracked
+// as a multi-week separate task per LP-137 §2.6.
 
 package mpc
 
