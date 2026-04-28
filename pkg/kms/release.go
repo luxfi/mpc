@@ -18,6 +18,9 @@
 //     (challenge-response binding — a stolen nonce cannot be replayed
 //     under a different jobID, and a forged nonce cannot trick the gate
 //     into accepting a worker-chosen challenge).
+//  6. Every CPU TEE / GPU evidence blob in the envelope cryptographically
+//     chains to its pinned vendor root via cc/attest.Dispatch (AMD KDS +
+//     VCEK for SEV-SNP, Intel quote chain for TDX, NRAS JWT for NVIDIA).
 //
 // On success the gate returns the session key sealed (HPKE-style: ECDH
 // over X25519, ChaCha20-Poly1305 AEAD) to the worker's GPU TEE public
@@ -35,6 +38,7 @@
 package kms
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
@@ -46,21 +50,43 @@ import (
 
 	"golang.org/x/crypto/chacha20poly1305"
 	"golang.org/x/crypto/curve25519"
+
+	"github.com/luxfi/mpc/cc/attest"
 )
 
 // CompositeAttestation is the contract surface the release gate consumes
 // from pkg/attestation (LP-127, v0.62). We declare the interface here so
-// pkg/kms does not depend on pkg/attestation; the v0.62 concrete type
-// satisfies via method-set match.
+// pkg/kms does not depend on pkg/attestation directly; the v0.62
+// concrete type satisfies via method-set match.
 //
 // The attestation MUST bind a freshly-generated nonce supplied by the
 // gate (challenge-response) and the worker's TEE public key. Either
 // failure mode collapses release to "refused".
+//
+// VerifyEvidence is the wire-in for the canonical cc/attest chain
+// verifier. The gate calls VerifyEvidence after the cheap nonce check
+// and BEFORE policy / seal so that a forged report whose Verify(nonce)
+// returns true but whose chain does not validate cannot harvest a
+// session key.
 type CompositeAttestation interface {
 	// Verify checks NVTrust + TPM + nonce. Returns false on any
 	// cryptographic mismatch. Errors only on unrecoverable failure
 	// (parsing, root-of-trust load) — a forged attestation is (false, nil).
 	Verify(expectedNonce [32]byte) (bool, error)
+
+	// VerifyEvidence cryptographically validates every CPU TEE / GPU
+	// evidence blob in the envelope using cc/attest:
+	//
+	//   - SEV-SNP   → AMD KDS lookup, ARK→ASK→VCEK chain, report-signature
+	//   - TDX       → Intel quote chain
+	//   - NRAS      → NVIDIA NRAS JWT verify against pinned issuer key
+	//
+	// Returns the per-evidence verified reports on success; any
+	// chain-verify failure → (nil, err) and the gate MUST refuse
+	// release. Wire-in for #222 go-sev-guest: without this step a
+	// worker can craft an envelope whose Verify(nonce) returns true
+	// while the actual blobs are unsigned or signed by a non-AMD key.
+	VerifyEvidence(ctx context.Context, opts ...attest.Option) ([]*attest.VerifiedReport, error)
 
 	// RIMDigest returns the Reference Integrity Manifest digest the
 	// worker measured. Compared to ReleasePolicy.RequiredRIM.
@@ -157,11 +183,24 @@ func (s SealedSessionKey) AAD(teePub [32]byte) []byte {
 
 // ReleaseRequest carries everything the gate needs in one shot. JobID
 // is opaque to the gate (used only for AAD binding).
+//
+// Ctx, when non-nil, is threaded into the cc/attest chain verifier so
+// AMD KDS / NRAS network calls cannot stall the gate. When nil the
+// gate uses context.Background().
+//
+// AttestOptions are forwarded to VerifyEvidence; production callers
+// MUST include attest.WithExpectedReportData(rec.Nonce[:]) (or an
+// equivalent measurement pin) so the chain verifier refuses any quote
+// whose REPORT_DATA does not equal the gate-issued nonce. The gate
+// does not auto-bind here because the REPORT_DATA framing is
+// kind-specific (64-byte field on SEV-SNP/TDX, JWT claim on NRAS).
 type ReleaseRequest struct {
-	JobID       [32]byte
-	Epoch       uint64
-	Nonce       [32]byte // gate-issued, attested-over by the worker
-	Attestation CompositeAttestation
+	JobID         [32]byte
+	Epoch         uint64
+	Nonce         [32]byte // gate-issued, attested-over by the worker
+	Attestation   CompositeAttestation
+	Ctx           context.Context
+	AttestOptions []attest.Option
 }
 
 // ReleaseGate verifies attestation + releases a session key sealed to
@@ -180,6 +219,7 @@ type ReleaseGate interface {
 	//   - hardware not in allowlist
 	//   - epoch mismatch (replay)
 	//   - jobID re-use within the current epoch (replay)
+	//   - cc/attest chain verify failure on any evidence blob
 	Release(req ReleaseRequest) (SealedSessionKey, error)
 
 	// Rotate advances the epoch — invalidates all in-flight nonces.
@@ -190,6 +230,16 @@ type ReleaseGate interface {
 // ErrPolicyRefused is returned when policy or attestation fails.
 // Callers MUST treat this as a hard refusal — never as "approved by default".
 var ErrPolicyRefused = errors.New("kms/release: refused")
+
+// ErrAttestationChain is returned when the cc/attest chain verifier
+// (AMD KDS + VCEK validation, NVIDIA NRAS JWT, Intel TDX quote)
+// refuses any evidence blob in the envelope. Wrapped by
+// ErrPolicyRefused via errors.Join so callers can switch on either
+// sentinel; the gate releases NO key when this fires. Red Final N1
+// wire-in: a forged envelope whose Verify(nonce) returns true but
+// whose evidence does not chain to the pinned vendor root must
+// produce ErrAttestationChain, not silent acceptance.
+var ErrAttestationChain = errors.New("kms/release: attestation chain verify failed")
 
 // DefaultReplayWindow is how long a consumed jobID stays in the replay
 // set after Release(). 1 hour absorbs clock skew + worker retries
@@ -318,10 +368,20 @@ func (g *LocalReleaseGate) Issue(jobID [32]byte) ([32]byte, uint64, error) {
 //  1. epoch match (cheap)
 //  2. lookup pending record (storage hit)
 //  3. constant-time nonce equality (no timing leak on jobID enumeration)
-//  4. attestation verify (expensive crypto)
-//  5. policy permits (membership check)
-//  6. seal session key (key derivation + AEAD)
-//  7. consume (atomic — only after all checks pass)
+//  4. attestation nonce verify (cheap, in-memory)
+//  5. cc/attest chain verify — VCEK / KDS / SEV-SNP / TDX / NRAS
+//     (network + signature, the actual root-of-trust step). Without
+//     this step the audit-bypass exists: a worker crafts an envelope
+//     whose Verify(nonce) returns true but whose evidence blobs do not
+//     chain to the pinned vendor root.
+//  6. policy permits (RIM + hardware membership)
+//  7. seal session key (ECDH + AEAD)
+//  8. consume (atomic — only after all checks pass)
+//
+// Any failure at step 4 → ErrPolicyRefused. Any failure at step 5 →
+// ErrPolicyRefused joined with ErrAttestationChain. No silent
+// acceptance; a cryptographically valid nonce binding is NOT
+// sufficient on its own.
 func (g *LocalReleaseGate) Release(req ReleaseRequest) (SealedSessionKey, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -368,6 +428,27 @@ func (g *LocalReleaseGate) Release(req ReleaseRequest) (SealedSessionKey, error)
 	if !ok {
 		return SealedSessionKey{}, fmt.Errorf("%w: attestation invalid", ErrPolicyRefused)
 	}
+
+	// Step 5 — the canonical chain verifier. Dispatches every
+	// supported CPU TEE / GPU evidence blob to cc/attest:
+	//
+	//   - SEV-SNP   → AMD KDS lookup, ARK→ASK→VCEK chain, signature
+	//   - TDX       → Intel quote chain
+	//   - NRAS      → NVIDIA NRAS JWT verify against pinned issuer key
+	//
+	// Red Final N1: without this step the #222 go-sev-guest wins are
+	// dead code — Verify(nonce) is trivially satisfied by a worker
+	// that fabricates the envelope. VerifyEvidence forces the actual
+	// cryptographic chain check; any failure → ErrAttestationChain
+	// wrapped under ErrPolicyRefused.
+	ctx := req.Ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if _, err := req.Attestation.VerifyEvidence(ctx, req.AttestOptions...); err != nil {
+		return SealedSessionKey{}, errors.Join(ErrPolicyRefused, fmt.Errorf("%w: %v", ErrAttestationChain, err))
+	}
+
 	if !g.policy.Permits(req.Attestation) {
 		return SealedSessionKey{}, fmt.Errorf("%w: policy denied (RIM or hardware)", ErrPolicyRefused)
 	}
