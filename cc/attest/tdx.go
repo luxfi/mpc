@@ -26,19 +26,21 @@ import (
 //   - Compose CompositeHash via the same domain-separated SHA-256 as
 //     the SEV path (see verifier.go::computeCompositeHash).
 //
-// Verify panics so any caller routing TDX evidence to it during stage 1
-// fails LOUD. A silent no-op or error-return would let the release gate
-// accidentally accept evidence the verifier has not actually checked;
-// panic + recover at the Dispatch site is cheaper to diagnose and
-// impossible to ignore in CI. Callers that want to soft-skip TDX should
-// gate on a feature flag at their layer rather than here.
+// Verify returns ErrNotImplemented so the call site refuses the release
+// without crashing the process. Callers MUST treat this exactly like
+// any other refusal: do not release, do not fall back. A silent no-op
+// or success would let the release gate accidentally accept evidence
+// the verifier has not actually checked; the explicit error-return path
+// preserves the same hard-refusal guarantee while letting Dispatch be
+// invoked from request-handling goroutines without taking the whole
+// process down.
 type TDX struct{}
 
 // Verify implements Verifier. NOT YET IMPLEMENTED — do not enable TDX
 // dispatch in production until #222 stage 2 lands.
 func (TDX) Verify(ctx context.Context, evidence []byte, opts ...Option) (*VerifiedReport, error) {
-	panic(fmt.Sprintf("%v: TDX verifier; tracked at #222 stage 2 (use go-tdx-guest + Intel PCS)",
-		ErrNotImplemented))
+	return nil, fmt.Errorf("%w: TDX attestation envelope verification not configured for this build (tracked at #222 stage 2: go-tdx-guest + Intel PCS)",
+		ErrNotImplemented)
 }
 
 var _ Verifier = TDX{}
