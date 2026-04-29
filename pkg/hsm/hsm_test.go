@@ -212,24 +212,26 @@ func TestNewProvider_Unknown(t *testing.T) {
 	}
 }
 
+// The stub tests below run only without the gcp/azure/zymbit build tag.
+// Each stub MUST return a non-nil error; the test asserts that contract
+// rather than skipping silently.
 func TestNewProvider_GCP_Stub(t *testing.T) {
-	// Without gcp build tag, should return "not compiled" error.
 	_, err := NewGCPProvider(&GCPConfig{Project: "test"})
 	if err == nil {
-		t.Skip("gcp build tag is active; skipping stub test")
+		t.Fatal("NewGCPProvider stub returned nil error; expected \"not compiled\"")
 	}
 }
 
 func TestNewProvider_Azure_Stub(t *testing.T) {
 	_, err := NewAzureProvider(&AzureConfig{VaultURL: "https://test"})
 	if err == nil {
-		t.Skip("azure build tag is active; skipping stub test")
+		t.Fatal("NewAzureProvider stub returned nil error; expected \"not compiled\"")
 	}
 }
 
 func TestNewProvider_Zymbit_Stub(t *testing.T) {
 	_, err := NewZymbitProvider(&ZymbitConfig{APIEndpoint: "http://localhost"})
 	if err == nil {
-		t.Skip("zymbit build tag is active; skipping stub test")
+		t.Fatal("NewZymbitProvider stub returned nil error; expected \"not compiled\"")
 	}
 }
