@@ -233,22 +233,11 @@ func TestDispatch_RejectsUnknownKind(t *testing.T) {
 	}
 }
 
-// -----------------------------------------------------------------------------
-// Stubs — honest "not yet implemented" markers; flip these to real
-// tests when #222 stages 2 + 3 land.
-// -----------------------------------------------------------------------------
-
-func TestTDX_Verify_NotYetImplemented(t *testing.T) {
-	t.Skip("TDX verifier not yet implemented; tracked at #222 stage 2")
-}
-
-func TestNRAS_Verify_NotYetImplemented(t *testing.T) {
-	t.Skip("NRAS verifier not yet implemented; tracked at #222 stage 3")
-}
-
-// TestStubsPanic confirms the stubs FAIL LOUD rather than silently
-// returning nil. This guards against an accidental future change that
-// silently accepts evidence the verifier hasn't actually checked.
+// TestStubsPanic confirms the TDX/NRAS stubs FAIL LOUD rather than silently
+// returning nil. This is the only test the stubs need: it guards against an
+// accidental future change that silently accepts evidence the verifier
+// hasn't actually checked. When stages 2 + 3 of #222 land, replace this
+// test with real verify cases.
 func TestStubsPanic(t *testing.T) {
 	cases := []struct {
 		name string
