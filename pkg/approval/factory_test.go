@@ -42,11 +42,9 @@ func TestFactory_AllProviders(t *testing.T) {
 		{"gcp-kms", "gcp-kms", nil, false},
 		{"azure-keyvault", "azure-keyvault", map[string]string{"vault_url": "https://x.vault.azure.net"}, false},
 		{"zymbit", "zymbit", map[string]string{"api_addr": "http://localhost:6789"}, false},
-		// yubihsm is supported in luxfi/hsm head but not yet in v1.1.2 — the
-		// factory wraps the published version's NewSigner which rejects it.
-		// Once luxfi/hsm publishes a yubihsm-capable v1.x tag, flip wantError
-		// back to false and the existing provider code starts working.
-		{"yubihsm", "yubihsm", map[string]string{}, true},
+		// yubihsm available since luxfi/hsm v1.1.3 (factory exposes the
+		// hardware-wallet/airgap/USB providers).
+		{"yubihsm", "yubihsm", map[string]string{}, false},
 		{"unknown", "fake", nil, true},
 	}
 	for _, tc := range cases {
