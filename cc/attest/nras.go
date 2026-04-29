@@ -34,15 +34,15 @@ import (
 // evidence, opts...) entry point with an internal JWKS cache and the
 // canonical VerifiedReport output shape.
 //
-// Verify panics so any caller routing NRAS evidence to it during stage 1
-// fails LOUD. See TDX.Verify for the rationale.
+// Verify returns ErrNotImplemented so the call site refuses the release
+// without crashing the process. See TDX.Verify for the rationale.
 type NRAS struct{}
 
 // Verify implements Verifier. NOT YET IMPLEMENTED — do not enable NRAS
 // dispatch in production until #222 stage 3 lands.
 func (NRAS) Verify(ctx context.Context, evidence []byte, opts ...Option) (*VerifiedReport, error) {
-	panic(fmt.Sprintf("%v: NRAS verifier; tracked at #222 stage 3 (use NRAS JWT + JWKS cache)",
-		ErrNotImplemented))
+	return nil, fmt.Errorf("%w: NRAS attestation envelope verification not configured for this build (tracked at #222 stage 3: NRAS JWT + JWKS cache)",
+		ErrNotImplemented)
 }
 
 var _ Verifier = NRAS{}
