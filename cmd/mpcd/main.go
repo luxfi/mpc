@@ -50,7 +50,7 @@ import (
 )
 
 const (
-	Version                    = "0.3.3"
+	Version                    = "0.4.0"
 	DefaultBackupPeriodSeconds = 300 // (5 minutes)
 )
 
@@ -109,6 +109,12 @@ func main() {
 					&cli.StringFlag{
 						Name:  "jwt-secret",
 						Usage: "JWT signing secret for dashboard auth",
+					},
+					&cli.StringFlag{
+						Name:    "kms-zap-listen",
+						Usage:   "KMS-facing ZAP server listen address (luxfi/kms dials this for threshold ops). Empty disables.",
+						Sources: cli.EnvVars("MPC_KMS_ZAP_LISTEN"),
+						Value:   ":9970",
 					},
 					// HSM / password provider flags
 					&cli.StringFlag{
@@ -698,6 +704,36 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 		}
 	}
 
+	// MPCBackend wraps the consensus transport so both the Dashboard API
+	// (HTTP, port 8081) and the KMS ZAP server (port 9970) can drive
+	// keygen/sign/reshare against the same node. Hoisted out of the
+	// dashboard branch so the KMS ZAP server can attach without depending
+	// on a JWT secret being set.
+	mpcBackend := &ConsensusMPCBackend{
+		pubSub:       pubSub,
+		peerRegistry: peerRegistry,
+		factory:      factory,
+		keyInfoStore: factory.KeyInfoStore(),
+		identity:     consensusIdentity,
+		nodeID:       nodeID,
+		threshold:    threshold,
+	}
+
+	// Start KMS-facing ZAP server. KMS dials this for threshold-signing
+	// requests after running the ML-KEM-768 hybrid handshake. Empty
+	// --kms-zap-listen disables it (e.g., for legacy compose stacks that
+	// only need the HTTP dashboard).
+	kmsZapAddr := c.String("kms-zap-listen")
+	if kmsZapAddr != "" {
+		kmsZap, kmsZapErr := mpcapi.StartKMSZAP(mpcBackend, fmt.Sprintf("mpcd-kms-zap-%s", nodeID), kmsZapAddr)
+		if kmsZapErr != nil {
+			logger.Error("Failed to start KMS ZAP server", kmsZapErr, "addr", kmsZapAddr)
+		} else {
+			defer kmsZap.Stop()
+			logger.Info("KMS ZAP server ready", "addr", kmsZapAddr, "nodeID", nodeID)
+		}
+	}
+
 	// Start Dashboard API server (ZapDB-backed, no external dependencies)
 	apiListenAddr := c.String("api-listen")
 	jwtSecret := c.String("jwt-secret")
@@ -711,16 +747,6 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 			logger.Error("Failed to open dashboard database", err)
 		} else {
 			defer database.Close()
-
-			mpcBackend := &ConsensusMPCBackend{
-				pubSub:       pubSub,
-				peerRegistry: peerRegistry,
-				factory:      factory,
-				keyInfoStore: factory.KeyInfoStore(),
-				identity:     consensusIdentity,
-				nodeID:       nodeID,
-				threshold:    threshold,
-			}
 
 			apiServer := mpcapi.NewServer(database, mpcBackend, jwtSecret)
 			apiServer.StartScheduler(ctx)
