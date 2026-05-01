@@ -112,9 +112,9 @@ func main() {
 					},
 					&cli.StringFlag{
 						Name:    "kms-zap-listen",
-						Usage:   "KMS-facing ZAP server listen address (luxfi/kms dials this for threshold ops). Empty disables.",
+						Usage:   "KMS-facing ZAP server listen address (luxfi/kms dials this for threshold ops). Empty disables. Default :9653 matches Liquid operator zapPort.",
 						Sources: cli.EnvVars("MPC_KMS_ZAP_LISTEN"),
-						Value:   ":9970",
+						Value:   ":9653",
 					},
 					// HSM / password provider flags
 					&cli.StringFlag{
@@ -722,7 +722,8 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 	// Start KMS-facing ZAP server. KMS dials this for threshold-signing
 	// requests after running the ML-KEM-768 hybrid handshake. Empty
 	// --kms-zap-listen disables it (e.g., for legacy compose stacks that
-	// only need the HTTP dashboard).
+	// only need the HTTP dashboard). Default :9653 matches the
+	// Liquid operator's zapPort so no LiquidMPC CR change is needed.
 	kmsZapAddr := c.String("kms-zap-listen")
 	if kmsZapAddr != "" {
 		kmsZap, kmsZapErr := mpcapi.StartKMSZAP(mpcBackend, fmt.Sprintf("mpcd-kms-zap-%s", nodeID), kmsZapAddr)
