@@ -15,6 +15,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/kms v1.50.4
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.41.5
 	github.com/aws/aws-sdk-go-v2/service/sts v1.41.6
+	github.com/cloudflare/circl v1.6.3
 	github.com/cronokirby/saferith v0.33.0
 	github.com/decred/dcrd/dcrec/edwards/v2 v2.0.4
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.1
@@ -38,7 +39,7 @@ require (
 	github.com/luxfi/metric v1.5.1
 	github.com/luxfi/threshold v1.6.4
 	github.com/luxfi/zap v0.2.0
-	github.com/minio/minio-go/v7 v7.0.99
+	github.com/minio/minio-go/v7 v7.0.100
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/mr-tron/base58 v1.2.0
 	github.com/nats-io/nats.go v1.50.0
@@ -89,7 +90,6 @@ require (
 	github.com/boombuler/barcode v1.1.0 // indirect
 	github.com/cenkalti/backoff v2.2.1+incompatible // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/cloudflare/circl v1.6.3 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/decred/dcrd/crypto/rand v1.0.1 // indirect
 	github.com/dgraph-io/ristretto/v2 v2.4.0 // indirect
