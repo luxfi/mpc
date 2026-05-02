@@ -26,6 +26,7 @@ import (
 	"github.com/luxfi/zap"
 
 	kmszap "github.com/luxfi/mpc/pkg/zap"
+	"github.com/luxfi/mpc/pkg/zapauth"
 )
 
 // KMS-facing opcode constants. These are the contract with
@@ -55,7 +56,28 @@ type KMSZapServer struct {
 	// is on by default; we never opt out unilaterally.
 	localCaps uint16
 
+	// auth, when non-nil, validates a JWKS-bearer JWT presented in
+	// OpAuthHello (zapauth.OpAuthHello = 0x00EF) BEFORE the hybrid PQ
+	// handshake. The peer's verified claims are attached to the
+	// connection by ZAP peer ID and looked up on every subsequent
+	// dispatch. nil means "no JWT verification" — secure-by-default
+	// requires this to be non-nil; the wrapper in StartKMSZAP enforces
+	// that behavior gating off ZAP_AUTH_REQUIRED.
+	auth         *zapauth.Verifier
+	authRequired bool
+
 	node *zap.Node
+}
+
+// KMSZapConfig configures the optional zapauth bearer-token gate on the
+// KMS-facing ZAP server. Fields are mutually consistent: a non-nil
+// Verifier paired with AuthRequired=true rejects unauthenticated peers
+// at OpClientHello; with AuthRequired=false (the v1.14.0 default) the
+// connection still completes and a warning logs so operators can roll
+// out KMS-side bearer minting before flipping the flag.
+type KMSZapConfig struct {
+	Verifier     *zapauth.Verifier
+	AuthRequired bool
 }
 
 // StartKMSZAP creates a luxfi/zap.Node bound to listenAddr and registers KMS
@@ -64,10 +86,25 @@ type KMSZapServer struct {
 // nodeID is the ZAP advertised identity — KMS uses it as the auditable
 // principal for sign/keygen requests. Every MPC StatefulSet pod gets a unique
 // ID (mpc-kms-zap-<pod>) so KMS audit rows can pin a request to a node.
+//
+// This wrapper preserves the v1.13.x signature for callers that have not
+// yet wired zapauth. New deployments should call StartKMSZAPWith to pass
+// a zapauth.Verifier.
 func StartKMSZAP(backend MPCBackend, nodeID, listenAddr string) (*KMSZapServer, error) {
+	return StartKMSZAPWith(backend, nodeID, listenAddr, KMSZapConfig{})
+}
+
+// StartKMSZAPWith is the configurable form of StartKMSZAP. cfg.Verifier
+// gates OpClientHello on a verified JWT in OpAuthHello when
+// cfg.AuthRequired is true. cfg.Verifier without AuthRequired logs but
+// still serves unauthenticated peers — used during the rollout window.
+func StartKMSZAPWith(backend MPCBackend, nodeID, listenAddr string, cfg KMSZapConfig) (*KMSZapServer, error) {
 	port, err := parsePort(listenAddr)
 	if err != nil {
 		return nil, fmt.Errorf("zap: parse listen %q: %w", listenAddr, err)
+	}
+	if cfg.AuthRequired && cfg.Verifier == nil {
+		return nil, fmt.Errorf("zap: AuthRequired=true requires a non-nil Verifier")
 	}
 
 	node := zap.NewNode(zap.NodeConfig{
@@ -78,11 +115,20 @@ func StartKMSZAP(backend MPCBackend, nodeID, listenAddr string) (*KMSZapServer, 
 	})
 
 	s := &KMSZapServer{
-		backend:   backend,
-		sessions:  make(map[string]*kmszap.Session),
-		localCaps: kmszap.CapMLKEM768,
-		node:      node,
+		backend:      backend,
+		sessions:     make(map[string]*kmszap.Session),
+		localCaps:    kmszap.CapMLKEM768,
+		auth:         cfg.Verifier,
+		authRequired: cfg.AuthRequired,
+		node:         node,
 	}
+
+	// Pre-handshake bearer token. When auth is configured, OpAuthHello
+	// MUST precede OpClientHello. The handler verifies + attaches claims
+	// keyed by ZAP peer ID. Forward-compat: we register the handler even
+	// when auth is nil so peers that send the frame don't get an unknown-
+	// opcode error during the rollout window.
+	node.Handle(zapauth.OpAuthHello, s.handleAuthHello)
 
 	// Application-layer hybrid handshake. Distinct opcode so a client can
 	// negotiate before sending any threshold-op payload.
@@ -103,7 +149,16 @@ func StartKMSZAP(backend MPCBackend, nodeID, listenAddr string) (*KMSZapServer, 
 	if err := node.Start(); err != nil {
 		return nil, fmt.Errorf("zap: start node: %w", err)
 	}
-	logger.Info("KMS ZAP server started", "addr", listenAddr, "nodeID", nodeID, "caps", "X25519+ML-KEM-768")
+	authMode := "off"
+	switch {
+	case cfg.AuthRequired:
+		authMode = "required"
+	case cfg.Verifier != nil:
+		authMode = "advisory"
+	}
+	logger.Info("KMS ZAP server started",
+		"addr", listenAddr, "nodeID", nodeID,
+		"caps", "X25519+ML-KEM-768", "auth", authMode)
 	return s, nil
 }
 
@@ -127,6 +182,9 @@ func (s *KMSZapServer) handle(op handlerFn) zap.Handler {
 			return s.respond(from, 0, errBody("empty payload")), nil
 		}
 		opcode := binary.LittleEndian.Uint16(raw[:2])
+		if !s.checkAuth(from, opcode) {
+			return s.respond(from, opcode, errBody("auth required")), nil
+		}
 		payload := raw[2:]
 		// Session-sealed payloads are AEAD-opened before dispatch.
 		if sess := s.session(from); sess != nil {
@@ -154,8 +212,17 @@ func (s *KMSZapServer) muxByOpcode(ctx context.Context, from string, msg *zap.Me
 		return s.respond(from, 0, errBody("empty payload")), nil
 	}
 	op := binary.LittleEndian.Uint16(raw[:2])
+	if op == zapauth.OpAuthHello {
+		return s.respondAuthHello(ctx, from, raw[2:]), nil
+	}
 	if op == kmszap.OpClientHello {
+		if !s.checkAuth(from, op) {
+			return s.respond(from, kmszap.OpServerHello, errBody("auth required")), nil
+		}
 		return s.respondHandshake(from, raw[2:]), nil
+	}
+	if !s.checkAuth(from, op) {
+		return s.respond(from, op, errBody("auth required")), nil
 	}
 	dispatch := map[uint16]handlerFn{
 		OpKMSStatus:  s.handleStatus,
@@ -183,6 +250,67 @@ func (s *KMSZapServer) muxByOpcode(ctx context.Context, from string, msg *zap.Me
 		return s.respond(from, op, errBody(err.Error())), nil
 	}
 	return s.respond(from, op, body), nil
+}
+
+// checkAuth gates an opcode dispatch on the auth state of the peer.
+// Returns true when the peer may proceed: either auth is disabled, or
+// the peer presented a valid JWT in OpAuthHello. Logs and returns false
+// when authRequired is on and the peer is unauthenticated.
+func (s *KMSZapServer) checkAuth(from string, op uint16) bool {
+	if s.auth == nil || !s.authRequired {
+		if s.auth != nil {
+			if _, ok := s.auth.Lookup(from); !ok {
+				logger.Warn("kms-zap unauthenticated peer (advisory mode)",
+					"from", from, "op", fmt.Sprintf("0x%04x", op))
+			}
+		}
+		return true
+	}
+	if _, ok := s.auth.Lookup(from); !ok {
+		logger.Warn("kms-zap rejecting unauthenticated peer",
+			"from", from, "op", fmt.Sprintf("0x%04x", op))
+		return false
+	}
+	return true
+}
+
+// handleAuthHello is the per-opcode handler for OpAuthHello. The body
+// shape is opcode(2 LE) || zapauth.AuthHelloFrame.
+func (s *KMSZapServer) handleAuthHello(ctx context.Context, from string, msg *zap.Message) (*zap.Message, error) {
+	raw := extractPayload(msg)
+	if len(raw) < 2 {
+		return s.respond(from, zapauth.OpAuthHello, errBody("empty auth payload")), nil
+	}
+	return s.respondAuthHello(ctx, from, raw[2:]), nil
+}
+
+// respondAuthHello validates the bearer token in the AuthHello frame
+// and attaches the verified claims to the peer ID. Returns a tiny JSON
+// body with {"ok":true} on success or {"error":"..."} on failure.
+func (s *KMSZapServer) respondAuthHello(ctx context.Context, from string, framed []byte) *zap.Message {
+	frame, err := zapauth.UnmarshalAuthHello(framed)
+	if err != nil {
+		logger.Warn("kms-zap auth hello parse failed", "from", from, "err", err)
+		return s.respond(from, zapauth.OpAuthHello, errBody(err.Error()))
+	}
+	if s.auth == nil {
+		// No verifier configured. Accept the frame so a forward-rolling
+		// KMS client doesn't trip on a backwards MPC, but log it.
+		logger.Info("kms-zap auth hello received but verifier disabled",
+			"from", from, "tokenBytes", len(frame.Token))
+		ok, _ := json.Marshal(map[string]bool{"ok": true})
+		return s.respond(from, zapauth.OpAuthHello, ok)
+	}
+	claims, err := s.auth.Verify(ctx, frame.Token)
+	if err != nil {
+		logger.Warn("kms-zap auth verify failed", "from", from, "err", err)
+		return s.respond(from, zapauth.OpAuthHello, errBody(err.Error()))
+	}
+	s.auth.AttachClaims(from, *claims)
+	logger.Info("kms-zap auth hello accepted",
+		"from", from, "sub", claims.Subject, "iss", claims.Issuer)
+	ok, _ := json.Marshal(map[string]bool{"ok": true})
+	return s.respond(from, zapauth.OpAuthHello, ok)
 }
 
 // extractPayload pulls the application bytes out of a ZAP message,
@@ -247,6 +375,9 @@ func (s *KMSZapServer) setSession(peerID string, sess *kmszap.Session) {
 
 // handleHandshake is the per-opcode handler for OpClientHello.
 func (s *KMSZapServer) handleHandshake(_ context.Context, from string, msg *zap.Message) (*zap.Message, error) {
+	if !s.checkAuth(from, kmszap.OpClientHello) {
+		return s.respond(from, kmszap.OpServerHello, errBody("auth required")), nil
+	}
 	raw := extractPayload(msg)
 	if len(raw) < 2 {
 		return s.respond(from, kmszap.OpServerHello, errBody("empty handshake payload")), nil
