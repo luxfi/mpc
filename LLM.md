@@ -2,6 +2,16 @@
 
 This document provides comprehensive guidance for AI assistants working with the MPC (Multi-Party Computation) codebase.
 
+## v1.14.0 — pkg/zapauth (LP-103)
+
+Bearer-token gate on the KMS-facing ZAP server. JWKS-validated JWT
+presented in `OpAuthHello` (0x00EF) BEFORE the X25519+ML-KEM-768
+handshake. Configured via `ZAP_JWKS_URL`, `ZAP_EXPECTED_ISS`,
+`ZAP_EXPECTED_AUDIENCES`, `ZAP_AUTH_REQUIRED`. See `docs/zap-auth.md`.
+Backwards compatible: defaults to `auth=off`; flips to `auth=required`
+once every KMS deploys with bearer minting (luxfi/kms v1.9.0
+`pkg/iamclient`).
+
 ## 🏭 Production Deployment State (2026-03-02)
 
 ### Namespaces
