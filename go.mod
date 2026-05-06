@@ -31,7 +31,7 @@ require (
 	github.com/hanzoai/orm v0.4.0
 	github.com/hashicorp/consul/api v1.33.7
 	github.com/luxfi/crypto v1.17.45
-	github.com/luxfi/database v1.17.44
+	github.com/luxfi/database v1.18.3
 	github.com/luxfi/fhe v1.7.7
 	github.com/luxfi/hsm v1.1.3
 	github.com/luxfi/lattice/v7 v7.1.0
@@ -144,6 +144,7 @@ require (
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/klauspost/crc32 v1.3.0 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
+	github.com/luxfi/age v1.4.0 // indirect
 	github.com/luxfi/atomic v1.0.0 // indirect
 	github.com/luxfi/cache v1.2.1 // indirect
 	github.com/luxfi/codec v1.1.4 // indirect
@@ -153,13 +154,13 @@ require (
 	github.com/luxfi/container v0.0.4 // indirect
 	github.com/luxfi/geth v1.16.79 // indirect
 	github.com/luxfi/ids v1.2.9 // indirect
-	github.com/luxfi/math v1.2.4 // indirect
+	github.com/luxfi/math v1.4.0 // indirect
 	github.com/luxfi/math/big v0.1.0 // indirect
 	github.com/luxfi/mdns v0.1.0 // indirect
 	github.com/luxfi/mock v0.1.1 // indirect
 	github.com/luxfi/sampler v1.0.0 // indirect
 	github.com/luxfi/utils v1.1.4 // indirect
-	github.com/luxfi/zapdb/v4 v4.9.3 // indirect
+	github.com/luxfi/zapdb v1.8.0 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-sqlite3 v1.14.42 // indirect
