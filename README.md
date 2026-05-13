@@ -1,6 +1,6 @@
 # MPC
 
-Threshold signing engine -- CGGMP21 (ECDSA), FROST (EdDSA), BLS, and SR25519. No full private key reconstruction, ever.
+Threshold signing engine -- CGGMP21 (ECDSA), FROST (EdDSA/Schnorr), BLS, SR25519, and post-quantum lattice signatures (Pulsar M-LWE, Corona R-LWE, and double-lattice composition) via the embedded `thresholdd` dispatcher. No full private key reconstruction, ever.
 
 ```
 go get github.com/luxfi/mpc
@@ -12,12 +12,24 @@ go get github.com/luxfi/mpc
 
 ### Protocols
 
-| Protocol | Curve | Key Type | Use |
-|----------|-------|----------|-----|
+| Protocol | Curve / Lattice | Key Type | Use |
+|----------|-----------------|----------|-----|
 | CGGMP21 | secp256k1 | `secp256k1` | Bitcoin, Ethereum, Lux C-Chain, all EVM L2s, XRPL |
 | FROST | Ed25519 | `ed25519` | Solana, TON, Polkadot, Cardano, Substrate chains |
 | BLS | BLS12-381 | `bls` | Lux consensus, beacon chain, aggregated signatures |
 | SR25519 | Ristretto255 | `sr25519` | Substrate/Polkadot native |
+| Pulsar | M-LWE (FIPS 204 / ML-DSA-65 threshold) | `pulsar` | Post-quantum threshold signing — bridge anchors, strict-PQ profile |
+| Corona | R-LWE (Corona) | `corona` | Post-quantum threshold signing — orthogonal lattice family to Pulsar |
+| Double-lattice | Pulsar ⊕ Corona | `double-lattice` | Composed `u32_be(len) ‖ pulsar_sig ‖ corona_sig` — both must verify |
+
+Pulsar, Corona, and double-lattice are exposed via the embedded
+threshold dispatcher (`--threshold-listen`, default `127.0.0.1:7300`),
+which is `luxfi/threshold/pkg/thresholdd`. The dispatcher is a JSON-RPC
+2.0 surface shared with `cggmp21` / `frost` / `bls` — one wire, six
+schemes — and is consumed by the teleport bus
+(`~/work/lux/teleport/mpc/src/signers/`). The wire format is documented
+in `~/work/lux/threshold/CLAUDE.md` under "thresholdd — unified
+JSON-RPC daemon".
 
 ### Threshold Model
 
