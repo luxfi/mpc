@@ -148,6 +148,87 @@ func TestEmbeddedDispatcher_BLSRoundTrip(t *testing.T) {
 	}
 }
 
+// TestIsThresholdLoopback locks the loopback policy that gates the
+// embedded dispatcher bind (Red HIGH B1). Bare `:port` is NOT loopback
+// — operators must spell out the host so an accidental
+// `--threshold-listen :7300` doesn't expose the dispatcher cluster-wide.
+func TestIsThresholdLoopback(t *testing.T) {
+	cases := []struct {
+		addr string
+		want bool
+	}{
+		{"127.0.0.1:7300", true},
+		{"127.0.0.99:7300", true},
+		{"[::1]:7300", true},
+		{"localhost:7300", true},
+		{"0.0.0.0:7300", false},
+		{":7300", false},
+		{"10.0.0.1:7300", false},
+		{"[2001:db8::1]:7300", false},
+		{"not-an-addr", false},
+	}
+	for _, tc := range cases {
+		if got := isThresholdLoopback(tc.addr); got != tc.want {
+			t.Errorf("isThresholdLoopback(%q) = %v, want %v", tc.addr, got, tc.want)
+		}
+	}
+}
+
+// TestEmbeddedDispatcher_AuthGate proves that when mpcd installs an
+// auth token on the dispatcher, missing/bad bearer headers receive
+// 401 and the valid header passes through.
+func TestEmbeddedDispatcher_AuthGate(t *testing.T) {
+	srv, err := thresholdd.NewServer()
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+	srv.SetAuthToken("cluster-token")
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+
+	body, _ := json.Marshal(map[string]any{
+		"jsonrpc": "2.0", "id": 1, "method": "bls.keygen",
+		"params": map[string]any{"threshold": 2, "participants": 3},
+	})
+
+	// Missing auth → 401.
+	resp, err := http.Post(ts.URL, "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("post: %v", err)
+	}
+	if resp.StatusCode != http.StatusUnauthorized {
+		resp.Body.Close()
+		t.Fatalf("missing-token: got %d, want 401", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	// Wrong token → 401.
+	req, _ := http.NewRequest("POST", ts.URL, bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer wrong")
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("do wrong: %v", err)
+	}
+	if resp.StatusCode != http.StatusUnauthorized {
+		resp.Body.Close()
+		t.Fatalf("wrong-token: got %d, want 401", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	// Valid token → 200.
+	req2, _ := http.NewRequest("POST", ts.URL, bytes.NewReader(body))
+	req2.Header.Set("Authorization", "Bearer cluster-token")
+	resp, err = http.DefaultClient.Do(req2)
+	if err != nil {
+		t.Fatalf("do valid: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		t.Fatalf("valid-token: got %d, want 200", resp.StatusCode)
+	}
+	resp.Body.Close()
+}
+
 // TestEmbeddedDispatcher_UnknownScheme verifies the dispatcher returns
 // a JSON-RPC -32601 method-not-found for an unrecognized scheme — the
 // teleport bus relies on this contract to route fall-back signers.
