@@ -780,19 +780,48 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 	}
 
 	// Start embedded threshold JSON-RPC dispatcher
-	// (luxfi/threshold/pkg/thresholdd). One process, one wire, six
-	// schemes (cggmp21/frost/pulsar/corona/bls/doerner) — consumed by
-	// teleport/mpc and any other client that speaks the threshold bus.
+	// (luxfi/threshold/pkg/thresholdd). One process, one wire, four
+	// active schemes (cggmp21/frost/bls + doerner-reserved-error) —
+	// consumed by teleport/mpc and any other client that speaks the
+	// threshold bus. Pulsar/Corona slots return a typed
+	// "not yet implemented" error pending stable wire encodings in
+	// luxfi/corona and luxfi/corona (Red HIGH B2).
 	//
-	// The dispatcher carries zero policy on purpose: profile gating,
-	// auth, and audit live on the API surface above (and on the gateway
-	// in front of mpcd in production). Default bind is loopback only;
-	// network exposure happens via the cluster ingress.
+	// The dispatcher carries zero protocol policy on purpose: profile
+	// gating and audit live on the API surface above. Auth and bind
+	// scope are enforced HERE because the dispatcher would otherwise
+	// be an anonymous local signing oracle (Red HIGH B1):
+	//
+	//   1. Bearer-token auth. Default token = SHA-256(privKey.Seed() ||
+	//      "mpc-threshold-rpc"); deterministically derived from the
+	//      node Ed25519 identity so every node in the cluster shares
+	//      the same key without extra config. MPC_THRESHOLD_AUTH_TOKEN
+	//      overrides for explicit operator control.
+	//   2. Loopback-only bind. A non-loopback `threshold-listen`
+	//      (operator typo `--threshold-listen 0.0.0.0:7300` or env
+	//      override) is refused unless MPC_THRESHOLD_ALLOW_REMOTE=1
+	//      is set, which forces operators to acknowledge the exposure.
 	if thrAddr := c.String("threshold-listen"); thrAddr != "" {
+		if !isThresholdLoopback(thrAddr) && os.Getenv("MPC_THRESHOLD_ALLOW_REMOTE") != "1" {
+			logger.Fatal(
+				"Threshold dispatcher refusing non-loopback bind without MPC_THRESHOLD_ALLOW_REMOTE=1",
+				fmt.Errorf("addr=%s", thrAddr),
+			)
+		}
+
 		thrSrv, thrErr := thresholdd.NewServer()
 		if thrErr != nil {
 			logger.Error("Failed to build threshold dispatcher", thrErr)
 		} else {
+			// Derive / read the per-cluster bearer token.
+			thrTok := os.Getenv("MPC_THRESHOLD_AUTH_TOKEN")
+			if thrTok == "" {
+				h := sha256.Sum256(append(privKey.Seed(), []byte("mpc-threshold-rpc")...))
+				thrTok = hex.EncodeToString(h[:])
+				logger.Warn("MPC_THRESHOLD_AUTH_TOKEN not set; derived threshold dispatcher token from node identity (set MPC_THRESHOLD_AUTH_TOKEN in production for cluster-wide consistency)")
+			}
+			thrSrv.SetAuthToken(thrTok)
+
 			thrListener, listenErr := net.Listen("tcp", thrAddr)
 			if listenErr != nil {
 				logger.Error("Failed to bind threshold dispatcher", listenErr, "addr", thrAddr)
@@ -802,7 +831,13 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 					ReadHeaderTimeout: 5 * time.Second,
 				}
 				go func() {
-					logger.Info("Threshold dispatcher starting", "addr", thrListener.Addr().String(), "schemes", "cggmp21,frost,pulsar,corona,bls,doerner")
+					logger.Info(
+						"Threshold dispatcher starting",
+						"addr", thrListener.Addr().String(),
+						"schemes_active", "cggmp21,frost,bls",
+						"schemes_reserved_err", "pulsar,corona,doerner",
+						"auth", "bearer-token",
+					)
 					if err := thrHTTP.Serve(thrListener); err != nil && err != http.ErrServerClosed {
 						logger.Error("Threshold dispatcher failed", err)
 					}
@@ -1505,5 +1540,30 @@ func eddsaPubKeyToSolAddress(pubKey []byte) string {
 		return ""
 	}
 	return base58.Encode(pubKey)
+}
+
+// isThresholdLoopback reports whether `--threshold-listen` resolves to
+// a loopback host. Bare `:port` (= 0.0.0.0:port) is NOT loopback —
+// operators must spell out the bind host. See the dispatcher startup
+// block above for the rationale (Red HIGH B1).
+func isThresholdLoopback(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return false
+	}
+	if host == "" {
+		return false
+	}
+	if host == "localhost" {
+		return true
+	}
+	if strings.EqualFold(host, "::1") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+	return ip.IsLoopback()
 }
 
