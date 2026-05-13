@@ -258,20 +258,63 @@ func runAirgapSign(ctx context.Context, c *cli.Command) error {
 // 500ms — a stricter SLA isn't useful when the bound is human-mediated
 // minutes, and a looser one delays kiosk integrations.
 func awaitAirgapResponse(ctx context.Context, respPath string) ([]byte, error) {
-	const pollEvery = 500 * time.Millisecond
+	return awaitAirgapResponseEvery(ctx, respPath, 500*time.Millisecond)
+}
+
+// awaitAirgapResponseEvery is the polling core, parameterised by tick
+// cadence so tests can drive it without sleeping for whole seconds.
+//
+// The polling contract is:
+//
+//   - File not yet present → keep waiting.
+//   - File present but zero bytes → keep waiting. Operators (and the
+//     kiosks they ferry to and from) routinely create the file before
+//     filling it: `touch X && cat sig >> X`, a copy-and-rename through
+//     a 0-byte intermediate, or an editor that opens the file before
+//     dropping content. Treating that transient as a hard failure made
+//     the operator restart the ceremony for no reason.
+//   - File present and non-empty, but its size differs from the last
+//     poll → bytes are still arriving. Returning here would hand the
+//     caller a truncated PSBT/UR/CBOR that the downstream parser would
+//     reject. Wait one more tick and re-check.
+//   - File present, non-empty, size unchanged across two consecutive
+//     polls → the operator's drop has settled. Read and return.
+//
+// The cost of the stability check is one extra poll interval on the
+// success path (500ms in production). Negligible against a ceremony
+// upper bound that defaults to 30 minutes.
+func awaitAirgapResponseEvery(ctx context.Context, respPath string, pollEvery time.Duration) ([]byte, error) {
 	ticker := time.NewTicker(pollEvery)
 	defer ticker.Stop()
+
+	const sizeUnknown int64 = -1
+	lastSize := sizeUnknown
+
 	for {
-		data, err := os.ReadFile(respPath)
-		if err == nil {
-			if len(data) == 0 {
-				return nil, errors.New("airgap: response file is empty")
+		info, statErr := os.Stat(respPath)
+		switch {
+		case statErr == nil:
+			size := info.Size()
+			if size > 0 && size == lastSize {
+				data, err := os.ReadFile(respPath)
+				if err != nil {
+					return nil, fmt.Errorf("airgap: read response: %w", err)
+				}
+				if len(data) > 0 {
+					return data, nil
+				}
+				// Truncated between stat and read — fall through and
+				// restart the stability window.
+				lastSize = sizeUnknown
+			} else {
+				lastSize = size
 			}
-			return data, nil
+		case os.IsNotExist(statErr):
+			lastSize = sizeUnknown
+		default:
+			return nil, fmt.Errorf("airgap: stat response: %w", statErr)
 		}
-		if !os.IsNotExist(err) {
-			return nil, fmt.Errorf("airgap: read response: %w", err)
-		}
+
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
