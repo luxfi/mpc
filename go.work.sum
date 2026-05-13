@@ -509,6 +509,7 @@ github.com/luxfi/crypto v1.17.37/go.mod h1:vu+pCHdyPQZULzrA+K+lTFYrg8vOtNdu+/5Vk
 github.com/luxfi/crypto v1.17.38/go.mod h1:G2t1GQvPsrwnzwyVEj0LQDuX2AWZVI5kEAPyVeicc5o=
 github.com/luxfi/crypto v1.17.39/go.mod h1:mChLWmW4CLR1wAN6CeJTveCzUv0DTzGQnYgq01x3W0U=
 github.com/luxfi/crypto v1.17.43/go.mod h1:1M6uQ8I/7dzQwf5RdnKtqOWr0+iXRW0D9WfnMV+Cb1s=
+github.com/luxfi/crypto/ipa v1.2.4/go.mod h1:43J6f6rcfUMrZt4cQectMOZb6Ps+fAEj8ZTPC3Kk+gE=
 github.com/luxfi/czmq/v4 v4.2.2/go.mod h1:WFY9ldUbeU900P8bcIRr7Jim23veOhJL5A5zSpTogdU=
 github.com/luxfi/database v1.17.35/go.mod h1:dYxaF30KGJQzuxA3VH7+WGU5/dhwRyzLgzSk9F3wje0=
 github.com/luxfi/database v1.17.38/go.mod h1:q6BJNN+47VtkmkGrswQmC0ikERYAdlmZCYhGTXkF4mM=

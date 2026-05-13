@@ -3,5 +3,6 @@ go 1.26.3
 // For local development with HSM: go work use ../hsm
 use (
 	.
+	../threshold
 	./e2e
 )
