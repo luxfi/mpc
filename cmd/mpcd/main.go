@@ -35,6 +35,8 @@ import (
 
 	uimpc "github.com/luxfi/mpc/ui"
 
+	"github.com/luxfi/threshold/pkg/thresholdd"
+
 	mpcapi "github.com/luxfi/mpc/pkg/api"
 	"github.com/luxfi/mpc/pkg/backup"
 	"github.com/luxfi/mpc/pkg/zapauth"
@@ -116,6 +118,12 @@ func main() {
 						Usage:   "KMS-facing ZAP server listen address (luxfi/kms dials this for threshold ops). Empty disables. Default :9653 matches Liquid operator zapPort.",
 						Sources: cli.EnvVars("MPC_KMS_ZAP_LISTEN"),
 						Value:   ":9653",
+					},
+					&cli.StringFlag{
+						Name:    "threshold-listen",
+						Usage:   "Embedded threshold JSON-RPC dispatcher listen address (luxfi/threshold/pkg/thresholdd surface: cggmp21/frost/pulsar/corona/bls/doerner). Empty disables. Default 127.0.0.1:7300 — process-local IPC; production fronts this via the cluster ingress + KMS.",
+						Sources: cli.EnvVars("MPC_THRESHOLD_LISTEN"),
+						Value:   "127.0.0.1:7300",
 					},
 					// HSM / password provider flags
 					&cli.StringFlag{
@@ -768,6 +776,39 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 		} else {
 			defer kmsZap.Stop()
 			logger.Info("KMS ZAP server ready", "addr", kmsZapAddr, "nodeID", nodeID)
+		}
+	}
+
+	// Start embedded threshold JSON-RPC dispatcher
+	// (luxfi/threshold/pkg/thresholdd). One process, one wire, six
+	// schemes (cggmp21/frost/pulsar/corona/bls/doerner) — consumed by
+	// teleport/mpc and any other client that speaks the threshold bus.
+	//
+	// The dispatcher carries zero policy on purpose: profile gating,
+	// auth, and audit live on the API surface above (and on the gateway
+	// in front of mpcd in production). Default bind is loopback only;
+	// network exposure happens via the cluster ingress.
+	if thrAddr := c.String("threshold-listen"); thrAddr != "" {
+		thrSrv, thrErr := thresholdd.NewServer()
+		if thrErr != nil {
+			logger.Error("Failed to build threshold dispatcher", thrErr)
+		} else {
+			thrListener, listenErr := net.Listen("tcp", thrAddr)
+			if listenErr != nil {
+				logger.Error("Failed to bind threshold dispatcher", listenErr, "addr", thrAddr)
+			} else {
+				thrHTTP := &http.Server{
+					Handler:           thrSrv,
+					ReadHeaderTimeout: 5 * time.Second,
+				}
+				go func() {
+					logger.Info("Threshold dispatcher starting", "addr", thrListener.Addr().String(), "schemes", "cggmp21,frost,pulsar,corona,bls,doerner")
+					if err := thrHTTP.Serve(thrListener); err != nil && err != http.ErrServerClosed {
+						logger.Error("Threshold dispatcher failed", err)
+					}
+				}()
+				defer thrHTTP.Close()
+			}
 		}
 	}
 
