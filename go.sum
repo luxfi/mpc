@@ -879,6 +879,8 @@ github.com/kr/text v0.2.0 h1:5Nx0Ya0ZqY2ygV366QzturHI13Jq95ApcVaJBhpS+AY=
 github.com/kr/text v0.2.0/go.mod h1:eLer722TekiGuMkidMxC/pM04lWEeraHUUmBw8l2grE=
 github.com/kylelemons/godebug v1.1.0 h1:RPNrshWIDI6G2gRW9EHilWtl7Z6Sb1BR0xunSBf0SNc=
 github.com/kylelemons/godebug v1.1.0/go.mod h1:9/0rRGxNHcop5bhtWyNeEfOS8JIWk580+fNqagV/RAw=
+github.com/luxfi/accel v1.0.7 h1:ksHieAp50umwqxqgyHk9WiOmXM54kia3IEDb5H7FsM8=
+github.com/luxfi/accel v1.0.7/go.mod h1:iZD3oxffiMEIT/KvzD8bgwC/cBn4AYlMW3QJpbRa4RE=
 github.com/luxfi/age v1.4.0 h1:tU5q65RQSQdaVq64Z/DVUhiPQMoMPQT6pr41LsvG0AQ=
 github.com/luxfi/age v1.4.0/go.mod h1:iAYAxgvrXxcy746+Ovh/eWWDuF9teJLNcCSSOX9RYW0=
 github.com/luxfi/atomic v1.0.0 h1:xUV60MuzRvXngaQ1sM0yVC2v4TRoLlUGkkH7M9PS4yw=
@@ -897,6 +899,8 @@ github.com/luxfi/container v0.0.4 h1:BXhF82WyfqVP5mjlNcr7tP0Fcnvl0Ap1rkiu+rq5XuM
 github.com/luxfi/container v0.0.4/go.mod h1:Z3SpmMF5d4t77MM0nHYXURpn+EMVaeu1fhbd/3BGaek=
 github.com/luxfi/crypto v1.17.45 h1:uGK0y4+aLipE/M0YIQ5hcsWv0ZG0E4cPv03a94K/eLE=
 github.com/luxfi/crypto v1.17.45/go.mod h1:GnAkhQ7HNs3X0Tzx5nOONS3kl0yRmWHbDcRO5ffILsg=
+github.com/luxfi/crypto v1.19.0 h1:VtH6kvZrCEjCnkHPkhExDU+GJ0ZulYX4rnA+lXJdJHw=
+github.com/luxfi/crypto v1.19.0/go.mod h1:ee525i8Recbpb0jVTDZYZBr1MmvJ27OITJHZ/nlNMBw=
 github.com/luxfi/database v1.18.3 h1:gg+xwhKUxXa7fDoOD8IS91E71QqoEtcDCl2nfS61Jgg=
 github.com/luxfi/database v1.18.3/go.mod h1:sv0pYCGKlK1aNJTICxFUDpVWCJTigoLlshHmV/1pg7c=
 github.com/luxfi/edwards25519 v0.1.0 h1:YPoT831TZMslvNyy/KuTtpHi4BGZWgpwak06RCaYLzo=
