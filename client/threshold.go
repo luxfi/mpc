@@ -73,7 +73,22 @@ type Threshold interface {
 	GetSession(ctx context.Context, sessionID string) (*SignSession, error)
 
 	// Cancel cancels a pending session belonging to the caller's org.
-	// Idempotent on completed sessions.
+	//
+	// Scoping (MUST be enforced by the implementation):
+	//   - Derive orgID from ctx Claims; the caller does not supply it.
+	//   - SELECT-FOR-UPDATE the session row and verify session.org_id ==
+	//     ctx.OrgID before transitioning. Mismatch returns
+	//     ErrSessionNotFound — the same opaque response as a truly
+	//     unknown id, so a cross-org enumeration cannot distinguish
+	//     "exists, not yours" from "does not exist".
+	//   - The session-state transition (pending → cancelled) MUST be a
+	//     row-level CAS with the org predicate inside the WHERE so a
+	//     concurrent legitimate cancel from the right org cannot lose
+	//     to a spoofed cross-org call.
+	//
+	// Idempotent on already-cancelled sessions for the SAME org; cross-
+	// org cancellation returns ErrSessionNotFound even if the session
+	// is already cancelled (no oracle leak via repeat-cancel semantics).
 	Cancel(ctx context.Context, sessionID string) error
 }
 
