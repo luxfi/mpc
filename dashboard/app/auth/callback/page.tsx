@@ -22,7 +22,7 @@ function CallbackInner() {
     }
 
     // Implicit flow: access_token may be in the hash fragment or query string
-    // (Casdoor returns it in the query string, standard OAuth2 uses hash)
+    // (Hanzo IAM returns it in the query string, standard OAuth2 uses hash)
     const hash = window.location.hash.substring(1)
     const hashParams = new URLSearchParams(hash)
     const accessToken = hashParams.get('access_token') ?? searchParams.get('access_token')
