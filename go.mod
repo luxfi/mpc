@@ -30,7 +30,7 @@ require (
 	github.com/hanzoai/dbx v1.13.0
 	github.com/hanzoai/orm v0.4.0
 	github.com/hashicorp/consul/api v1.33.7
-	github.com/luxfi/crypto v1.17.45
+	github.com/luxfi/crypto v1.19.0
 	github.com/luxfi/database v1.18.3
 	github.com/luxfi/fhe v1.7.7
 	github.com/luxfi/hsm v1.1.3
@@ -144,6 +144,7 @@ require (
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/klauspost/crc32 v1.3.0 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
+	github.com/luxfi/accel v1.0.7 // indirect
 	github.com/luxfi/age v1.4.0 // indirect
 	github.com/luxfi/atomic v1.0.0 // indirect
 	github.com/luxfi/cache v1.2.1 // indirect
