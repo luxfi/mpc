@@ -14,13 +14,13 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// ValidatorKeySet holds MPC wallet references for a validator's BLS and Ringtail keys.
+// ValidatorKeySet holds MPC wallet references for a validator's BLS and Corona keys.
 type ValidatorKeySet struct {
 	ValidatorID       string    `json:"validatorId"`
 	BLSWalletID       string    `json:"blsWalletId"`
-	RingtailWalletID  string    `json:"ringtailWalletId"`
+	CoronaWalletID  string    `json:"coronaWalletId"`
 	BLSPublicKey      string    `json:"blsPublicKey"`
-	RingtailPublicKey string    `json:"ringtailPublicKey"`
+	CoronaPublicKey string    `json:"coronaPublicKey"`
 	Threshold         int       `json:"threshold"`
 	Parties           int       `json:"parties"`
 	Status            string    `json:"status"`
@@ -100,8 +100,8 @@ func (s *Server) handleKMSGenerate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ringtailWalletID := fmt.Sprintf("validator-%s-ringtail", req.ValidatorID)
-	ringtailResult, err := s.mpc.TriggerKeygen(orgID, ringtailWalletID)
+	coronaWalletID := fmt.Sprintf("validator-%s-corona", req.ValidatorID)
+	coronaResult, err := s.mpc.TriggerKeygen(orgID, coronaWalletID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -111,9 +111,9 @@ func (s *Server) handleKMSGenerate(w http.ResponseWriter, r *http.Request) {
 	ks := &ValidatorKeySet{
 		ValidatorID:       req.ValidatorID,
 		BLSWalletID:       blsResult.WalletID,
-		RingtailWalletID:  ringtailResult.WalletID,
+		CoronaWalletID:  coronaResult.WalletID,
 		BLSPublicKey:      blsResult.ECDSAPubKey,
-		RingtailPublicKey: ringtailResult.EDDSAPubKey,
+		CoronaPublicKey: coronaResult.EDDSAPubKey,
 		Threshold:         req.Threshold,
 		Parties:           req.Parties,
 		Status:            "active",
@@ -188,10 +188,10 @@ func (s *Server) handleKMSSign(w http.ResponseWriter, r *http.Request) {
 	switch req.KeyType {
 	case "bls":
 		walletID = ks.BLSWalletID
-	case "ringtail":
-		walletID = ks.RingtailWalletID
+	case "corona":
+		walletID = ks.CoronaWalletID
 	default:
-		writeError(w, http.StatusBadRequest, "key_type must be 'bls' or 'ringtail'")
+		writeError(w, http.StatusBadRequest, "key_type must be 'bls' or 'corona'")
 		return
 	}
 
@@ -233,8 +233,8 @@ func (s *Server) handleKMSRotate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, fmt.Sprintf("bls reshare: %v", err))
 		return
 	}
-	if err := s.mpc.TriggerReshare(orgID, ks.RingtailWalletID, req.NewThreshold, req.NewParticipants); err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Sprintf("ringtail reshare: %v", err))
+	if err := s.mpc.TriggerReshare(orgID, ks.CoronaWalletID, req.NewThreshold, req.NewParticipants); err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("corona reshare: %v", err))
 		return
 	}
 

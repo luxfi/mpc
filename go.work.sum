@@ -562,6 +562,7 @@ github.com/luxfi/protocol v0.0.2/go.mod h1:Yjn2VRwn5PXim0+JTalAyrVG6YbmuSnYOfeUX
 github.com/luxfi/pubsub v1.0.0/go.mod h1:lCVBPBK/fhD0Ffg57E9R44CEI6Bo1fqb9ISJrBlj4ug=
 github.com/luxfi/qzmq v0.1.4/go.mod h1:PxxnNCYUKvY/lVfPh2q84niDBlOLxkCbfN0h3oSh1+U=
 github.com/luxfi/resource v0.0.1/go.mod h1:wWpZktciYwIi6RNqA+fHwzmPrUJa7PRX7urfwT+spRE=
+github.com/luxfi/ringtail v0.2.0/go.mod h1:SZ+aDLUdfSAtaTRaaYzeDZ5DNQiLaOCelSaIGjL21R0=
 github.com/luxfi/rpc v1.0.0/go.mod h1:dhxzM5rFqNpEOOHB7+8YBQ9d/V4haa6/id9AQTIIJvQ=
 github.com/luxfi/runtime v1.0.0/go.mod h1:lCoz8vCfR4ZU0GNxe0VdHEdq8G0W7rKzQpTnXvew/dM=
 github.com/luxfi/runtime v1.0.1/go.mod h1:2hBKjzbEeE4dzrhUKH8dqkRgLEyiXz6GmuVusy3vJMs=
