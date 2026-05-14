@@ -785,7 +785,7 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 	// consumed by teleport/mpc and any other client that speaks the
 	// threshold bus. Pulsar/Corona slots return a typed
 	// "not yet implemented" error pending stable wire encodings in
-	// luxfi/corona and luxfi/ringtail (Red HIGH B2).
+	// luxfi/corona (Red HIGH B2).
 	//
 	// The dispatcher carries zero protocol policy on purpose: profile
 	// gating and audit live on the API surface above. Auth and bind
