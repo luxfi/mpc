@@ -13,7 +13,7 @@ import "errors"
 // party stores the full master key, PartialDecrypt returns an HMAC tag, and
 // CombineShares ignores partials and runs single-party decryption. The
 // upstream package panics at every entry point unless
-// LUX_ALLOW_FAKE_TFHE_FOR_TESTING_ONLY=1 is set, by design.
+// ALLOW_FAKE_TFHE_FOR_TESTING_ONLY=1 is set, by design.
 //
 // Real-threshold wiring (luxfi/lattice Shamir/LWE) is tracked as a separate
 // multi-week task per lps/LP-137-TFHE-REAL-THRESHOLD-SPEC.md §2.6. Until that
