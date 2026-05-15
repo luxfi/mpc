@@ -128,7 +128,7 @@ the Hanzo HTTP contract.
 | 8.3 | TypeScript / JS SDK | yes | yes — `ui/src/lib/api.ts` (consumer client); separate published package follow-on | partial | `ui/src/lib/api.ts` | P1 | small (extract package) |
 | 8.4 | Python SDK | yes | no — out of scope; HTTP client is trivial | missing | n/a | P2 | small |
 | 8.5 | .NET SDK | yes | no — out of scope | missing | n/a | P2 | small |
-| 8.6 | Sandbox env (testnet) | yes | yes — `LUX_MPC_MODE=consensus` with devnet validators | shipped | `cmd/mpcd/main.go` | P0 | shipped |
+| 8.6 | Sandbox env (testnet) | yes | yes — `MODE=consensus` with devnet validators | shipped | `cmd/mpcd/main.go` | P0 | shipped |
 | 8.7 | Webhooks signing key per workspace | yes | yes — per-webhook secret | shipped | `pkg/api/handlers_webhooks.go` | P0 | shipped |
 
 ## 9. Network / chains

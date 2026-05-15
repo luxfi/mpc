@@ -287,9 +287,9 @@ event_initiator_pubkey: "hex-encoded-pubkey"
 ```
 
 ### Environment Variables
-- `LUX_MPC_CONFIG` - Path to config.yaml
-- `LUX_MPC_BACKUP` - Backup file identifier
-- `LUX_MPC_MODE` - "consensus" (new) or "legacy" (NATS/Consul)
+- `MPC_CONFIG` - Path to config.yaml
+- `LUX_MPC_BACKUP` - Backup file magic (on-disk format identifier; NOT an env var)
+- `MODE` - "consensus" (new) or "legacy" (NATS/Consul) (Viper config key `mode`, override via env)
 
 ## /v1/mpc/* Spec Surface (Liquidity MPC API)
 
