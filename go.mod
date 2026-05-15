@@ -37,7 +37,7 @@ require (
 	github.com/luxfi/lattice/v7 v7.1.0
 	github.com/luxfi/log v1.4.1
 	github.com/luxfi/metric v1.5.1
-	github.com/luxfi/threshold v1.6.10
+	github.com/luxfi/threshold v1.6.12
 	github.com/luxfi/zap v0.2.0
 	github.com/minio/minio-go/v7 v7.0.100
 	github.com/mitchellh/mapstructure v1.5.0
@@ -153,7 +153,7 @@ require (
 	github.com/luxfi/concurrent v0.0.3 // indirect
 	github.com/luxfi/constants v1.4.7 // indirect
 	github.com/luxfi/container v0.0.4 // indirect
-	github.com/luxfi/corona v0.3.1 // indirect
+	github.com/luxfi/corona v0.4.0 // indirect
 	github.com/luxfi/geth v1.16.79 // indirect
 	github.com/luxfi/ids v1.2.9 // indirect
 	github.com/luxfi/lens v0.1.3 // indirect
