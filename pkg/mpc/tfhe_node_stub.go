@@ -16,7 +16,7 @@ import "github.com/luxfi/mpc/pkg/messaging"
 
 // CreateTFHEKeyGenSession returns ErrTFHENotImplemented in default builds.
 // Compile with `-tags experimental_tfhe` to opt into the placeholder UNSAFE
-// primitive (which itself requires LUX_ALLOW_FAKE_TFHE_FOR_TESTING_ONLY=1 at
+// primitive (which itself requires ALLOW_FAKE_TFHE_FOR_TESTING_ONLY=1 at
 // runtime to avoid panicking — by design).
 func (p *Node) CreateTFHEKeyGenSession(
 	walletID string,
