@@ -4,7 +4,7 @@
 // TestMain opts the policy-package tests that touch
 // luxfi/threshold/protocols/tfhe (RealThresholdDecryptor wires its
 // PartialDecrypter / ShareAggregator) into the placeholder UNSAFE primitive
-// by setting LUX_ALLOW_FAKE_TFHE_FOR_TESTING_ONLY=1 for the duration of the
+// by setting ALLOW_FAKE_TFHE_FOR_TESTING_ONLY=1 for the duration of the
 // test binary. Production paths in luxfi/threshold/protocols/tfhe are
 // guarded by guardUnsafe() and panic when this env var is unset (by design).
 //
@@ -22,8 +22,8 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	if err := os.Setenv("LUX_ALLOW_FAKE_TFHE_FOR_TESTING_ONLY", "1"); err != nil {
-		panic("policy test setup: cannot set LUX_ALLOW_FAKE_TFHE_FOR_TESTING_ONLY: " + err.Error())
+	if err := os.Setenv("ALLOW_FAKE_TFHE_FOR_TESTING_ONLY", "1"); err != nil {
+		panic("policy test setup: cannot set ALLOW_FAKE_TFHE_FOR_TESTING_ONLY: " + err.Error())
 	}
 	os.Exit(m.Run())
 }

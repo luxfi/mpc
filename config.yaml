@@ -1,5 +1,5 @@
 # MPC Node Configuration
-# Env vars override everything: LUX_MPC_THRESHOLD, LUX_MPC_ENVIRONMENT, etc.
+# Env vars override everything: MPC_THRESHOLD, ENVIRONMENT, etc. (uppercased config keys via Viper AutomaticEnv).
 # Production: all secrets from KMS via --hsm-provider=env or --hsm-provider=aws
 
 mode: consensus
