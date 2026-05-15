@@ -137,7 +137,7 @@ sig, err := c.Sign("w-001", txHash, "secp256k1")
 
 ## Configuration
 
-`config.yaml` or environment variables (`LUX_MPC_*`):
+`config.yaml` or environment variables (config keys uppercased — Viper `AutomaticEnv`):
 
 ```yaml
 mode: consensus
