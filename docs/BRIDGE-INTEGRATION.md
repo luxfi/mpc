@@ -117,7 +117,7 @@ services:
   mpc-node-0:
     image: luxfi/lux-mpc:latest
     environment:
-      - LUX_MPC_CONFIG=/config/config.yaml
+      - MPC_CONFIG=/config/config.yaml
       - NODE_ID=0
     volumes:
       - ./config:/config
