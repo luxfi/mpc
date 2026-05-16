@@ -11,7 +11,7 @@ RUN pnpm build
 # Default entrypoint: mpcd. Override ENTRYPOINT / CMD with `mpc <cmd>` for CLI.
 # syntax=docker/dockerfile:1
 
-FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26.3-alpine AS builder
 # CGO toolchain — required by go-sqlite3 (mattn) so the wallet HTTP API
 # can open SQLite. Previously CGO=0 left the driver unregistered and
 # /v1/mpc/wallets returned 503; the workaround was seeding wallets into
