@@ -1,9 +1,15 @@
 # Stage 1: Build embedded admin UI
 FROM node:22-alpine AS ui
-RUN corepack enable && corepack prepare pnpm@latest --activate
+# Pin pnpm to a known-good version so corepack doesn't pull a tagged-but-unsigned
+# release. v10.x supports `onlyBuiltDependencies` in package.json and does not
+# fail the install step on ignored build scripts (newer v11 returns non-zero
+# unless explicitly approved, even in non-interactive Docker builds).
+RUN corepack enable && corepack prepare pnpm@10.16.1 --activate
 WORKDIR /ui
 COPY ui/package.json ui/pnpm-lock.yaml* ./
-RUN pnpm install --frozen-lockfile 2>/dev/null || pnpm install
+# `--frozen-lockfile` first so verifiable builds win; fall back to a
+# lockfile-updating install if the lock is missing.
+RUN pnpm install --frozen-lockfile || pnpm install --no-frozen-lockfile
 COPY ui/ .
 RUN pnpm build
 
