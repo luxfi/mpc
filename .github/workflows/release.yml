@@ -10,9 +10,12 @@ permissions:
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
         arch: [amd64, arm64]
-    runs-on: ${{ matrix.arch == 'arm64' && 'hanzo-build-linux-arm64' || 'hanzo-build-linux-amd64' }}
+    # All builds run on the amd64 self-hosted runner. arm64 cross-compiles
+    # via GOARCH; CGO_ENABLED=0 keeps it pure-Go (no cross-compiler needed).
+    runs-on: hanzo-build-linux-amd64
     env:
       GONOSUMCHECK: '*'
       GONOSUMDB: '*'
@@ -23,9 +26,10 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26.3'
-      - name: Build
+      - name: Build (cross-compile via GOARCH)
         run: |
-          GOWORK=off CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o mpcd ./cmd/mpcd/
+          GOWORK=off CGO_ENABLED=0 GOOS=linux GOARCH=${{ matrix.arch }} \
+            go build -trimpath -ldflags="-s -w" -o mpcd ./cmd/mpcd/
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
