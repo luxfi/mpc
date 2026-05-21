@@ -137,15 +137,14 @@ func TestZapAuthInvalidSignature(t *testing.T) {
 		"sub": "kms-pod-1",
 		"exp": float64(time.Now().Add(time.Hour).Unix()),
 	})
-	// Flip the last char of the signature segment so the ECDSA verify
-	// fails. Stay within base64 alphabet to keep parts decodable.
+	// Replace the entire signature segment with all-A's (decodable
+	// base64url but cryptographically guaranteed-invalid bytes). A
+	// single-char flip can be probabilistically valid for ECDSA ≈
+	// 1/2^6, which made this test flake in CI. Wiping the whole sig
+	// makes the verify failure deterministic.
 	parts := strings.Split(tok, ".")
-	last := parts[2]
-	flipped := last[:len(last)-1] + "a"
-	if flipped == last {
-		flipped = last[:len(last)-1] + "b"
-	}
-	bad := parts[0] + "." + parts[1] + "." + flipped
+	badSig := strings.Repeat("A", len(parts[2]))
+	bad := parts[0] + "." + parts[1] + "." + badSig
 	if _, err := v.Verify(context.Background(), bad); err == nil {
 		t.Fatalf("Verify: expected error on tampered signature")
 	}
