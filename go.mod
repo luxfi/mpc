@@ -36,7 +36,7 @@ require (
 	github.com/luxfi/hsm v1.1.3
 	github.com/luxfi/lattice/v7 v7.1.0
 	github.com/luxfi/log v1.4.1
-	github.com/luxfi/metric v1.5.1
+	github.com/luxfi/metric v1.5.7
 	github.com/luxfi/threshold v1.8.2
 	github.com/luxfi/zap v0.2.0
 	github.com/minio/minio-go/v7 v7.0.100
