@@ -43,7 +43,7 @@ func newTreasuryServer(t *testing.T) *Server {
 	t.Cleanup(func() { d.Close() })
 	return &Server{
 		db:  d,
-		mpc: &mockMPCBackend{keygenResult: &KeygenResult{WalletID: "wallet-t-1", EthAddress: "0xabc"}},
+		mpc: &mockMPCBackend{keygenResult: &KeygenResult{WalletID: "wallet-t-1", EVMAddress: "0xabc"}},
 	}
 }
 
