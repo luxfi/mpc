@@ -96,16 +96,9 @@ func (s *Server) handleCreateWallet(w http.ResponseWriter, r *http.Request) {
 	wal.Protocol = req.Protocol
 	wal.ECDSAPubkey = nilIfEmpty(result.ECDSAPubKey)
 	wal.EDDSAPubkey = nilIfEmpty(result.EDDSAPubKey)
-	// Backend result may populate either KeccakAddress (canonical) or
-	// EthAddress (deprecated). NormalizeAddresses on the result mirrors
-	// both before we copy. wal.NormalizeAddresses keeps both fields
-	// in sync on the persisted Wallet row.
-	result.NormalizeAddresses()
-	wal.KeccakAddress = nilIfEmpty(result.KeccakAddress)
-	wal.EthAddress = nilIfEmpty(result.EthAddress)
+	wal.EVMAddress = nilIfEmpty(result.EVMAddress)
 	wal.BtcAddress = nilIfEmpty(result.BtcAddress)
 	wal.SolAddress = nilIfEmpty(result.SolAddress)
-	wal.NormalizeAddresses()
 	wal.Threshold = status.Threshold
 	wal.Participants = participants
 	wal.Version = 1
@@ -143,19 +136,16 @@ func (s *Server) handleGetWalletAddresses(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Read both addresses; NormalizeAddresses fills the missing side.
-	wallet.NormalizeAddresses()
 	addresses := map[string]interface{}{}
-	if wallet.KeccakAddress != nil {
-		// The "ethereum"/"lux"/"xrp" map labels are user-facing display
-		// labels keyed by the chain name a client may know; the value
-		// is the Keccak-derived 20-byte address consumed by every
-		// EVM-compatible chain (plus xrp's secp256k1-derived form).
-		// Map labels are NOT decomplected here — they're per-chain
-		// display names, not internal naming.
-		addresses["ethereum"] = *wallet.KeccakAddress
-		addresses["lux"] = *wallet.KeccakAddress // EVM-compatible
-		addresses["xrp"] = *wallet.KeccakAddress // secp256k1-derived (simplified)
+	if wallet.EVMAddress != nil {
+		// "ethereum"/"lux"/"xrp" are user-facing display labels keyed by
+		// chain name; the value is the 20-byte EVM-runtime account
+		// address (the form consumed by every EVM-compatible chain plus
+		// xrp's secp256k1-derived form). Map labels are display names,
+		// not internal naming.
+		addresses["ethereum"] = *wallet.EVMAddress
+		addresses["lux"] = *wallet.EVMAddress // EVM-compatible
+		addresses["xrp"] = *wallet.EVMAddress // secp256k1-derived (simplified)
 	}
 	if wallet.BtcAddress != nil {
 		addresses["bitcoin"] = *wallet.BtcAddress
