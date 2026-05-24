@@ -177,7 +177,11 @@ func (s *Server) handleCreateTreasuryWallet(w http.ResponseWriter, r *http.Reque
 	tw.OrgID = orgID
 	tw.Name = req.Name
 	tw.WalletID = result.WalletID
+	// Mirror the canonical KeccakAddress and deprecated EthAddress.
+	result.NormalizeAddresses()
+	tw.KeccakAddress = nilIfEmpty(result.KeccakAddress)
 	tw.EthAddress = nilIfEmpty(result.EthAddress)
+	tw.NormalizeAddresses()
 	tw.Chain = req.Chain
 	tw.Signers = signers
 	tw.Tiers = tiers
@@ -483,9 +487,12 @@ func toTreasuryWalletResponse(tw *db.TreasuryWallet, outstanding []outstandingOp
 			DisplayName: s.DisplayName,
 		})
 	}
+	// NormalizeAddresses mirrors KeccakAddress and EthAddress; read
+	// the canonical field.
+	tw.NormalizeAddresses()
 	addr := ""
-	if tw.EthAddress != nil {
-		addr = *tw.EthAddress
+	if tw.KeccakAddress != nil {
+		addr = *tw.KeccakAddress
 	}
 	return treasuryWalletResponse{
 		WalletID:       tw.Id(),
