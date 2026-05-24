@@ -33,7 +33,7 @@ func (s *stubBackend) TriggerKeygen(orgID, walletID string) (*KeygenResult, erro
 		WalletID:    walletID,
 		ECDSAPubKey: "0202020202",
 		EDDSAPubKey: "0303030303",
-		EthAddress:  "0x0000000000000000000000000000000000000001",
+		EVMAddress:  "0x0000000000000000000000000000000000000001",
 	}, nil
 }
 func (s *stubBackend) TriggerSign(orgID, walletID string, payload []byte) (*SignResult, error) {
