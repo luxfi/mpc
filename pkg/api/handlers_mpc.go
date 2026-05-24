@@ -84,9 +84,10 @@ type walletResponse struct {
 }
 
 func toWalletResponse(w *db.Wallet, isDefault bool) walletResponse {
+	w.NormalizeAddresses()
 	addr := ""
-	if w.EthAddress != nil {
-		addr = *w.EthAddress
+	if w.KeccakAddress != nil {
+		addr = *w.KeccakAddress
 	} else if w.BtcAddress != nil {
 		addr = *w.BtcAddress
 	} else if w.SolAddress != nil {
@@ -178,9 +179,12 @@ func (s *Server) handleMpcCreateWallet(w http.ResponseWriter, r *http.Request) {
 	wal.Protocol = req.Protocol
 	wal.ECDSAPubkey = nilIfEmpty(result.ECDSAPubKey)
 	wal.EDDSAPubkey = nilIfEmpty(result.EDDSAPubKey)
+	result.NormalizeAddresses()
+	wal.KeccakAddress = nilIfEmpty(result.KeccakAddress)
 	wal.EthAddress = nilIfEmpty(result.EthAddress)
 	wal.BtcAddress = nilIfEmpty(result.BtcAddress)
 	wal.SolAddress = nilIfEmpty(result.SolAddress)
+	wal.NormalizeAddresses()
 	if status != nil {
 		wal.Threshold = status.Threshold
 	}
@@ -371,9 +375,10 @@ func (s *Server) handleMpcWalletBalances(w http.ResponseWriter, r *http.Request)
 	}
 	items := make([]map[string]interface{}, 0, len(wallets))
 	for _, wal := range wallets {
+		wal.NormalizeAddresses()
 		addr := ""
-		if wal.EthAddress != nil {
-			addr = *wal.EthAddress
+		if wal.KeccakAddress != nil {
+			addr = *wal.KeccakAddress
 		}
 		items = append(items, map[string]interface{}{
 			"walletId": wal.Id(),
