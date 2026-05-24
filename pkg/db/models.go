@@ -54,24 +54,32 @@ type Vault struct {
 func init() { orm.Register[Vault]("vault") }
 
 // Wallet holds an MPC key share group.
+//
+// KeccakAddress is the canonical JSON field; EthAddress is the
+// deprecated alias retained for downstream compat. Callers should
+// invoke NormalizeAddresses() before serialization (or
+// AfterRead / BeforeWrite hooks in the ORM) to keep both fields
+// in sync. The handler layer normalises automatically at every
+// /v1/mpc/wallets boundary.
 type Wallet struct {
 	orm.Model[Wallet]
-	VaultID      string   `json:"vaultId"`
-	OrgID        string   `json:"orgId"`
-	WalletID     string   `json:"walletId"`
-	Name         *string  `json:"name,omitempty"`
-	KeyType      string   `json:"keyType"`
-	Protocol     string   `json:"protocol,omitempty"` // cggmp21, frost, lss
-	ECDSAPubkey  *string  `json:"ecdsaPubkey,omitempty"`
-	EDDSAPubkey  *string  `json:"eddsaPubkey,omitempty"`
-	EthAddress   *string  `json:"ethAddress,omitempty"`
-	BtcAddress   *string  `json:"btcAddress,omitempty"`
-	SolAddress   *string  `json:"solAddress,omitempty"`
-	Threshold    int      `json:"threshold"`
-	Participants []string `json:"participants"`
-	Version      int      `json:"version"`
-	Status       string   `json:"status"`
-	CreatedBy    *string  `json:"createdBy,omitempty"`
+	VaultID       string   `json:"vaultId"`
+	OrgID         string   `json:"orgId"`
+	WalletID      string   `json:"walletId"`
+	Name          *string  `json:"name,omitempty"`
+	KeyType       string   `json:"keyType"`
+	Protocol      string   `json:"protocol,omitempty"` // cggmp21, frost, lss
+	ECDSAPubkey   *string  `json:"ecdsaPubkey,omitempty"`
+	EDDSAPubkey   *string  `json:"eddsaPubkey,omitempty"`
+	KeccakAddress *string  `json:"keccakAddress,omitempty"`
+	EthAddress    *string  `json:"ethAddress,omitempty"` // Deprecated: use KeccakAddress
+	BtcAddress    *string  `json:"btcAddress,omitempty"`
+	SolAddress    *string  `json:"solAddress,omitempty"`
+	Threshold     int      `json:"threshold"`
+	Participants  []string `json:"participants"`
+	Version       int      `json:"version"`
+	Status        string   `json:"status"`
+	CreatedBy     *string  `json:"createdBy,omitempty"`
 
 	// DefaultForUserID, when set, marks this wallet as the default wallet for a
 	// specific user within the org. There is at most one default wallet per
@@ -569,12 +577,16 @@ type TreasuryTier struct {
 }
 
 // TreasuryWallet is an org-scoped 3-of-5 governance MPC wallet.
+//
+// KeccakAddress is canonical; EthAddress is the deprecated alias.
+// See Wallet docstring for the migration plan.
 type TreasuryWallet struct {
 	orm.Model[TreasuryWallet]
 	OrgID           string            `json:"orgId"`
 	Name            string            `json:"name"`
 	WalletID        string            `json:"walletId"`               // underlying MPC wallet id
-	EthAddress      *string           `json:"ethAddress,omitempty"`
+	KeccakAddress   *string           `json:"keccakAddress,omitempty"`
+	EthAddress      *string           `json:"ethAddress,omitempty"` // Deprecated: use KeccakAddress
 	Chain           string            `json:"chain"`                  // "evm" default
 	Signers         []TreasurySigner  `json:"signers"`
 	Tiers           []TreasuryTier    `json:"tiers"`                  // sorted by threshold ascending on create
@@ -582,6 +594,33 @@ type TreasuryWallet struct {
 	PolicyID        string            `json:"policyId,omitempty"`     // backing Policy row with kind="treasury"
 	Status          string            `json:"status"`                 // active, frozen, archived
 	CreatedBy       *string           `json:"createdBy,omitempty"`
+}
+
+// NormalizeAddresses mirrors KeccakAddress and EthAddress on Wallet
+// so downstream readers using either field see the same value.
+// Callers should invoke after construction / read and before
+// JSON serialization. The handler layer does this at the
+// /v1/mpc/wallets and /v1/mpc/wallet boundaries.
+func (w *Wallet) NormalizeAddresses() {
+	mirrorAddrPtrPair(&w.KeccakAddress, &w.EthAddress)
+}
+
+// NormalizeAddresses mirrors KeccakAddress and EthAddress on TreasuryWallet.
+func (t *TreasuryWallet) NormalizeAddresses() {
+	mirrorAddrPtrPair(&t.KeccakAddress, &t.EthAddress)
+}
+
+// mirrorAddrPtrPair copies the non-nil side into the nil side so both
+// fields carry the same value after the call. No-op when both are nil
+// (the no-address case stays absent).
+func mirrorAddrPtrPair(keccak, eth **string) {
+	if *keccak == nil && *eth != nil {
+		v := **eth
+		*keccak = &v
+	} else if *eth == nil && *keccak != nil {
+		v := **keccak
+		*eth = &v
+	}
 }
 
 func init() { orm.Register[TreasuryWallet]("treasury-wallet") }
