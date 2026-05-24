@@ -98,9 +98,10 @@ func (s *Server) handleBridgeSign(w http.ResponseWriter, r *http.Request) {
 	}
 
 	mpcWalletID := bridgeWallet.WalletID
-	ethAddress := ""
-	if bridgeWallet.EthAddress != nil {
-		ethAddress = *bridgeWallet.EthAddress
+	bridgeWallet.NormalizeAddresses()
+	keccakAddress := ""
+	if bridgeWallet.KeccakAddress != nil {
+		keccakAddress = *bridgeWallet.KeccakAddress
 	}
 
 	// Hash the transaction ID (keccak256)
@@ -150,7 +151,7 @@ func (s *Server) handleBridgeSign(w http.ResponseWriter, r *http.Request) {
 		Data: &bridgeSignData{
 			FromTokenAddress: req.ToTokenAddress,
 			Signature:        sig,
-			MPCSigner:        ethAddress,
+			MPCSigner:        keccakAddress,
 			HashedTxID:       hashedTxID,
 			ToTokenAddrHash:  toTokenAddrHash,
 			Vault:            false,
