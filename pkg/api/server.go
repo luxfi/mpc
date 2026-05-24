@@ -32,31 +32,17 @@ type MPCBackend interface {
 
 // KeygenResult is the backend response from a keygen operation.
 //
-// KeccakAddress is the canonical JSON field for the 20-byte
-// Keccak-derived address (the EVM-runtime address format). EthAddress
-// is the deprecated alias retained so existing KMS / dashboard
-// consumers don't break in one wave. Backends populate both fields
-// with the same value; handlers in this package keep them in sync.
+// EVMAddress is the canonical 20-byte EVM-runtime account address —
+// the format consumed by every EVM-compatible chain. The derivation
+// hashes the secp256k1 pubkey with Keccak256 — that's HOW. The value
+// IS "EVM-runtime account address" — that's WHAT.
 type KeygenResult struct {
-	WalletID      string `json:"wallet_id"`
-	ECDSAPubKey   string `json:"ecdsa_pub_key"`
-	EDDSAPubKey   string `json:"eddsa_pub_key"`
-	KeccakAddress string `json:"keccak_address,omitempty"`
-	EthAddress    string `json:"eth_address,omitempty"` // Deprecated: use KeccakAddress
-	BtcAddress    string `json:"btc_address,omitempty"`
-	SolAddress    string `json:"sol_address,omitempty"`
-}
-
-// NormalizeAddresses mirrors KeccakAddress and EthAddress so callers
-// reading either field see the same value. Backends construct
-// KeygenResult with one or the other; this method canonicalizes
-// before serialization.
-func (k *KeygenResult) NormalizeAddresses() {
-	if k.KeccakAddress == "" && k.EthAddress != "" {
-		k.KeccakAddress = k.EthAddress
-	} else if k.EthAddress == "" && k.KeccakAddress != "" {
-		k.EthAddress = k.KeccakAddress
-	}
+	WalletID    string `json:"wallet_id"`
+	ECDSAPubKey string `json:"ecdsa_pub_key"`
+	EDDSAPubKey string `json:"eddsa_pub_key"`
+	EVMAddress  string `json:"evm_address,omitempty"`
+	BtcAddress  string `json:"btc_address,omitempty"`
+	SolAddress  string `json:"sol_address,omitempty"`
 }
 
 type SignResult struct {

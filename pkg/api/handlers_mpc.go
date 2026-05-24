@@ -84,10 +84,9 @@ type walletResponse struct {
 }
 
 func toWalletResponse(w *db.Wallet, isDefault bool) walletResponse {
-	w.NormalizeAddresses()
 	addr := ""
-	if w.KeccakAddress != nil {
-		addr = *w.KeccakAddress
+	if w.EVMAddress != nil {
+		addr = *w.EVMAddress
 	} else if w.BtcAddress != nil {
 		addr = *w.BtcAddress
 	} else if w.SolAddress != nil {
@@ -179,12 +178,9 @@ func (s *Server) handleMpcCreateWallet(w http.ResponseWriter, r *http.Request) {
 	wal.Protocol = req.Protocol
 	wal.ECDSAPubkey = nilIfEmpty(result.ECDSAPubKey)
 	wal.EDDSAPubkey = nilIfEmpty(result.EDDSAPubKey)
-	result.NormalizeAddresses()
-	wal.KeccakAddress = nilIfEmpty(result.KeccakAddress)
-	wal.EthAddress = nilIfEmpty(result.EthAddress)
+	wal.EVMAddress = nilIfEmpty(result.EVMAddress)
 	wal.BtcAddress = nilIfEmpty(result.BtcAddress)
 	wal.SolAddress = nilIfEmpty(result.SolAddress)
-	wal.NormalizeAddresses()
 	if status != nil {
 		wal.Threshold = status.Threshold
 	}
@@ -375,10 +371,9 @@ func (s *Server) handleMpcWalletBalances(w http.ResponseWriter, r *http.Request)
 	}
 	items := make([]map[string]interface{}, 0, len(wallets))
 	for _, wal := range wallets {
-		wal.NormalizeAddresses()
 		addr := ""
-		if wal.KeccakAddress != nil {
-			addr = *wal.KeccakAddress
+		if wal.EVMAddress != nil {
+			addr = *wal.EVMAddress
 		}
 		items = append(items, map[string]interface{}{
 			"walletId": wal.Id(),
@@ -400,11 +395,11 @@ func (s *Server) handleMpcBalancesByAddress(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// Try ETH, BTC, SOL address fields in turn. Any match scoped to caller's
-	// org resolves the address; otherwise 404 (never leak "address unknown
-	// globally" vs "address not in your org").
+	// Try EVM, BTC, SOL address fields in turn. Any match scoped to
+	// caller's org resolves the address; otherwise 404 (never leak
+	// "address unknown globally" vs "address not in your org").
 	q := orm.TypedQuery[db.Wallet](s.db.ORM).Filter("orgId=", orgID).Limit(1)
-	wallets, _ := q.Filter("ethAddress=", addr).GetAll(r.Context())
+	wallets, _ := q.Filter("evmAddress=", addr).GetAll(r.Context())
 	if len(wallets) == 0 {
 		wallets, _ = orm.TypedQuery[db.Wallet](s.db.ORM).
 			Filter("orgId=", orgID).Filter("btcAddress=", addr).Limit(1).GetAll(r.Context())
@@ -455,8 +450,8 @@ func (s *Server) handleMpcCryptoWallet(w http.ResponseWriter, r *http.Request) {
 		}
 		network = "solana"
 	default:
-		if wal.EthAddress != nil {
-			addr = *wal.EthAddress
+		if wal.EVMAddress != nil {
+			addr = *wal.EVMAddress
 		}
 		network = "ethereum"
 	}
