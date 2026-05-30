@@ -31,7 +31,12 @@ RUN go mod download
 COPY . .
 COPY --from=ui /ui/dist ./ui/dist/
 
-ENV GOEXPERIMENT=runtimesecret
+# Per SCALE_STANDARD.md §2 (https://github.com/hanzoai/hips/blob/main/docs/SCALE_STANDARD.md)
+# — every Go production Dockerfile that emits JSON to a client builds
+# with GOEXPERIMENT=jsonv2 (composed with runtimesecret for the MPC
+# data-plane secrecy guarantees). Verified -12% time / -23% allocs on
+# the edge POST roundtrip vs encoding/json v1.
+ENV GOEXPERIMENT=runtimesecret,jsonv2
 RUN CGO_ENABLED=1 GOOS=linux go build -ldflags="-s -w -linkmode external -extldflags '-static'" -tags 'sqlite_omit_load_extension' -o mpcd ./cmd/mpcd
 RUN CGO_ENABLED=1 GOOS=linux go build -ldflags="-s -w -linkmode external -extldflags '-static'" -tags 'sqlite_omit_load_extension' -o mpc  ./cmd/mpc
 
