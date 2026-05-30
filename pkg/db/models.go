@@ -54,6 +54,11 @@ type Vault struct {
 func init() { orm.Register[Vault]("vault") }
 
 // Wallet holds an MPC key share group.
+//
+// EVMAddress is the canonical 20-byte EVM-runtime account address —
+// the format consumed by every EVM-compatible chain. The derivation
+// hashes the secp256k1 pubkey with Keccak256 — that's HOW. The value
+// IS "EVM-runtime account address" — that's WHAT.
 type Wallet struct {
 	orm.Model[Wallet]
 	VaultID      string   `json:"vaultId"`
@@ -64,7 +69,7 @@ type Wallet struct {
 	Protocol     string   `json:"protocol,omitempty"` // cggmp21, frost, lss
 	ECDSAPubkey  *string  `json:"ecdsaPubkey,omitempty"`
 	EDDSAPubkey  *string  `json:"eddsaPubkey,omitempty"`
-	EthAddress   *string  `json:"ethAddress,omitempty"`
+	EVMAddress   *string  `json:"evmAddress,omitempty"`
 	BtcAddress   *string  `json:"btcAddress,omitempty"`
 	SolAddress   *string  `json:"solAddress,omitempty"`
 	Threshold    int      `json:"threshold"`
@@ -569,19 +574,23 @@ type TreasuryTier struct {
 }
 
 // TreasuryWallet is an org-scoped 3-of-5 governance MPC wallet.
+//
+// EVMAddress is the canonical 20-byte EVM-runtime account address —
+// the format consumed by every EVM-compatible chain. See Wallet
+// docstring for the naming rationale.
 type TreasuryWallet struct {
 	orm.Model[TreasuryWallet]
-	OrgID           string            `json:"orgId"`
-	Name            string            `json:"name"`
-	WalletID        string            `json:"walletId"`               // underlying MPC wallet id
-	EthAddress      *string           `json:"ethAddress,omitempty"`
-	Chain           string            `json:"chain"`                  // "evm" default
-	Signers         []TreasurySigner  `json:"signers"`
-	Tiers           []TreasuryTier    `json:"tiers"`                  // sorted by threshold ascending on create
-	RegulatorShard  bool              `json:"regulatorShard"`
-	PolicyID        string            `json:"policyId,omitempty"`     // backing Policy row with kind="treasury"
-	Status          string            `json:"status"`                 // active, frozen, archived
-	CreatedBy       *string           `json:"createdBy,omitempty"`
+	OrgID          string           `json:"orgId"`
+	Name           string           `json:"name"`
+	WalletID       string           `json:"walletId"` // underlying MPC wallet id
+	EVMAddress     *string          `json:"evmAddress,omitempty"`
+	Chain          string           `json:"chain"` // "evm" default
+	Signers        []TreasurySigner `json:"signers"`
+	Tiers          []TreasuryTier   `json:"tiers"` // sorted by threshold ascending on create
+	RegulatorShard bool             `json:"regulatorShard"`
+	PolicyID       string           `json:"policyId,omitempty"` // backing Policy row with kind="treasury"
+	Status         string           `json:"status"`             // active, frozen, archived
+	CreatedBy      *string          `json:"createdBy,omitempty"`
 }
 
 func init() { orm.Register[TreasuryWallet]("treasury-wallet") }
