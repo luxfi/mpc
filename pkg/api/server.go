@@ -30,11 +30,17 @@ type MPCBackend interface {
 	GetClusterStatus() *ClusterStatus
 }
 
+// KeygenResult is the backend response from a keygen operation.
+//
+// EVMAddress is the canonical 20-byte EVM-runtime account address —
+// the format consumed by every EVM-compatible chain. The derivation
+// hashes the secp256k1 pubkey with Keccak256 — that's HOW. The value
+// IS "EVM-runtime account address" — that's WHAT.
 type KeygenResult struct {
 	WalletID    string `json:"wallet_id"`
 	ECDSAPubKey string `json:"ecdsa_pub_key"`
 	EDDSAPubKey string `json:"eddsa_pub_key"`
-	EthAddress  string `json:"eth_address"`
+	EVMAddress  string `json:"evm_address,omitempty"`
 	BtcAddress  string `json:"btc_address,omitempty"`
 	SolAddress  string `json:"sol_address,omitempty"`
 }
