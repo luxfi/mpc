@@ -177,7 +177,7 @@ func (s *Server) handleCreateTreasuryWallet(w http.ResponseWriter, r *http.Reque
 	tw.OrgID = orgID
 	tw.Name = req.Name
 	tw.WalletID = result.WalletID
-	tw.EthAddress = nilIfEmpty(result.EthAddress)
+	tw.EVMAddress = nilIfEmpty(result.EVMAddress)
 	tw.Chain = req.Chain
 	tw.Signers = signers
 	tw.Tiers = tiers
@@ -484,8 +484,8 @@ func toTreasuryWalletResponse(tw *db.TreasuryWallet, outstanding []outstandingOp
 		})
 	}
 	addr := ""
-	if tw.EthAddress != nil {
-		addr = *tw.EthAddress
+	if tw.EVMAddress != nil {
+		addr = *tw.EVMAddress
 	}
 	return treasuryWalletResponse{
 		WalletID:       tw.Id(),
