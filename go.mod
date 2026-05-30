@@ -30,14 +30,14 @@ require (
 	github.com/hanzoai/dbx v1.16.0
 	github.com/hanzoai/orm v0.5.2
 	github.com/hashicorp/consul/api v1.33.7
-	github.com/luxfi/crypto v1.19.0
+	github.com/luxfi/crypto v1.19.10
 	github.com/luxfi/database v1.18.3
-	github.com/luxfi/fhe v1.7.7
+	github.com/luxfi/fhe v1.8.2
 	github.com/luxfi/hsm v1.1.3
 	github.com/luxfi/lattice/v7 v7.1.0
 	github.com/luxfi/log v1.4.1
-	github.com/luxfi/metric v1.5.1
-	github.com/luxfi/threshold v1.6.12
+	github.com/luxfi/metric v1.5.7
+	github.com/luxfi/threshold v1.8.2
 	github.com/luxfi/zap v0.2.0
 	github.com/minio/minio-go/v7 v7.0.100
 	github.com/mitchellh/mapstructure v1.5.0
@@ -69,7 +69,6 @@ require (
 	github.com/Azure/azure-sdk-for-go/sdk/internal v1.11.2 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/internal v1.2.0 // indirect
 	github.com/AzureAD/microsoft-authentication-library-for-go v1.6.0 // indirect
-	github.com/ProjectZKM/Ziren/crates/go-runtime/zkvm_runtime v0.0.0-20260311194731-d5b7577c683d // indirect
 	github.com/agl/ed25519 v0.0.0-20200225211852-fd4d107ace12 // indirect
 	github.com/ansel1/merry v1.8.1 // indirect
 	github.com/ansel1/merry/v2 v2.2.2 // indirect
@@ -144,7 +143,7 @@ require (
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/klauspost/crc32 v1.3.0 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
-	github.com/luxfi/accel v1.0.7 // indirect
+	github.com/luxfi/accel v1.1.2 // indirect
 	github.com/luxfi/age v1.4.0 // indirect
 	github.com/luxfi/atomic v1.0.0 // indirect
 	github.com/luxfi/cache v1.2.1 // indirect
@@ -153,14 +152,15 @@ require (
 	github.com/luxfi/concurrent v0.0.3 // indirect
 	github.com/luxfi/constants v1.4.7 // indirect
 	github.com/luxfi/container v0.0.4 // indirect
-	github.com/luxfi/corona v0.4.0 // indirect
+	github.com/luxfi/corona v0.4.1 // indirect
 	github.com/luxfi/geth v1.16.79 // indirect
 	github.com/luxfi/ids v1.2.9 // indirect
-	github.com/luxfi/lens v0.1.3 // indirect
-	github.com/luxfi/math v1.4.0 // indirect
+	github.com/luxfi/lens v0.1.4 // indirect
+	github.com/luxfi/math v1.4.1 // indirect
 	github.com/luxfi/math/big v0.1.0 // indirect
 	github.com/luxfi/mdns v0.1.0 // indirect
 	github.com/luxfi/mock v0.1.1 // indirect
+	github.com/luxfi/pq v1.0.3 // indirect
 	github.com/luxfi/sampler v1.0.0 // indirect
 	github.com/luxfi/utils v1.1.4 // indirect
 	github.com/luxfi/zapdb v1.8.0 // indirect

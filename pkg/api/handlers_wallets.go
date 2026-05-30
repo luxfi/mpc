@@ -96,7 +96,7 @@ func (s *Server) handleCreateWallet(w http.ResponseWriter, r *http.Request) {
 	wal.Protocol = req.Protocol
 	wal.ECDSAPubkey = nilIfEmpty(result.ECDSAPubKey)
 	wal.EDDSAPubkey = nilIfEmpty(result.EDDSAPubKey)
-	wal.EthAddress = nilIfEmpty(result.EthAddress)
+	wal.EVMAddress = nilIfEmpty(result.EVMAddress)
 	wal.BtcAddress = nilIfEmpty(result.BtcAddress)
 	wal.SolAddress = nilIfEmpty(result.SolAddress)
 	wal.Threshold = status.Threshold
@@ -137,10 +137,15 @@ func (s *Server) handleGetWalletAddresses(w http.ResponseWriter, r *http.Request
 	}
 
 	addresses := map[string]interface{}{}
-	if wallet.EthAddress != nil {
-		addresses["ethereum"] = *wallet.EthAddress
-		addresses["lux"] = *wallet.EthAddress // EVM-compatible
-		addresses["xrp"] = *wallet.EthAddress // secp256k1-derived (simplified)
+	if wallet.EVMAddress != nil {
+		// "ethereum"/"lux"/"xrp" are user-facing display labels keyed by
+		// chain name; the value is the 20-byte EVM-runtime account
+		// address (the form consumed by every EVM-compatible chain plus
+		// xrp's secp256k1-derived form). Map labels are display names,
+		// not internal naming.
+		addresses["ethereum"] = *wallet.EVMAddress
+		addresses["lux"] = *wallet.EVMAddress // EVM-compatible
+		addresses["xrp"] = *wallet.EVMAddress // secp256k1-derived (simplified)
 	}
 	if wallet.BtcAddress != nil {
 		addresses["bitcoin"] = *wallet.BtcAddress
