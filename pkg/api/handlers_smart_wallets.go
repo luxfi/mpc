@@ -40,8 +40,8 @@ func (s *Server) handleDeploySmartWallet(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	mpcEOA := ""
-	if wallet.EthAddress != nil {
-		mpcEOA = *wallet.EthAddress
+	if wallet.EVMAddress != nil {
+		mpcEOA = *wallet.EVMAddress
 	}
 	if mpcEOA == "" {
 		writeError(w, http.StatusBadRequest, "wallet has no Ethereum address (keygen not complete)")
