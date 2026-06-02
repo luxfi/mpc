@@ -18,7 +18,7 @@ import (
 // GCPKMSProvider produces ECDSA-P256 approval signatures via Google Cloud
 // KMS asymmetric keys. Mirrors AWSKMSProvider; key resource name format:
 //
-//   projects/{project}/locations/{location}/keyRings/{keyRing}/cryptoKeys/{key}/cryptoKeyVersions/{version}
+//	projects/{project}/locations/{location}/keyRings/{keyRing}/cryptoKeys/{key}/cryptoKeyVersions/{version}
 type GCPKMSProvider struct {
 	signer luxhsm.Signer
 
