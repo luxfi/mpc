@@ -445,4 +445,3 @@ func (s *SQLiteMeta) Audit(entry AuditEntry) error {
 func (s *SQLiteMeta) Close() error {
 	return s.db.Close()
 }
-

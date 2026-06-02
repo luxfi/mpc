@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/go-sev-guest/verify/trust"
 	test "github.com/google/go-sev-guest/testing"
+	"github.com/google/go-sev-guest/verify/trust"
 )
 
 // sevSnpAttestationMilan is a real AMD Milan SEV-SNP attestation report

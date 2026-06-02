@@ -21,7 +21,7 @@ import (
 //
 // Configuration:
 //
-//   region — AWS region (e.g. "us-east-1"). Defaults to AWS_REGION env.
+//	region — AWS region (e.g. "us-east-1"). Defaults to AWS_REGION env.
 //
 // Approver enrollment is explicit: callers must register each approver's
 // (approverID -> KMS key ARN, P-256 public key, optional attestation)

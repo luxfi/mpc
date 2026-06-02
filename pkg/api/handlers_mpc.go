@@ -629,13 +629,13 @@ func (s *Server) handleBiometricEnroll(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		CredentialID         string `json:"credentialId"`
-		SignedResponse       string `json:"signedResponse"`
-		AuthenticatorData    string `json:"authenticatorData"`
-		ClientDataJSON       string `json:"clientDataJSON"`
-		PublicKey            string `json:"publicKey"`
-		Modality             string `json:"modality"`
-		LivenessAttestation  string `json:"livenessAttestation"` // base64 envelope
+		CredentialID        string `json:"credentialId"`
+		SignedResponse      string `json:"signedResponse"`
+		AuthenticatorData   string `json:"authenticatorData"`
+		ClientDataJSON      string `json:"clientDataJSON"`
+		PublicKey           string `json:"publicKey"`
+		Modality            string `json:"modality"`
+		LivenessAttestation string `json:"livenessAttestation"` // base64 envelope
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")

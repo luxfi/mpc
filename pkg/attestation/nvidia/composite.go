@@ -61,28 +61,28 @@ func (t TEEKind) String() string {
 // not retained here; this struct holds only the post-verification
 // projection that downstream gates need.
 type CPUQuote struct {
-	Kind             TEEKind   // SEV-SNP or TDX
-	Verified         bool      // verifier confirmed the signature chain
-	MeasurementHash  [32]byte  // launch measurement (MRTD or LAUNCH_MEASUREMENT)
-	ReportData       [32]byte  // freshness binding (e.g. nonce hash)
-	VerifiedAt       time.Time // when the verifier signed off
-	VendorCertChain  [][]byte  // AMD or Intel vendor cert chain (DER)
+	Kind            TEEKind   // SEV-SNP or TDX
+	Verified        bool      // verifier confirmed the signature chain
+	MeasurementHash [32]byte  // launch measurement (MRTD or LAUNCH_MEASUREMENT)
+	ReportData      [32]byte  // freshness binding (e.g. nonce hash)
+	VerifiedAt      time.Time // when the verifier signed off
+	VendorCertChain [][]byte  // AMD or Intel vendor cert chain (DER)
 }
 
 // GPUEvidence is the verified output of an NVIDIA GPU attestation.
 // Populated by GPUReport.Parse + NRASClient.Verify + RIM.Match.
 type GPUEvidence struct {
-	UUID              string    // GPU UUID, e.g. "GPU-1234..."
-	DriverVersion     string    // e.g. "535.104.05"
-	VBIOSVersion      string    // e.g. "96.00.74.00.01"
-	Architecture      string    // "Hopper" | "Blackwell"
-	Verified          bool      // NRAS returned a valid token
-	NRASTokenHash     [32]byte  // sha256 of the NRAS token bytes
-	MeasurementRoot   [32]byte  // root over the measurement list
-	RIMMatched        bool      // every measurement matched the RIM
-	Nonce             [32]byte  // freshness nonce echoed in report
-	VerifiedAt        time.Time // when NRAS signed the token
-	NVSwitchVerified  bool      // multi-GPU NVSwitch attested (optional)
+	UUID             string    // GPU UUID, e.g. "GPU-1234..."
+	DriverVersion    string    // e.g. "535.104.05"
+	VBIOSVersion     string    // e.g. "96.00.74.00.01"
+	Architecture     string    // "Hopper" | "Blackwell"
+	Verified         bool      // NRAS returned a valid token
+	NRASTokenHash    [32]byte  // sha256 of the NRAS token bytes
+	MeasurementRoot  [32]byte  // root over the measurement list
+	RIMMatched       bool      // every measurement matched the RIM
+	Nonce            [32]byte  // freshness nonce echoed in report
+	VerifiedAt       time.Time // when NRAS signed the token
+	NVSwitchVerified bool      // multi-GPU NVSwitch attested (optional)
 }
 
 // VerifiedBundle binds a CPU TEE quote to a GPU evidence record
@@ -111,11 +111,11 @@ type VerifiedResult struct {
 
 // Errors returned by Verify, in the order they are checked.
 var (
-	ErrBundleMissingWorker = errors.New("nvidia: composite missing worker ID")
-	ErrBundleNoCPUQuote    = errors.New("nvidia: composite missing CPU quote")
-	ErrBundleBadCPU        = errors.New("nvidia: CPU quote not verified")
-	ErrBundleBadGPU        = errors.New("nvidia: GPU evidence not verified")
-	ErrBundleRIMMismatch   = errors.New("nvidia: RIM mismatch on GPU measurements")
+	ErrBundleMissingWorker  = errors.New("nvidia: composite missing worker ID")
+	ErrBundleNoCPUQuote     = errors.New("nvidia: composite missing CPU quote")
+	ErrBundleBadCPU         = errors.New("nvidia: CPU quote not verified")
+	ErrBundleBadGPU         = errors.New("nvidia: GPU evidence not verified")
+	ErrBundleRIMMismatch    = errors.New("nvidia: RIM mismatch on GPU measurements")
 	ErrBundleBindingMissing = errors.New("nvidia: CPU report_data does not bind GPU nonce")
 	ErrBundleStale          = errors.New("nvidia: composite older than freshness window")
 )
@@ -179,7 +179,8 @@ func (c *VerifiedBundle) Verify(now time.Time, freshness time.Duration) (Verifie
 // use this when constructing the CPU quote so the composite verifies.
 //
 // Layout: sha256( "luxfi/mpc/composite\x00" || workerID || "\x00" ||
-//                  gpuUUID || "\x00" || gpuNonce ).
+//
+//	gpuUUID || "\x00" || gpuNonce ).
 //
 // The leading domain string + null separators prevent cross-domain
 // reuse of the same hash (a SEV-SNP report bound this way cannot be

@@ -139,8 +139,8 @@ func (r *ComplianceRejection) Error() string { return "mpc: " + r.Reason }
 
 // SignResult is the immediate response.
 type SignResult struct {
-	SessionID  string
-	Signature  []byte
+	SessionID string
+	Signature []byte
 	// Status: pending | signed.
 	Status     string
 	ApprovalID string
