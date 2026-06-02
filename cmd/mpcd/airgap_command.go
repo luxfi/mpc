@@ -98,12 +98,12 @@ func airgapFIPSCheckCommand() *cli.Command {
 			}
 			provider := strings.ToLower(strings.TrimSpace(c.Args().Get(0)))
 			validated := map[string]string{
-				"aws":      "AWS KMS / CloudHSM, CMVP cert #4523 / #3380",
-				"gcp":      "Google Cloud HSM (Marvell LiquidSecurity), CMVP cert #4399",
-				"azure":    "Azure Key Vault Premium / Managed HSM, CMVP cert #4399 / #4153",
-				"yubihsm":  "YubiHSM 2 (FIPS firmware), CMVP cert #4148",
-				"pkcs11":   "validation depends on configured vendor library — verify CMVP listing",
-				"kmip":     "validation depends on configured KMS server — verify CMVP listing",
+				"aws":     "AWS KMS / CloudHSM, CMVP cert #4523 / #3380",
+				"gcp":     "Google Cloud HSM (Marvell LiquidSecurity), CMVP cert #4399",
+				"azure":   "Azure Key Vault Premium / Managed HSM, CMVP cert #4399 / #4153",
+				"yubihsm": "YubiHSM 2 (FIPS firmware), CMVP cert #4148",
+				"pkcs11":  "validation depends on configured vendor library — verify CMVP listing",
+				"kmip":    "validation depends on configured KMS server — verify CMVP listing",
 			}
 			if cert, ok := validated[provider]; ok {
 				fmt.Printf("OK: %s — %s\n", provider, cert)

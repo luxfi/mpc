@@ -13,11 +13,11 @@
 // PoA membership (n=1), HTTP control plane, and graceful shutdown.
 //
 // What this test covers:
-//   1. Build mpcd
-//   2. Start it with --node-id=solo --threshold=1 and no peers
-//   3. Wait for /healthz to report status=healthy + quorum=true
-//   4. Confirm the readyCount, threshold, and version fields
-//   5. Send SIGTERM and confirm clean exit
+//  1. Build mpcd
+//  2. Start it with --node-id=solo --threshold=1 and no peers
+//  3. Wait for /healthz to report status=healthy + quorum=true
+//  4. Confirm the readyCount, threshold, and version fields
+//  5. Send SIGTERM and confirm clean exit
 //
 // Keygen/signing are NOT exercised here. CGGMP21 and FROST require ≥2
 // parties to produce a signature share — a 1-of-1 ensemble is structurally

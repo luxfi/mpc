@@ -199,8 +199,8 @@ func (g *GCPProvider) kmsSign(ctx context.Context, message []byte) ([]byte, erro
 	crc := crc32.Checksum(message, crc32.MakeTable(crc32.Castagnoli))
 
 	result, err := g.kmsClient.AsymmetricSign(ctx, &kmspb.AsymmetricSignRequest{
-		Name: g.keyVersionName(),
-		Data: message,
+		Name:       g.keyVersionName(),
+		Data:       message,
 		DataCrc32C: &kmspb.Int64Value{Value: int64(crc)},
 	})
 	if err != nil {

@@ -13,17 +13,17 @@ import (
 //
 // Supported provider types:
 //
-//   ledger-enterprise — Ledger Enterprise (Vault) REST, ECDSA-P256 attestations
-//   ledger-device     — USB Ledger Nano via APDU, secp256k1 / Ed25519
-//   webauthn          — FIDO2 / passkey, ES256
-//   aws-kms           — AWS KMS asymmetric ECDSA via luxfi/hsm
-//   gcp-kms           — Google Cloud KMS via luxfi/hsm
-//   azure-keyvault    — Azure Key Vault via luxfi/hsm
-//   zymbit            — Zymbit SCM via luxfi/hsm
-//   yubihsm           — Yubico YubiHSM 2 via luxfi/hsm
-//   mldsa             — Post-quantum ML-DSA-65 via luxfi/hsm
-//   safe-multisig     — Gnosis Safe execTransaction, on-chain approval
-//   local-dev         — Software Ed25519 (test only; refuses production)
+//	ledger-enterprise — Ledger Enterprise (Vault) REST, ECDSA-P256 attestations
+//	ledger-device     — USB Ledger Nano via APDU, secp256k1 / Ed25519
+//	webauthn          — FIDO2 / passkey, ES256
+//	aws-kms           — AWS KMS asymmetric ECDSA via luxfi/hsm
+//	gcp-kms           — Google Cloud KMS via luxfi/hsm
+//	azure-keyvault    — Azure Key Vault via luxfi/hsm
+//	zymbit            — Zymbit SCM via luxfi/hsm
+//	yubihsm           — Yubico YubiHSM 2 via luxfi/hsm
+//	mldsa             — Post-quantum ML-DSA-65 via luxfi/hsm
+//	safe-multisig     — Gnosis Safe execTransaction, on-chain approval
+//	local-dev         — Software Ed25519 (test only; refuses production)
 //
 // Production safety: providers that hold a private key only acceptable in
 // non-prod environments (currently only "local-dev") refuse to start when

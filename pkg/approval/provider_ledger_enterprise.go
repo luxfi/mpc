@@ -26,18 +26,18 @@ import (
 //
 // Ledger Enterprise REST endpoints used:
 //
-//   POST /accounts/{accountId}/transactions             — propose tx
-//   GET  /accounts/{accountId}/transactions/{txId}      — poll status
-//   POST /accounts/{accountId}/transactions/{txId}/approve  — approve via PSD
+//	POST /accounts/{accountId}/transactions             — propose tx
+//	GET  /accounts/{accountId}/transactions/{txId}      — poll status
+//	POST /accounts/{accountId}/transactions/{txId}/approve  — approve via PSD
 //
 // Public docs: https://docs.ledger.com/enterprise
 //
 // Configuration:
 //
-//   endpoint    — Vault REST base URL (e.g. "https://vault.ledger-enterprise.example/api")
-//   api_key     — service-account API key (Bearer token)
-//   workspace   — workspace ID
-//   timeout     — HTTP request timeout (default 30s); approval polling timeout (default 30m)
+//	endpoint    — Vault REST base URL (e.g. "https://vault.ledger-enterprise.example/api")
+//	api_key     — service-account API key (Bearer token)
+//	workspace   — workspace ID
+//	timeout     — HTTP request timeout (default 30s); approval polling timeout (default 30m)
 //
 // Approver enrollment maps approverID -> Vault account ID + cached secp256k1
 // public key (Ledger Enterprise typically uses secp256k1 for transaction
@@ -169,14 +169,14 @@ func (p *LedgerEnterpriseProvider) GetPublicIdentity(_ context.Context, approver
 
 type leTransactionRequest struct {
 	Workspace string `json:"workspace"`
-	Type      string `json:"type"`            // "approval-attestation"
-	Digest    string `json:"digest"`          // base64 of intent digest
+	Type      string `json:"type"`   // "approval-attestation"
+	Digest    string `json:"digest"` // base64 of intent digest
 	Algorithm string `json:"signing_algorithm"`
 }
 
 type leTransactionResponse struct {
 	TxID   string `json:"transaction_id"`
-	Status string `json:"status"` // "pending", "approved", "rejected", "failed"
+	Status string `json:"status"`              // "pending", "approved", "rejected", "failed"
 	Sig    string `json:"signature,omitempty"` // base64 DER signature when approved
 	Error  string `json:"error,omitempty"`
 }

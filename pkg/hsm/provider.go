@@ -56,9 +56,9 @@ type Config struct {
 
 // FileConfig configures the local filesystem provider.
 type FileConfig struct {
-	BasePath  string `yaml:"base_path" mapstructure:"base_path"`   // directory containing key files
-	Encrypted bool   `yaml:"encrypted" mapstructure:"encrypted"`   // whether keys are age-encrypted
-	HexEncoded bool  `yaml:"hex_encoded" mapstructure:"hex_encoded"` // whether key files contain hex (default true)
+	BasePath   string `yaml:"base_path" mapstructure:"base_path"`     // directory containing key files
+	Encrypted  bool   `yaml:"encrypted" mapstructure:"encrypted"`     // whether keys are age-encrypted
+	HexEncoded bool   `yaml:"hex_encoded" mapstructure:"hex_encoded"` // whether key files contain hex (default true)
 }
 
 // AWSConfig configures the AWS KMS / CloudHSM provider.
@@ -73,7 +73,7 @@ type AWSConfig struct {
 // GCPConfig configures the Google Cloud KMS provider.
 type GCPConfig struct {
 	Project  string `yaml:"project" mapstructure:"project"`
-	Location string `yaml:"location" mapstructure:"location"`     // e.g. "global", "us-east1"
+	Location string `yaml:"location" mapstructure:"location"` // e.g. "global", "us-east1"
 	KeyRing  string `yaml:"key_ring" mapstructure:"key_ring"`
 	KeyName  string `yaml:"key_name" mapstructure:"key_name"`
 	HSMLevel string `yaml:"hsm_level" mapstructure:"hsm_level"` // "SOFTWARE" or "HSM" (default HSM)
@@ -81,7 +81,7 @@ type GCPConfig struct {
 
 // AzureConfig configures the Azure Key Vault / Managed HSM provider.
 type AzureConfig struct {
-	VaultURL           string `yaml:"vault_url" mapstructure:"vault_url"`                       // e.g. "https://mpc-hsm.managedhsm.azure.net"
+	VaultURL           string `yaml:"vault_url" mapstructure:"vault_url"` // e.g. "https://mpc-hsm.managedhsm.azure.net"
 	KeyName            string `yaml:"key_name" mapstructure:"key_name"`
 	TenantID           string `yaml:"tenant_id" mapstructure:"tenant_id"`
 	ClientID           string `yaml:"client_id" mapstructure:"client_id"`

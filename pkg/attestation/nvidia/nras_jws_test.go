@@ -2,14 +2,14 @@
 // CVE-2015-9235 family). The eight cases below pin down the alg ↔
 // key-type matrix at the dispatch layer:
 //
-//	1. EdDSA + ed25519.PublicKey                 → PASS
-//	2. ES256 + *ecdsa.PublicKey on P-256         → PASS
-//	3. PS256 + *rsa.PublicKey                    → PASS
-//	4. EdDSA paired with RSA pub                 → ErrAlgKeyTypeMismatch
-//	5. ES256 paired with ed25519 pub             → ErrAlgKeyTypeMismatch
-//	6. ES256 paired with ecdsa P-384             → ErrAlgKeyTypeMismatch
-//	7. alg=none                                  → ErrAlgNoneRefused
-//	8. alg=Unknown                               → ErrUnknownAlg
+//  1. EdDSA + ed25519.PublicKey                 → PASS
+//  2. ES256 + *ecdsa.PublicKey on P-256         → PASS
+//  3. PS256 + *rsa.PublicKey                    → PASS
+//  4. EdDSA paired with RSA pub                 → ErrAlgKeyTypeMismatch
+//  5. ES256 paired with ed25519 pub             → ErrAlgKeyTypeMismatch
+//  6. ES256 paired with ecdsa P-384             → ErrAlgKeyTypeMismatch
+//  7. alg=none                                  → ErrAlgNoneRefused
+//  8. alg=Unknown                               → ErrUnknownAlg
 //
 // Cases 4-6 are the substitution attack: a forged JWS header that
 // names a different alg than the trust-root's key actually supports.
