@@ -30,7 +30,7 @@ type BiometricProof struct {
 type DeviceRegistration struct {
 	DeviceID      string    `json:"device_id"`
 	DeviceType    string    `json:"device_type"`    // ios, android
-	PublicKey     []byte    `json:"public_key"`      // Secure Enclave P-256 uncompressed public key
+	PublicKey     []byte    `json:"public_key"`     // Secure Enclave P-256 uncompressed public key
 	BiometricType string    `json:"biometric_type"` // face_id, touch_id, fingerprint
 	WalletID      string    `json:"wallet_id"`
 	ParticipantID string    `json:"participant_id"` // MPC participant slot (e.g., "user")
@@ -45,9 +45,9 @@ const maxProofAge = 30 * time.Second
 // nonceGuard tracks used nonces to prevent replay attacks.
 // Nonces expire after 2x the proof age to bound memory usage.
 type nonceGuard struct {
-	mu    sync.Mutex
-	used  map[string]time.Time
-	ttl   time.Duration
+	mu   sync.Mutex
+	used map[string]time.Time
+	ttl  time.Duration
 }
 
 func newNonceGuard() *nonceGuard {

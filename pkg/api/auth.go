@@ -72,7 +72,7 @@ func (s *Server) validateJWT(tokenStr string) (*JWTClaims, error) {
 	if claims.Issuer != "mpc.lux.network" {
 		return nil, fmt.Errorf("invalid token issuer")
 	}
-	if !slices.Contains([]string(claims.Audience),"mpc-api") {
+	if !slices.Contains([]string(claims.Audience), "mpc-api") {
 		return nil, fmt.Errorf("invalid token audience")
 	}
 	return claims, nil
@@ -95,7 +95,7 @@ func (s *Server) validateRefreshToken(tokenStr string) (*JWTClaims, error) {
 	if claims.Issuer != "mpc.lux.network" {
 		return nil, fmt.Errorf("invalid token issuer")
 	}
-	if !slices.Contains([]string(claims.Audience),"mpc-refresh") {
+	if !slices.Contains([]string(claims.Audience), "mpc-refresh") {
 		return nil, fmt.Errorf("invalid token audience")
 	}
 	return claims, nil

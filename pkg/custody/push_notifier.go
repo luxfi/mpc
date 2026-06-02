@@ -26,7 +26,7 @@ type TradeApprovalNotification struct {
 	DeviceType  string `json:"device_type"`  // ios, android
 	TradeID     string `json:"trade_id"`
 	Symbol      string `json:"symbol"`
-	Side        string `json:"side"`     // buy, sell
+	Side        string `json:"side"` // buy, sell
 	Quantity    string `json:"quantity"`
 	Price       string `json:"price"`
 	TotalValue  string `json:"total_value"`
@@ -98,7 +98,7 @@ func (f *FCMNotifier) SendTradeApproval(ctx context.Context, req TradeApprovalNo
 		},
 		"apns": map[string]interface{}{
 			"headers": map[string]string{
-				"apns-priority": "10",
+				"apns-priority":  "10",
 				"apns-push-type": "alert",
 			},
 		},

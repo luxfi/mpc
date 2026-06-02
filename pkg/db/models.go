@@ -406,13 +406,13 @@ func init() { orm.Register[Settlement]("settlement") }
 // (e.g., iCloud Keychain + Platform HSM) so that no single party can decrypt alone.
 type WalletBackup struct {
 	orm.Model[WalletBackup]
-	OrgID             string        `json:"orgId"`
-	WalletID          string        `json:"walletId"`
-	BackupID          string        `json:"backupId"`  // unique backup identifier
-	Threshold         int           `json:"threshold"` // T shards required to reconstruct
-	TotalShards       int           `json:"totalShards"`
-	EncryptedKeyShare      []byte        `json:"encryptedKeyShare,omitempty"`      // AES-256-GCM(ECDH(user_passkey, ephemeral)) encrypted key share
-	EphemeralPublicKey     string        `json:"ephemeralPublicKey,omitempty"`     // P-256 ephemeral pubkey for user-side ECDH decryption
+	OrgID                  string        `json:"orgId"`
+	WalletID               string        `json:"walletId"`
+	BackupID               string        `json:"backupId"`  // unique backup identifier
+	Threshold              int           `json:"threshold"` // T shards required to reconstruct
+	TotalShards            int           `json:"totalShards"`
+	EncryptedKeyShare      []byte        `json:"encryptedKeyShare,omitempty"`  // AES-256-GCM(ECDH(user_passkey, ephemeral)) encrypted key share
+	EphemeralPublicKey     string        `json:"ephemeralPublicKey,omitempty"` // P-256 ephemeral pubkey for user-side ECDH decryption
 	Shards                 []BackupShard `json:"shards,omitempty"`
 	Status                 string        `json:"status"`                           // active, recovered, revoked
 	UserPasskeyFingerprint string        `json:"userPasskeyFingerprint,omitempty"` // P-256 pubkey that encrypts the backup shard — company CANNOT decrypt
@@ -440,8 +440,8 @@ type DeviceEnrollment struct {
 	DeviceID      string     `json:"deviceId"`
 	DeviceType    string     `json:"deviceType"`    // ios, android
 	BiometricType string     `json:"biometricType"` // face_id, touch_id, fingerprint
-	PublicKey     string     `json:"publicKey"`      // Base64-encoded P-256 Secure Enclave public key
-	ParticipantID string    `json:"participantId"`  // MPC participant slot (e.g., "user")
+	PublicKey     string     `json:"publicKey"`     // Base64-encoded P-256 Secure Enclave public key
+	ParticipantID string     `json:"participantId"` // MPC participant slot (e.g., "user")
 	Challenge     string     `json:"challenge,omitempty"`
 	Attestation   string     `json:"attestation,omitempty"` // Device attestation object
 	PushToken     string     `json:"pushToken,omitempty"`   // FCM or APNS push notification token
@@ -462,25 +462,25 @@ func init() { orm.Register[DeviceEnrollment]("device-enrollment") }
 //	pending_approval → expired
 type PendingTrade struct {
 	orm.Model[PendingTrade]
-	OrgID       string     `json:"orgId"`
-	UserID      string     `json:"userId"`
-	WalletID    string     `json:"walletId"`
-	DeviceID    string     `json:"deviceId,omitempty"`
-	Symbol      string     `json:"symbol"`
-	Side        string     `json:"side"` // buy, sell
-	Quantity    string     `json:"quantity"`
-	Price       string     `json:"price"`
-	TotalValue  string     `json:"totalValue"`
-	TradeID     string     `json:"tradeId,omitempty"`     // ATS trade record ID
-	OrderID     string     `json:"orderId,omitempty"`     // ATS order record ID
-	MessageHash string    `json:"messageHash"`           // Settlement tx data to sign (hex)
-	IntentID    *string    `json:"intentId,omitempty"`    // MPC intent created after approval
-	TxHash      *string    `json:"txHash,omitempty"`      // On-chain tx hash after broadcast
-	Status      string     `json:"status"`
-	Reason      *string    `json:"reason,omitempty"`      // Rejection reason
-	ExpiresAt   time.Time  `json:"expiresAt"`             // 5 minute approval window
-	ApprovedAt  *time.Time `json:"approvedAt,omitempty"`
-	SignedAt    *time.Time `json:"signedAt,omitempty"`
+	OrgID         string             `json:"orgId"`
+	UserID        string             `json:"userId"`
+	WalletID      string             `json:"walletId"`
+	DeviceID      string             `json:"deviceId,omitempty"`
+	Symbol        string             `json:"symbol"`
+	Side          string             `json:"side"` // buy, sell
+	Quantity      string             `json:"quantity"`
+	Price         string             `json:"price"`
+	TotalValue    string             `json:"totalValue"`
+	TradeID       string             `json:"tradeId,omitempty"`  // ATS trade record ID
+	OrderID       string             `json:"orderId,omitempty"`  // ATS order record ID
+	MessageHash   string             `json:"messageHash"`        // Settlement tx data to sign (hex)
+	IntentID      *string            `json:"intentId,omitempty"` // MPC intent created after approval
+	TxHash        *string            `json:"txHash,omitempty"`   // On-chain tx hash after broadcast
+	Status        string             `json:"status"`
+	Reason        *string            `json:"reason,omitempty"` // Rejection reason
+	ExpiresAt     time.Time          `json:"expiresAt"`        // 5 minute approval window
+	ApprovedAt    *time.Time         `json:"approvedAt,omitempty"`
+	SignedAt      *time.Time         `json:"signedAt,omitempty"`
 	StatusHistory []StatusTransition `json:"statusHistory,omitempty"`
 }
 
@@ -557,9 +557,9 @@ const (
 // `KeyRef` is either an IAM user/service-principal ID (for human signers)
 // or a KMS key path (for HSM signers, always `providers/{OrgID}/...`).
 type TreasurySigner struct {
-	Role        string `json:"role"`               // compliance_officer | treasurer | platform_hsm | backup_hsm | regulator
-	KeyRef      string `json:"keyRef"`             // user ID for humans, KMS key path for HSMs
-	DisplayName string `json:"displayName,omitempty"`
+	Role        string     `json:"role"`   // compliance_officer | treasurer | platform_hsm | backup_hsm | regulator
+	KeyRef      string     `json:"keyRef"` // user ID for humans, KMS key path for HSMs
+	DisplayName string     `json:"displayName,omitempty"`
 	RotatedAt   *time.Time `json:"rotatedAt,omitempty"`
 }
 
@@ -568,8 +568,8 @@ type TreasurySigner struct {
 // value "inf" matches arbitrarily large operations. `Threshold` is the
 // number of signer approvals required when the op's value falls in this tier.
 type TreasuryTier struct {
-	MaxValue         string `json:"maxValue"`         // "100000", "1000000", "inf"
-	Threshold        int    `json:"threshold"`        // e.g. 3, 4, 5
+	MaxValue         string `json:"maxValue"`  // "100000", "1000000", "inf"
+	Threshold        int    `json:"threshold"` // e.g. 3, 4, 5
 	RequireRegulator bool   `json:"requireRegulator,omitempty"`
 }
 
