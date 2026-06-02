@@ -12,10 +12,10 @@
 //
 // One way to wire approval:
 //
-//   intent := intent.New(...)
-//   bundle, err := orchestrator.CollectApprovals(ctx, intent, approvers, threshold)
-//   // intent.SetApprovals(bundle); MPC signing only proceeds when
-//   // bundle has >= threshold valid signatures from required approvers.
+//	intent := intent.New(...)
+//	bundle, err := orchestrator.CollectApprovals(ctx, intent, approvers, threshold)
+//	// intent.SetApprovals(bundle); MPC signing only proceeds when
+//	// bundle has >= threshold valid signatures from required approvers.
 package approval
 
 import (
@@ -103,10 +103,10 @@ type ApprovalSignature struct {
 // Use the named constants — never raw strings — so a typo at the call site
 // becomes a compile error.
 const (
-	AlgorithmECDSAP256      = "ECDSA-P256"        // generic ECDSA secp256r1, SHA-256
-	AlgorithmECDSAsecp256k1 = "ECDSA-secp256k1"   // Ethereum / Bitcoin signatures
+	AlgorithmECDSAP256      = "ECDSA-P256"      // generic ECDSA secp256r1, SHA-256
+	AlgorithmECDSAsecp256k1 = "ECDSA-secp256k1" // Ethereum / Bitcoin signatures
 	AlgorithmEd25519        = "Ed25519"
-	AlgorithmMLDSA65        = "ML-DSA-65"          // FIPS 204, NIST level 3
+	AlgorithmMLDSA65        = "ML-DSA-65"            // FIPS 204, NIST level 3
 	AlgorithmSafeContract   = "Safe-execTransaction" // on-chain Safe approval
-	AlgorithmWebAuthnES256  = "WebAuthn-ES256"     // CTAP2 ES256 (P-256)
+	AlgorithmWebAuthnES256  = "WebAuthn-ES256"       // CTAP2 ES256 (P-256)
 )

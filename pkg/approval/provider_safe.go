@@ -16,13 +16,13 @@ import (
 //
 // Layout of an approval bundle for this provider:
 //
-//   [chainID (8B BE)] [safeAddress (20B)] [safeTxHash (32B)] [execTxHash (32B)]
+//	[chainID (8B BE)] [safeAddress (20B)] [safeTxHash (32B)] [execTxHash (32B)]
 //
 // Verification: a service caller checks
 //
-//   1. safeTxHash == Safe.getTransactionHash(intent.Bytes() / EIP-712 typed data)
-//   2. execTxHash is mined (≥ 1 confirmation) on the chain
-//   3. execTxHash receipt logs include `ExecutionSuccess(safeTxHash)`
+//  1. safeTxHash == Safe.getTransactionHash(intent.Bytes() / EIP-712 typed data)
+//  2. execTxHash is mined (≥ 1 confirmation) on the chain
+//  3. execTxHash receipt logs include `ExecutionSuccess(safeTxHash)`
 //
 // This package only validates the bundle's *shape* — on-chain confirmation
 // is the caller's responsibility (it requires an EVM RPC client we don't
@@ -30,8 +30,8 @@ import (
 //
 // Configuration:
 //
-//   chain_id      — decimal chain ID (e.g. "1" mainnet, "42161" arbitrum)
-//   safe_address  — 0x-prefixed Safe address (20 bytes)
+//	chain_id      — decimal chain ID (e.g. "1" mainnet, "42161" arbitrum)
+//	safe_address  — 0x-prefixed Safe address (20 bytes)
 //
 // Approver enrollment: register approverID -> Safe address. One Safe can
 // represent any number of logical approvers (each with their own owner key)
@@ -52,9 +52,9 @@ type safeEntry struct {
 }
 
 type pendingSafe struct {
-	intent     CanonicalIntent
-	expiresAt  time.Time
-	resultCh   chan safeResult
+	intent    CanonicalIntent
+	expiresAt time.Time
+	resultCh  chan safeResult
 }
 
 type safeResult struct {

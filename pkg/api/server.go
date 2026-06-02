@@ -68,14 +68,14 @@ type HSMProvider interface {
 }
 
 type Server struct {
-	db             *db.Database
-	mpc            MPCBackend
-	hsm            HSMProvider // optional: server-side HSM co-signing
-	tradeApproval  *custody.TradeApprovalService
-	txTracker      *txtracker.Tracker
-	jwtSecret      []byte
-	oidcIssuers    []string
-	webauthnRPID   string
+	db              *db.Database
+	mpc             MPCBackend
+	hsm             HSMProvider // optional: server-side HSM co-signing
+	tradeApproval   *custody.TradeApprovalService
+	txTracker       *txtracker.Tracker
+	jwtSecret       []byte
+	oidcIssuers     []string
+	webauthnRPID    string
 	webauthnOrigins map[string]bool
 	// signerPubKey is the Ed25519 verifying key used to validate
 	// Signer (or any other configured PAD-2 liveness provider) attestations
@@ -88,8 +88,8 @@ type Server struct {
 	// intended only for the Signer extended-envelope rollout window.
 	// Configured via MPC_LIVENESS_BINDING=strict|lax (default strict).
 	livenessBindingMode webauthn.BindingMode
-	router         chi.Router
-	replayGuard    *replayGuard
+	router              chi.Router
+	replayGuard         *replayGuard
 
 	// approval is the executive-approval registry consumed by /v1/approval/*.
 	// Optional — when nil, those endpoints return 503. Wired via SetApproval.

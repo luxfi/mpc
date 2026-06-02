@@ -16,16 +16,16 @@ import (
 
 // ValidatorKeySet holds MPC wallet references for a validator's BLS and Corona keys.
 type ValidatorKeySet struct {
-	ValidatorID       string    `json:"validatorId"`
-	BLSWalletID       string    `json:"blsWalletId"`
+	ValidatorID     string    `json:"validatorId"`
+	BLSWalletID     string    `json:"blsWalletId"`
 	CoronaWalletID  string    `json:"coronaWalletId"`
-	BLSPublicKey      string    `json:"blsPublicKey"`
+	BLSPublicKey    string    `json:"blsPublicKey"`
 	CoronaPublicKey string    `json:"coronaPublicKey"`
-	Threshold         int       `json:"threshold"`
-	Parties           int       `json:"parties"`
-	Status            string    `json:"status"`
-	CreatedAt         time.Time `json:"createdAt"`
-	UpdatedAt         time.Time `json:"updatedAt"`
+	Threshold       int       `json:"threshold"`
+	Parties         int       `json:"parties"`
+	Status          string    `json:"status"`
+	CreatedAt       time.Time `json:"createdAt"`
+	UpdatedAt       time.Time `json:"updatedAt"`
 }
 
 type kmsGenerateRequest struct {
@@ -109,16 +109,16 @@ func (s *Server) handleKMSGenerate(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now().UTC()
 	ks := &ValidatorKeySet{
-		ValidatorID:       req.ValidatorID,
-		BLSWalletID:       blsResult.WalletID,
+		ValidatorID:     req.ValidatorID,
+		BLSWalletID:     blsResult.WalletID,
 		CoronaWalletID:  coronaResult.WalletID,
-		BLSPublicKey:      blsResult.ECDSAPubKey,
+		BLSPublicKey:    blsResult.ECDSAPubKey,
 		CoronaPublicKey: coronaResult.EDDSAPubKey,
-		Threshold:         req.Threshold,
-		Parties:           req.Parties,
-		Status:            "active",
-		CreatedAt:         now,
-		UpdatedAt:         now,
+		Threshold:       req.Threshold,
+		Parties:         req.Parties,
+		Status:          "active",
+		CreatedAt:       now,
+		UpdatedAt:       now,
 	}
 
 	if s.db != nil {

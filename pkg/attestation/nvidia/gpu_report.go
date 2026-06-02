@@ -20,13 +20,13 @@ import (
 
 // Errors returned by the parser.
 var (
-	ErrReportEmpty         = errors.New("nvidia/report: empty input")
-	ErrReportBadJSON       = errors.New("nvidia/report: bad JSON envelope")
-	ErrReportBadVersion    = errors.New("nvidia/report: unsupported evidence_version")
-	ErrReportMissingNonce  = errors.New("nvidia/report: missing nonce")
-	ErrReportBadNonce      = errors.New("nvidia/report: nonce must be 32 bytes hex")
-	ErrReportMissingArch   = errors.New("nvidia/report: missing architecture")
-	ErrReportUnknownArch   = errors.New("nvidia/report: unknown architecture")
+	ErrReportEmpty          = errors.New("nvidia/report: empty input")
+	ErrReportBadJSON        = errors.New("nvidia/report: bad JSON envelope")
+	ErrReportBadVersion     = errors.New("nvidia/report: unsupported evidence_version")
+	ErrReportMissingNonce   = errors.New("nvidia/report: missing nonce")
+	ErrReportBadNonce       = errors.New("nvidia/report: nonce must be 32 bytes hex")
+	ErrReportMissingArch    = errors.New("nvidia/report: missing architecture")
+	ErrReportUnknownArch    = errors.New("nvidia/report: unknown architecture")
 	ErrReportNoMeasurements = errors.New("nvidia/report: no measurements present")
 )
 
@@ -57,16 +57,16 @@ type Measurement struct {
 // rawReport is the on-the-wire envelope. Field names are the
 // canonical lower-snake spelling used by the NVIDIA evidence schema.
 type rawReport struct {
-	EvidenceVersion string         `json:"evidence_version"`
-	GPUUUID         string         `json:"gpu_uuid"`
-	Architecture    string         `json:"architecture"`
-	DriverVersion   string         `json:"driver_version"`
-	VBIOSVersion    string         `json:"vbios_version"`
-	NonceHex        string         `json:"nonce"`
-	Measurements    []Measurement  `json:"measurements"`
-	CertChain       []string       `json:"cert_chain"`     // PEM blocks
-	Quote           string         `json:"attestation_quote"` // base64 binary
-	NVSwitchPresent bool           `json:"nvswitch_present"`
+	EvidenceVersion string        `json:"evidence_version"`
+	GPUUUID         string        `json:"gpu_uuid"`
+	Architecture    string        `json:"architecture"`
+	DriverVersion   string        `json:"driver_version"`
+	VBIOSVersion    string        `json:"vbios_version"`
+	NonceHex        string        `json:"nonce"`
+	Measurements    []Measurement `json:"measurements"`
+	CertChain       []string      `json:"cert_chain"`        // PEM blocks
+	Quote           string        `json:"attestation_quote"` // base64 binary
+	NVSwitchPresent bool          `json:"nvswitch_present"`
 }
 
 // GPUReport is the parsed, validated GPU evidence report — every field

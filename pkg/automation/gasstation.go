@@ -70,13 +70,13 @@ func (r GasRule) Validate() error {
 
 // TopupReceipt records what a Tick did for one address.
 type TopupReceipt struct {
-	Address     string    `json:"address"`
-	BeforeWei   string    `json:"beforeWei"`
-	AfterWei    string    `json:"afterWei,omitempty"`
-	SentWei     string    `json:"sentWei"`
-	TxHash      string    `json:"txHash"`
-	SkipReason  string    `json:"skipReason,omitempty"`
-	OccurredAt  time.Time `json:"occurredAt"`
+	Address    string    `json:"address"`
+	BeforeWei  string    `json:"beforeWei"`
+	AfterWei   string    `json:"afterWei,omitempty"`
+	SentWei    string    `json:"sentWei"`
+	TxHash     string    `json:"txHash"`
+	SkipReason string    `json:"skipReason,omitempty"`
+	OccurredAt time.Time `json:"occurredAt"`
 }
 
 // TickResult is the per-rule outcome of one GasStation tick.

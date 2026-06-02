@@ -39,7 +39,6 @@ import (
 
 	mpcapi "github.com/luxfi/mpc/pkg/api"
 	"github.com/luxfi/mpc/pkg/backup"
-	"github.com/luxfi/mpc/pkg/zapauth"
 	"github.com/luxfi/mpc/pkg/db"
 	"github.com/luxfi/mpc/pkg/event"
 	"github.com/luxfi/mpc/pkg/eventconsumer"
@@ -50,6 +49,7 @@ import (
 	"github.com/luxfi/mpc/pkg/mpc"
 	"github.com/luxfi/mpc/pkg/transport"
 	"github.com/luxfi/mpc/pkg/types"
+	"github.com/luxfi/mpc/pkg/zapauth"
 )
 
 const (
@@ -540,7 +540,7 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 				// threshold = minimum signers required (operator surface).
 				// Present alongside ready_count so an operator can see how
 				// close to losing quorum the ensemble is.
-				"version":         Version,
+				"version": Version,
 			}
 			json.NewEncoder(w).Encode(resp)
 		}
@@ -1566,4 +1566,3 @@ func isThresholdLoopback(addr string) bool {
 	}
 	return ip.IsLoopback()
 }
-

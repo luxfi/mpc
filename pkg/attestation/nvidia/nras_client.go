@@ -49,11 +49,11 @@ import (
 
 // Errors returned by the NRAS client.
 var (
-	ErrNRASNoEndpoint   = errors.New("nvidia/nras: endpoint not configured")
-	ErrNRASNoEvidence   = errors.New("nvidia/nras: empty evidence")
-	ErrNRASBadStatus    = errors.New("nvidia/nras: non-2xx response")
-	ErrNRASBadResponse  = errors.New("nvidia/nras: malformed response body")
-	ErrNRASEmptyToken   = errors.New("nvidia/nras: token field missing")
+	ErrNRASNoEndpoint    = errors.New("nvidia/nras: endpoint not configured")
+	ErrNRASNoEvidence    = errors.New("nvidia/nras: empty evidence")
+	ErrNRASBadStatus     = errors.New("nvidia/nras: non-2xx response")
+	ErrNRASBadResponse   = errors.New("nvidia/nras: malformed response body")
+	ErrNRASEmptyToken    = errors.New("nvidia/nras: token field missing")
 	ErrNRASNonceMismatch = errors.New("nvidia/nras: token nonce does not match request")
 	ErrNRASTokenExpired  = errors.New("nvidia/nras: token already expired")
 	ErrNRASBadJWT        = errors.New("nvidia/nras: token not a valid JWS compact serialization")
@@ -71,9 +71,9 @@ var (
 // VerifyResult. The HTTP client is injectable so tests use httptest
 // directly.
 type NRASClient struct {
-	Endpoint   string        // e.g. "https://nras.attestation.nvidia.com"
-	HTTPClient *http.Client  // nil = http.DefaultClient with 15s timeout
-	TrustRoots []TrustRoot   // public keys that may sign NRAS tokens
+	Endpoint   string       // e.g. "https://nras.attestation.nvidia.com"
+	HTTPClient *http.Client // nil = http.DefaultClient with 15s timeout
+	TrustRoots []TrustRoot  // public keys that may sign NRAS tokens
 	Now        func() time.Time
 }
 
@@ -97,13 +97,13 @@ type VerifyOptions struct {
 // VerifyResult captures the post-verification facts. Callers fold
 // these into GPUEvidence.
 type VerifyResult struct {
-	Token         string    // raw JWS compact form
-	TokenHash     [32]byte  // sha256 of the token bytes
-	Nonce         [32]byte  // echoed from the request — must match GPU report
-	ExpiresAt     time.Time // honored if non-zero
-	IssuedAt      time.Time // RFC3339 from the response
-	SignerKeyID   string    // which trust root verified the JWS
-	Architecture  string    // mirrored back from the report; for audit
+	Token        string    // raw JWS compact form
+	TokenHash    [32]byte  // sha256 of the token bytes
+	Nonce        [32]byte  // echoed from the request — must match GPU report
+	ExpiresAt    time.Time // honored if non-zero
+	IssuedAt     time.Time // RFC3339 from the response
+	SignerKeyID  string    // which trust root verified the JWS
+	Architecture string    // mirrored back from the report; for audit
 }
 
 // Verify uploads evidence and returns the parsed result.
@@ -249,14 +249,14 @@ func (c *NRASClient) Verify(ctx context.Context, report []byte, nonce [32]byte, 
 // by CompositeAttestation.
 func FoldIntoEvidence(r *VerifyResult, report *GPUReport, rim *RIM) GPUEvidence {
 	out := GPUEvidence{
-		UUID:            report.UUID,
-		DriverVersion:   report.DriverVersion,
-		VBIOSVersion:    report.VBIOSVersion,
-		Architecture:    report.Architecture,
-		Verified:        true,
-		NRASTokenHash:   r.TokenHash,
-		Nonce:           r.Nonce,
-		VerifiedAt:      r.IssuedAt,
+		UUID:             report.UUID,
+		DriverVersion:    report.DriverVersion,
+		VBIOSVersion:     report.VBIOSVersion,
+		Architecture:     report.Architecture,
+		Verified:         true,
+		NRASTokenHash:    r.TokenHash,
+		Nonce:            r.Nonce,
+		VerifiedAt:       r.IssuedAt,
 		NVSwitchVerified: report.NVSwitchPresent,
 	}
 	if rim != nil {
@@ -424,4 +424,3 @@ func truncate(s string, n int) string {
 	}
 	return s[:n] + "..."
 }
-

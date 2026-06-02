@@ -78,18 +78,18 @@ type tieredWalletCreateRequest struct {
 }
 
 type tieredWalletResponse struct {
-	ID          string                   `json:"id"`
-	OrgID       string                   `json:"orgId"`
-	Tier        string                   `json:"tier"`
-	Chain       string                   `json:"chain"`
-	Address     string                   `json:"address"`
-	GroupPubKey string                   `json:"groupPubKey,omitempty"` // hex
-	Threshold   wallet.ThresholdSpec     `json:"threshold"`
-	Nodes       []wallet.NodeBinding     `json:"nodes"`
-	Policy      wallet.TierPolicy        `json:"policy"`
-	PolicyID    string                   `json:"policyId,omitempty"`
-	CreatedAt   time.Time                `json:"createdAt"`
-	Metadata    map[string]string        `json:"metadata,omitempty"`
+	ID          string               `json:"id"`
+	OrgID       string               `json:"orgId"`
+	Tier        string               `json:"tier"`
+	Chain       string               `json:"chain"`
+	Address     string               `json:"address"`
+	GroupPubKey string               `json:"groupPubKey,omitempty"` // hex
+	Threshold   wallet.ThresholdSpec `json:"threshold"`
+	Nodes       []wallet.NodeBinding `json:"nodes"`
+	Policy      wallet.TierPolicy    `json:"policy"`
+	PolicyID    string               `json:"policyId,omitempty"`
+	CreatedAt   time.Time            `json:"createdAt"`
+	Metadata    map[string]string    `json:"metadata,omitempty"`
 }
 
 func toTieredWalletResponse(w wallet.Wallet) tieredWalletResponse {
@@ -226,16 +226,17 @@ func (s *Server) handleTieredWalletListByTier(w http.ResponseWriter, r *http.Req
 
 // signDecision represents the outcome of the tier-aware sign dispatch.
 // Status: "auto_approved" | "approval_required" | "airgapped_queued" |
-//         "timelocked"      | "rejected"
+//
+//	"timelocked"      | "rejected"
 type signDecision struct {
-	Status         string                    `json:"status"`
-	WalletID       string                    `json:"walletId"`
-	Tier           string                    `json:"tier"`
-	Reason         string                    `json:"reason,omitempty"`
-	RequiredApprovals int                    `json:"requiredApprovals,omitempty"`
-	TimelockEndsAt *time.Time                `json:"timelockEndsAt,omitempty"`
-	Usage          *wallet.UsageView         `json:"usage,omitempty"`
-	NextStep       string                    `json:"nextStep,omitempty"`
+	Status            string            `json:"status"`
+	WalletID          string            `json:"walletId"`
+	Tier              string            `json:"tier"`
+	Reason            string            `json:"reason,omitempty"`
+	RequiredApprovals int               `json:"requiredApprovals,omitempty"`
+	TimelockEndsAt    *time.Time        `json:"timelockEndsAt,omitempty"`
+	Usage             *wallet.UsageView `json:"usage,omitempty"`
+	NextStep          string            `json:"nextStep,omitempty"`
 }
 
 type tieredSignRequest struct {
@@ -250,20 +251,20 @@ type tieredSignRequest struct {
 //
 // The decision tree:
 //
-//   1. Quarantine: ALWAYS reject. No path to a signature.
-//   2. Per-tx + daily + velocity limits: enforced first; over-cap rejects.
-//   3. Airgapped tiers (cold, DR): caller must drive the airgap flow
-//      (pkg/airgap/session). Returns "airgapped_queued" with the next
-//      step. Sibling task #106 finalizes the producer hookup.
-//   4. Timelocked tiers (cold 24h, contract_admin 48h, DR 7d, quarantine
-//      72h): returns "timelocked" with TimelockEndsAt; the broadcast
-//      side picks it up after expiry. Sibling task ships the queue.
-//   5. AutoApproval tiers (hot/gas/bridge/validator): allowlist check +
-//      amount under per-tx limit AND not over the large-amount escalation
-//      threshold → "auto_approved", counters are committed.
-//   6. Otherwise: requires HumanApprovalsMin (or HumanApprovalsLarge if
-//      amount >= LargeAmount). Returns "approval_required". Sibling task
-//      ships the approval bundle verifier.
+//  1. Quarantine: ALWAYS reject. No path to a signature.
+//  2. Per-tx + daily + velocity limits: enforced first; over-cap rejects.
+//  3. Airgapped tiers (cold, DR): caller must drive the airgap flow
+//     (pkg/airgap/session). Returns "airgapped_queued" with the next
+//     step. Sibling task #106 finalizes the producer hookup.
+//  4. Timelocked tiers (cold 24h, contract_admin 48h, DR 7d, quarantine
+//     72h): returns "timelocked" with TimelockEndsAt; the broadcast
+//     side picks it up after expiry. Sibling task ships the queue.
+//  5. AutoApproval tiers (hot/gas/bridge/validator): allowlist check +
+//     amount under per-tx limit AND not over the large-amount escalation
+//     threshold → "auto_approved", counters are committed.
+//  6. Otherwise: requires HumanApprovalsMin (or HumanApprovalsLarge if
+//     amount >= LargeAmount). Returns "approval_required". Sibling task
+//     ships the approval bundle verifier.
 //
 // KYT and CanonicalIntent verifier interface are referenced via the
 // sibling LocalVerifier task — for now we surface the requirement in the
