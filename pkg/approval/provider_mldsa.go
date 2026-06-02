@@ -29,8 +29,8 @@ type MLDSAProvider struct {
 }
 
 type mldsaEntry struct {
-	PrivKey *mldsa.PrivateKey
-	PubKey  *mldsa.PublicKey
+	PrivKey  *mldsa.PrivateKey
+	PubKey   *mldsa.PublicKey
 	PubBytes []byte
 }
 

@@ -77,9 +77,9 @@ func TestCrossTenant_OrgIDSanitization(t *testing.T) {
 		input    string
 		contains string // must NOT appear in the scoped key
 	}{
-		{"a:b:c", "org:a:b:c:"},              // triple colon injection
+		{"a:b:c", "org:a:b:c:"},                // triple colon injection
 		{"../etc/passwd", "org:../etc/passwd"}, // path traversal (colons don't apply but still test)
-		{"org\x00evil", "org:org\x00evil:"},   // null byte
+		{"org\x00evil", "org:org\x00evil:"},    // null byte
 	}
 
 	for _, tc := range cases {
@@ -508,4 +508,3 @@ func bytes_repeat(b byte, n int) []byte {
 	}
 	return out
 }
-

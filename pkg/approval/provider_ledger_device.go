@@ -36,18 +36,18 @@ import (
 //
 // Configuration:
 //
-//   ledgerctl_path  — path to ledgerctl (default "ledgerctl" on PATH)
-//   app             — Ledger app name. Default "ethereum". Set to
-//                     "lux" for Lux native paths, "bitcoin" for BTC, etc.
-//   bip32_path      — derivation path. Default m/44'/9000'/0'/0/0 (Lux
-//                     native). For EVM-compat use m/44'/60'/0'/0/0;
-//                     ledger.BIP44PathForName(...) builds this.
-//   chain_id        — EIP-155 chain id forwarded to ledgerctl when app
-//                     is "ethereum". Optional.
-//   sign_action     — override the verb passed to ledgerctl; defaults
-//                     to "{app}-sign-hash".
-//   pubkey_action   — override the verb for fetching the device pubkey;
-//                     defaults to "{app}-get-pubkey".
+//	ledgerctl_path  — path to ledgerctl (default "ledgerctl" on PATH)
+//	app             — Ledger app name. Default "ethereum". Set to
+//	                  "lux" for Lux native paths, "bitcoin" for BTC, etc.
+//	bip32_path      — derivation path. Default m/44'/9000'/0'/0/0 (Lux
+//	                  native). For EVM-compat use m/44'/60'/0'/0/0;
+//	                  ledger.BIP44PathForName(...) builds this.
+//	chain_id        — EIP-155 chain id forwarded to ledgerctl when app
+//	                  is "ethereum". Optional.
+//	sign_action     — override the verb passed to ledgerctl; defaults
+//	                  to "{app}-sign-hash".
+//	pubkey_action   — override the verb for fetching the device pubkey;
+//	                  defaults to "{app}-get-pubkey".
 //
 // Verification: pubkeys returned by the device are parsed as compressed
 // SEC1 secp256k1 (33 bytes). Approvals sign SHA-256(intent.Bytes())
@@ -377,4 +377,3 @@ func asn1MarshalRS(r, s *big.Int) ([]byte, error) {
 	// Reuse the helper from ecdsa_helpers.go via the local ecdsaSig type.
 	return marshalECDSASig(ecdsaSig{R: r, S: s})
 }
-

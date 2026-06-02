@@ -20,8 +20,8 @@ import (
 //
 // Configuration:
 //
-//   vault_url — full Vault URL (e.g. "https://approvals.vault.azure.net").
-//               Optional; falls back to AZURE_VAULT_URL.
+//	vault_url — full Vault URL (e.g. "https://approvals.vault.azure.net").
+//	            Optional; falls back to AZURE_VAULT_URL.
 //
 // Approver enrollment by Vault key name + cached SPKI public key.
 type AzureKeyVaultProvider struct {
