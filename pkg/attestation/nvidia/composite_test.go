@@ -136,9 +136,9 @@ func TestBindCPUReportData_StableAcrossInputs(t *testing.T) {
 
 func TestTEEKind_String(t *testing.T) {
 	cases := map[TEEKind]string{
-		TEENone:   "none",
-		TEESEVSNP: "sev_snp",
-		TEETDX:    "tdx",
+		TEENone:     "none",
+		TEESEVSNP:   "sev_snp",
+		TEETDX:      "tdx",
 		TEEKind(99): "invalid",
 	}
 	for k, want := range cases {

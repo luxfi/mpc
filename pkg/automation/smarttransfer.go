@@ -30,17 +30,17 @@ import (
 // for small amounts; for large transfers the absolute fee dominates and
 // providers should report it precisely.
 type Quote struct {
-	Provider string `json:"provider"`
-	Route    string `json:"route"`     // human-readable route description
-	Asset    string `json:"asset"`
-	Amount   string `json:"amount"`    // base-10 in smallest unit
-	Dest     string `json:"dest"`
-	Chain    string `json:"chain"`     // destination chain (CAIP-2)
-	FeeBps   int64  `json:"feeBps"`    // total cost in basis points
-	FeeAbs   string `json:"feeAbs"`    // absolute fee in smallest unit (informational)
-	ETA      time.Duration `json:"eta"` // estimated time to settle
-	ValidUntil time.Time `json:"validUntil"`
-	Provider_  Provider `json:"-"`     // back-reference for execution
+	Provider   string        `json:"provider"`
+	Route      string        `json:"route"` // human-readable route description
+	Asset      string        `json:"asset"`
+	Amount     string        `json:"amount"` // base-10 in smallest unit
+	Dest       string        `json:"dest"`
+	Chain      string        `json:"chain"`  // destination chain (CAIP-2)
+	FeeBps     int64         `json:"feeBps"` // total cost in basis points
+	FeeAbs     string        `json:"feeAbs"` // absolute fee in smallest unit (informational)
+	ETA        time.Duration `json:"eta"`    // estimated time to settle
+	ValidUntil time.Time     `json:"validUntil"`
+	Provider_  Provider      `json:"-"` // back-reference for execution
 }
 
 // TransferRequest is what SmartTransfer.Quote consumes.
@@ -176,9 +176,9 @@ func (s *SmartTransfer) Best(ctx context.Context, req TransferRequest) (Quote, e
 // callers feed the resulting Quote into their existing sign + broadcast
 // path.
 type OnChainProvider struct {
-	chain  string
-	bps    int64
-	eta    time.Duration
+	chain string
+	bps   int64
+	eta   time.Duration
 }
 
 // NewOnChainProvider constructs a provider for one chain. bps is the
@@ -217,11 +217,11 @@ func (p *OnChainProvider) QuoteTransfer(_ context.Context, req TransferRequest) 
 // BridgeProvider quotes a cross-chain transfer. RouteName is used in the
 // quote's Route field for operator visibility.
 type BridgeProvider struct {
-	name      string
-	bps       int64
-	srcChain  string
-	dstChain  string
-	eta       time.Duration
+	name     string
+	bps      int64
+	srcChain string
+	dstChain string
+	eta      time.Duration
 }
 
 // NewBridgeProvider constructs a bridge provider. The (src,dst) pair is

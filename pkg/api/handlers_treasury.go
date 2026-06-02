@@ -58,16 +58,16 @@ const treasurySignPermission = "mpc.treasury.sign"
 // --- Request / response shapes ---
 
 type treasuryWalletResponse struct {
-	WalletID       string                `json:"walletId"`
-	Name           string                `json:"name"`
-	Address        string                `json:"address,omitempty"`
-	Chain          string                `json:"chain"`
-	Signers        []treasurySignerView  `json:"signers"`
-	Tiers          []db.TreasuryTier     `json:"tiers"`
-	RegulatorShard bool                  `json:"regulatorShard"`
-	Status         string                `json:"status"`
-	CreatedAt      time.Time             `json:"createdAt"`
-	Outstanding    []outstandingOpView   `json:"outstanding,omitempty"`
+	WalletID       string               `json:"walletId"`
+	Name           string               `json:"name"`
+	Address        string               `json:"address,omitempty"`
+	Chain          string               `json:"chain"`
+	Signers        []treasurySignerView `json:"signers"`
+	Tiers          []db.TreasuryTier    `json:"tiers"`
+	RegulatorShard bool                 `json:"regulatorShard"`
+	Status         string               `json:"status"`
+	CreatedAt      time.Time            `json:"createdAt"`
+	Outstanding    []outstandingOpView  `json:"outstanding,omitempty"`
 }
 
 type treasurySignerView struct {

@@ -28,10 +28,10 @@ import (
 //
 // Configuration:
 //
-//   rpid     — Relying Party ID (e.g. "approvals.fund.com"). Required.
-//   origins  — comma-separated allowed origins (e.g. "https://approvals.fund.com").
-//              In production, MUST be HTTPS.
-//   timeout  — challenge TTL (default 5m). Override with "300s" / "5m".
+//	rpid     — Relying Party ID (e.g. "approvals.fund.com"). Required.
+//	origins  — comma-separated allowed origins (e.g. "https://approvals.fund.com").
+//	           In production, MUST be HTTPS.
+//	timeout  — challenge TTL (default 5m). Override with "300s" / "5m".
 //
 // HTTPS enforcement: NewWebAuthn requires HTTPS origins unless MPC_ENV=dev.
 type WebAuthnProvider struct {
@@ -39,22 +39,22 @@ type WebAuthnProvider struct {
 	allowedOrigins map[string]bool
 	timeout        time.Duration
 
-	mu            sync.Mutex
-	identity      map[string]webauthnEntry
-	pending       map[string]*pendingWebAuthn
+	mu       sync.Mutex
+	identity map[string]webauthnEntry
+	pending  map[string]*pendingWebAuthn
 }
 
 type webauthnEntry struct {
-	CredentialID    string // base64url-encoded WebAuthn credential ID
-	PubKey          *ecdsa.PublicKey
+	CredentialID       string // base64url-encoded WebAuthn credential ID
+	PubKey             *ecdsa.PublicKey
 	PubKeyUncompressed []byte // 65-byte 0x04||X||Y
 }
 
 type pendingWebAuthn struct {
-	intent     CanonicalIntent
-	challenge  []byte // 32 random bytes; binds to intent.Digest()
-	expiresAt  time.Time
-	resultCh   chan webauthnResult
+	intent    CanonicalIntent
+	challenge []byte // 32 random bytes; binds to intent.Digest()
+	expiresAt time.Time
+	resultCh  chan webauthnResult
 }
 
 type webauthnResult struct {
