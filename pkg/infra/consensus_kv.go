@@ -54,11 +54,11 @@ type ConsensusKV struct {
 	pendingCh chan struct{}
 
 	// Node identity (dual keys)
-	nodeID       string
-	edPrivKey    ed25519.PrivateKey  // Classical signing
-	edPubKey     ed25519.PublicKey
-	pqPrivKey    *mldsa.PrivateKey   // Post-quantum signing (ML-DSA-65)
-	pqPubKey     *mldsa.PublicKey
+	nodeID    string
+	edPrivKey ed25519.PrivateKey // Classical signing
+	edPubKey  ed25519.PublicKey
+	pqPrivKey *mldsa.PrivateKey // Post-quantum signing (ML-DSA-65)
+	pqPubKey  *mldsa.PublicKey
 
 	// Optional KMS/HSM signer (overrides local keys)
 	signer      Signer
@@ -66,7 +66,7 @@ type ConsensusKV struct {
 
 	// Validator set
 	validators map[string]*ValidatorKeys // nodeID -> dual keys
-	threshold  int                        // votes for finality
+	threshold  int                       // votes for finality
 
 	// Chain state
 	blockHeight   uint64
@@ -112,8 +112,8 @@ type ConsensusBlock struct {
 	Timestamp  time.Time    `json:"timestamp"`
 	Mutations  []KVMutation `json:"mutations"`
 	ProposerID string       `json:"proposer_id"`
-	EdSig      []byte       `json:"ed_sig"`  // Ed25519 proposer signature
-	PQSig      []byte       `json:"pq_sig"`  // ML-DSA-65 proposer signature
+	EdSig      []byte       `json:"ed_sig"` // Ed25519 proposer signature
+	PQSig      []byte       `json:"pq_sig"` // ML-DSA-65 proposer signature
 }
 
 // BlockHash computes the deterministic hash of a block (excludes signatures).
@@ -166,12 +166,12 @@ type Signer interface {
 // ConsensusKVConfig configures the private blockchain consensus.
 type ConsensusKVConfig struct {
 	NodeID           string
-	EdPrivateKey     ed25519.PrivateKey            // Classical identity key (nil if using Signer)
-	PQPrivateKey     *mldsa.PrivateKey             // Post-quantum identity key (nil = auto-generate)
-	Signer           Signer                         // Optional KMS/HSM signer (overrides local keys)
-	SignerKeyID      string                         // Key ID for Signer
-	Validators       map[string]*ValidatorKeys      // All cluster nodes
-	Threshold        int                            // Votes for finality (default: floor(n/2)+1)
+	EdPrivateKey     ed25519.PrivateKey        // Classical identity key (nil if using Signer)
+	PQPrivateKey     *mldsa.PrivateKey         // Post-quantum identity key (nil = auto-generate)
+	Signer           Signer                    // Optional KMS/HSM signer (overrides local keys)
+	SignerKeyID      string                    // Key ID for Signer
+	Validators       map[string]*ValidatorKeys // All cluster nodes
+	Threshold        int                       // Votes for finality (default: floor(n/2)+1)
 	NATSConn         *nats.Conn
 	ChainID          string        // Default "mpc"
 	ProposalInterval time.Duration // Default 50ms
@@ -743,10 +743,10 @@ func (c *ConsensusKV) LoadSnapshot(snap map[string][]byte, height uint64) error 
 	return nil
 }
 
-func (c *ConsensusKV) Height() uint64        { return c.blockHeight }
+func (c *ConsensusKV) Height() uint64          { return c.blockHeight }
 func (c *ConsensusKV) LastBlockHash() [32]byte { return c.lastBlockHash }
-func (c *ConsensusKV) ValidatorCount() int    { return len(c.validators) }
-func (c *ConsensusKV) Threshold() int         { return c.threshold }
+func (c *ConsensusKV) ValidatorCount() int     { return len(c.validators) }
+func (c *ConsensusKV) Threshold() int          { return c.threshold }
 
 // PQPublicKey returns this node's ML-DSA-65 public key bytes (for registration).
 func (c *ConsensusKV) PQPublicKey() []byte {
