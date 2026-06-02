@@ -26,15 +26,15 @@ var errSessionConflict = errors.New("session modified concurrently")
 
 // sessionResponse is the JSON shape specified in mpc.yaml.
 type sessionResponse struct {
-	SessionID      string    `json:"sessionId"`
-	WalletID       string    `json:"walletId"`
-	GrantedTo      string    `json:"grantedTo,omitempty"`
-	Scopes         []string  `json:"scopes,omitempty"`
-	ValueLimit     *string   `json:"valueLimit,omitempty"`
-	OperationLimit *int      `json:"operationLimit,omitempty"`
-	Status         string    `json:"status"`
-	CreatedAt      time.Time `json:"createdAt"`
-	ExpiresAt      time.Time `json:"expiresAt"`
+	SessionID      string     `json:"sessionId"`
+	WalletID       string     `json:"walletId"`
+	GrantedTo      string     `json:"grantedTo,omitempty"`
+	Scopes         []string   `json:"scopes,omitempty"`
+	ValueLimit     *string    `json:"valueLimit,omitempty"`
+	OperationLimit *int       `json:"operationLimit,omitempty"`
+	Status         string     `json:"status"`
+	CreatedAt      time.Time  `json:"createdAt"`
+	ExpiresAt      time.Time  `json:"expiresAt"`
 	RevokedAt      *time.Time `json:"revokedAt,omitempty"`
 }
 
