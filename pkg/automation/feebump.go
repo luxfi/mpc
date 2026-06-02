@@ -86,10 +86,10 @@ type BTCBumpInput struct {
 // BTCBumpPlan is the new fee + the inputs (unchanged) that the caller
 // must sign into a replacement transaction.
 type BTCBumpPlan struct {
-	NewFeeSat      *big.Int `json:"newFeeSat"`
-	NewFeeRateSatVB int64   `json:"newFeeRateSatVB"`
-	Inputs         []string `json:"inputs"`
-	BumpFactorBps  int64    `json:"bumpFactorBps"`
+	NewFeeSat       *big.Int `json:"newFeeSat"`
+	NewFeeRateSatVB int64    `json:"newFeeRateSatVB"`
+	Inputs          []string `json:"inputs"`
+	BumpFactorBps   int64    `json:"bumpFactorBps"`
 }
 
 // BTCBump computes an RBF-compliant replacement fee.

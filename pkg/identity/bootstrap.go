@@ -187,7 +187,7 @@ func announce(ctx context.Context, cfg Config, id *Identity) error {
 		return nil
 	}
 	body, err := json.Marshal(map[string]any{
-		"node_id":   id.NodeID,
+		"node_id":    id.NodeID,
 		"public_key": hex.EncodeToString(id.PublicKey),
 		"ts":         time.Now().UTC().Format(time.RFC3339Nano),
 	})

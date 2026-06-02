@@ -72,9 +72,9 @@ func TestBackupShardRequiresPasskey(t *testing.T) {
 func TestBackupShardRejectsEmptyPasskey(t *testing.T) {
 	// Empty or invalid passkey pubkeys must be rejected.
 	invalidKeys := []string{
-		"",                      // empty
-		"not-base64!@#$",       // garbage
-		base64.StdEncoding.EncodeToString([]byte{0x04}), // too short
+		"",               // empty
+		"not-base64!@#$", // garbage
+		base64.StdEncoding.EncodeToString([]byte{0x04}),     // too short
 		base64.StdEncoding.EncodeToString(make([]byte, 65)), // starts with 0x00, not 0x04
 	}
 	for _, key := range invalidKeys {

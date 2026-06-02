@@ -146,7 +146,7 @@ func TestKMSZAP_Auth_RequiredHappyPath(t *testing.T) {
 
 	// Now a sign call should succeed.
 	respOp, signBody := callOp(t, client, peer, OpKMSSign, kmsZapSignRequest{
-		VaultID:  "v1", WalletID: "w1", Payload: []byte("x"),
+		VaultID: "v1", WalletID: "w1", Payload: []byte("x"),
 	})
 	if respOp != OpKMSSign {
 		t.Fatalf("sign opcode: got 0x%04x want 0x%04x", respOp, OpKMSSign)
@@ -171,7 +171,7 @@ func TestKMSZAP_Auth_RequiredRejectsMissing(t *testing.T) {
 	defer client.Stop()
 
 	op, body := callOp(t, client, peer, OpKMSSign, kmsZapSignRequest{
-		VaultID:  "v1", WalletID: "w1", Payload: []byte("x"),
+		VaultID: "v1", WalletID: "w1", Payload: []byte("x"),
 	})
 	if op != OpKMSSign {
 		t.Fatalf("opcode echo: got 0x%04x want 0x%04x", op, OpKMSSign)
@@ -204,7 +204,7 @@ func TestKMSZAP_Auth_RequiredRejectsBadToken(t *testing.T) {
 	}
 
 	op, signBody := callOp(t, client, peer, OpKMSSign, kmsZapSignRequest{
-		VaultID:  "v1", WalletID: "w1", Payload: []byte("x"),
+		VaultID: "v1", WalletID: "w1", Payload: []byte("x"),
 	})
 	if op != OpKMSSign {
 		t.Fatalf("opcode echo: got 0x%04x want 0x%04x", op, OpKMSSign)
@@ -225,7 +225,7 @@ func TestKMSZAP_Auth_AdvisoryAcceptsMissing(t *testing.T) {
 	defer client.Stop()
 
 	op, body := callOp(t, client, peer, OpKMSSign, kmsZapSignRequest{
-		VaultID:  "v1", WalletID: "w1", Payload: []byte("x"),
+		VaultID: "v1", WalletID: "w1", Payload: []byte("x"),
 	})
 	if op != OpKMSSign {
 		t.Fatalf("opcode echo: got 0x%04x want 0x%04x", op, OpKMSSign)

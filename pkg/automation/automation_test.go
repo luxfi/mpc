@@ -92,7 +92,7 @@ func TestGasStation_AboveFloorSkipped(t *testing.T) {
 	_ = g.Set(GasRule{
 		OrgID: "org1", Chain: "ethereum", ReserveWallet: "reserve",
 		TargetWallets: []string{"hot1"},
-		Floor: big.NewInt(100), Target: big.NewInt(500), CapPerTick: big.NewInt(10000),
+		Floor:         big.NewInt(100), Target: big.NewInt(500), CapPerTick: big.NewInt(10000),
 		Enabled: true,
 	})
 	results, err := g.Tick(context.Background())
@@ -113,7 +113,7 @@ func TestGasStation_CapPerTickHonored(t *testing.T) {
 	_ = g.Set(GasRule{
 		OrgID: "org1", Chain: "ethereum", ReserveWallet: "reserve",
 		TargetWallets: []string{"hot1"},
-		Floor: big.NewInt(100), Target: big.NewInt(10000), CapPerTick: big.NewInt(50),
+		Floor:         big.NewInt(100), Target: big.NewInt(10000), CapPerTick: big.NewInt(50),
 		Enabled: true,
 	})
 	results, _ := g.Tick(context.Background())
@@ -136,7 +136,7 @@ func TestGasStation_BalanceError(t *testing.T) {
 	_ = g.Set(GasRule{
 		OrgID: "org1", Chain: "ethereum", ReserveWallet: "reserve",
 		TargetWallets: []string{"hot1"},
-		Floor: big.NewInt(100), Target: big.NewInt(500), CapPerTick: big.NewInt(10000),
+		Floor:         big.NewInt(100), Target: big.NewInt(500), CapPerTick: big.NewInt(10000),
 		Enabled: true,
 	})
 	results, _ := g.Tick(context.Background())
