@@ -310,7 +310,7 @@ func TestConsensusKV_PQKeyGeneration(t *testing.T) {
 	priv, err := mldsa.GenerateKey(rand.Reader, mldsa.MLDSA65)
 	require.NoError(t, err)
 
-	assert.Equal(t, mldsa.MLDSA65PublicKeySize, len(priv.PublicKey.Bytes()))  // 1,952 bytes
+	assert.Equal(t, mldsa.MLDSA65PublicKeySize, len(priv.PublicKey.Bytes())) // 1,952 bytes
 	assert.Equal(t, mldsa.MLDSA65PrivateKeySize, len(priv.Bytes()))          // 4,032 bytes
 
 	// Sign and verify

@@ -56,21 +56,23 @@ type nodeCtx struct {
 	pubKey  ed25519.PublicKey
 	privKey ed25519.PrivateKey
 	gate    *mpc.SignGate
-	sink    interface{ All() []intent.NodeAttestation } // memAttestationSink
+	sink    interface {
+		All() []intent.NodeAttestation
+	} // memAttestationSink
 }
 
 // clusterRig is the test fixture: 3 MPC nodes, each with a copy of the
 // same policy bundle + approval keyset, plus 3 executive approval keys.
 type clusterRig struct {
-	nodes    []*nodeCtx
-	signers  []signerKey
-	bundle   *policy.PolicyBundle
+	nodes   []*nodeCtx
+	signers []signerKey
+	bundle  *policy.PolicyBundle
 }
 
 type signerKey struct {
-	id      string
-	pub     ed25519.PublicKey
-	priv    ed25519.PrivateKey
+	id   string
+	pub  ed25519.PublicKey
+	priv ed25519.PrivateKey
 }
 
 func mkSigner(t *testing.T, id string) signerKey {
@@ -411,9 +413,11 @@ func TestPolicyGate_FailureModesAreOrthogonal(t *testing.T) {
 			want:   policy.ErrPolicyNotFound,
 		},
 		{
-			name:   "expired",
-			mutate: func(_ *clusterRig, ci *intent.CanonicalIntent) { ci.ExpiresAt = time.Date(2026, 4, 27, 11, 0, 0, 0, time.UTC) },
-			want:   policy.ErrExpiredIntent,
+			name: "expired",
+			mutate: func(_ *clusterRig, ci *intent.CanonicalIntent) {
+				ci.ExpiresAt = time.Date(2026, 4, 27, 11, 0, 0, 0, time.UTC)
+			},
+			want: policy.ErrExpiredIntent,
 		},
 		{
 			name: "destination off allowlist",

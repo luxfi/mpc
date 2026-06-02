@@ -57,19 +57,19 @@ type CanonicalIntent struct {
 	SessionID        string              `cbor:"session_id"`
 	WalletID         string              `cbor:"wallet_id"`
 	WalletTier       WalletTier          `cbor:"wallet_tier"`
-	Chain            string              `cbor:"chain"`             // CAIP-2 e.g. "eip155:1"
+	Chain            string              `cbor:"chain"` // CAIP-2 e.g. "eip155:1"
 	Asset            string              `cbor:"asset"`
 	From             string              `cbor:"from"`
 	To               string              `cbor:"to"`
-	Amount           string              `cbor:"amount"`            // arbitrary-precision decimal as string
+	Amount           string              `cbor:"amount"` // arbitrary-precision decimal as string
 	MaxFee           string              `cbor:"max_fee"`
 	Nonce            string              `cbor:"nonce"`
-	CalldataHash     [32]byte            `cbor:"calldata_hash"`     // keccak256 / sha256 of contract calldata
+	CalldataHash     [32]byte            `cbor:"calldata_hash"` // keccak256 / sha256 of contract calldata
 	HumanSummary     string              `cbor:"human_summary"`
 	PolicyID         string              `cbor:"policy_id"`
-	PolicyHash       [32]byte            `cbor:"policy_hash"`       // hash of the active policy bundle this intent was approved against
+	PolicyHash       [32]byte            `cbor:"policy_hash"` // hash of the active policy bundle this intent was approved against
 	RiskVerdictID    string              `cbor:"risk_verdict_id"`
-	SimulationHash   [32]byte            `cbor:"simulation_hash"`   // hash of the EVM simulation result
+	SimulationHash   [32]byte            `cbor:"simulation_hash"` // hash of the EVM simulation result
 	ExpiresAt        time.Time           `cbor:"expires_at"`
 	Approvals        []ApprovalSignature `cbor:"approvals"`         // executive sigs over the digest; excluded from digest
 	NodeAttestations []NodeAttestation   `cbor:"node_attestations"` // per-node verifier decisions; excluded from digest

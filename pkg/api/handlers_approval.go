@@ -38,10 +38,10 @@ type approvalSession struct {
 	CreatedAt  time.Time
 	ExpiresAt  time.Time
 
-	mu        sync.Mutex
-	sigs      []approval.ApprovalSignature
-	completed bool
-	rejected  bool
+	mu           sync.Mutex
+	sigs         []approval.ApprovalSignature
+	completed    bool
+	rejected     bool
 	rejectReason string
 }
 
@@ -393,9 +393,9 @@ func (s *Server) handleApprovalCast(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"status":     ifElseString(sess.completed, "approved", "pending"),
-		"collected":  len(sess.sigs),
-		"threshold":  sess.Threshold,
+		"status":    ifElseString(sess.completed, "approved", "pending"),
+		"collected": len(sess.sigs),
+		"threshold": sess.Threshold,
 	})
 }
 

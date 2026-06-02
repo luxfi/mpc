@@ -22,7 +22,7 @@ import (
 //
 // Configuration:
 //
-//   api_addr — Zymbit REST API URL (default "http://localhost:6789").
+//	api_addr — Zymbit REST API URL (default "http://localhost:6789").
 //
 // Approver enrollment maps approverID -> Zymbit slot ID + cached SPKI public
 // key. Slots must be provisioned out-of-band on the Zymbit device.

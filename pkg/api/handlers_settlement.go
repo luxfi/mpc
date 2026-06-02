@@ -272,8 +272,8 @@ func (s *Server) handleCreateWalletBackup(w http.ResponseWriter, r *http.Request
 	}
 
 	var req struct {
-		Threshold    int      `json:"threshold"`
-		TotalShards  int      `json:"total_shards"`
+		Threshold          int      `json:"threshold"`
+		TotalShards        int      `json:"total_shards"`
 		Destinations       []string `json:"destinations"`
 		UserWebAuthnPubKey string   `json:"user_webauthn_pub_key,omitempty"` // P-256 public key for passkey-encrypted backup
 	}
@@ -419,7 +419,7 @@ func (s *Server) handleCreateWalletBackup(w http.ResponseWriter, r *http.Request
 	backup.TotalShards = req.TotalShards
 	backup.Status = "active"
 	backup.UserPasskeyFingerprint = userPasskeyPubKey
-	backup.EncryptedKeyShare = encrypted // AES-256-GCM ciphertext, decryptable ONLY with user's passkey
+	backup.EncryptedKeyShare = encrypted                                          // AES-256-GCM ciphertext, decryptable ONLY with user's passkey
 	backup.EphemeralPublicKey = base64.StdEncoding.EncodeToString(ephPub.Bytes()) // needed for user-side ECDH
 
 	if err := backup.Create(); err != nil {

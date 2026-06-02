@@ -113,11 +113,11 @@ func (d *MChainDispatcher) flushLocked(ctx context.Context) error {
 	batchHash := hex.EncodeToString(h.Sum(nil))
 
 	body, err := json.Marshal(map[string]any{
-		"batchHash":   batchHash,
-		"fromSeq":     from,
-		"toSeq":       to,
-		"prevAnchor":  d.anchor,
-		"events":      d.pend,
+		"batchHash":  batchHash,
+		"fromSeq":    from,
+		"toSeq":      to,
+		"prevAnchor": d.anchor,
+		"events":     d.pend,
 	})
 	if err != nil {
 		return fmt.Errorf("audit/mchain: marshal: %w", err)
