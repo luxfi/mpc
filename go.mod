@@ -29,6 +29,7 @@ require (
 	github.com/hanzoai/base v0.39.1
 	github.com/hanzoai/dbx v1.16.0
 	github.com/hanzoai/orm v0.5.2
+	github.com/hanzos3/go-sdk v1.0.2
 	github.com/hashicorp/consul/api v1.33.7
 	github.com/luxfi/crypto v1.19.10
 	github.com/luxfi/database v1.18.3
@@ -39,7 +40,6 @@ require (
 	github.com/luxfi/metric v1.5.7
 	github.com/luxfi/threshold v1.8.2
 	github.com/luxfi/zap v0.2.0
-	github.com/minio/minio-go/v7 v7.0.100
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/mr-tron/base58 v1.2.0
 	github.com/nats-io/nats.go v1.50.0
@@ -172,6 +172,7 @@ require (
 	github.com/mimoo/StrobeGo v0.0.0-20220103164710-9a04d6ca976b // indirect
 	github.com/minio/crc64nvme v1.1.1 // indirect
 	github.com/minio/md5-simd v1.1.2 // indirect
+	github.com/minio/minio-go/v7 v7.0.100 // indirect
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/montanaflynn/stats v0.9.0 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
