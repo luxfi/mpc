@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/minio/minio-go/v7"
-	"github.com/minio/minio-go/v7/pkg/credentials"
+	s3 "github.com/hanzos3/go-sdk"
+	"github.com/hanzos3/go-sdk/pkg/credentials"
 
 	"github.com/luxfi/mpc/pkg/kvstore"
 	"github.com/luxfi/mpc/pkg/logger"
@@ -64,7 +64,7 @@ type Manager struct {
 	executor  *kvstore.Backup
 	backupDir string
 	s3Config  *S3Config
-	s3Client  *minio.Client
+	s3Client  *s3.Client
 	nodeID    string
 	period    time.Duration
 	done      chan struct{}
@@ -82,7 +82,7 @@ func NewManager(executor *kvstore.Backup, backupDir, nodeID string, period time.
 	}
 
 	if s3Cfg != nil && s3Cfg.Endpoint != "" {
-		client, err := minio.New(s3Cfg.Endpoint, &minio.Options{
+		client, err := s3.New(s3Cfg.Endpoint, &s3.Options{
 			Creds:  credentials.NewStaticV4(s3Cfg.AccessKey, s3Cfg.SecretKey, ""),
 			Secure: s3Cfg.UseSSL,
 			Region: s3Cfg.Region,
@@ -99,7 +99,7 @@ func NewManager(executor *kvstore.Backup, backupDir, nodeID string, period time.
 		if err != nil {
 			logger.Warn("Failed to check S3 bucket", "bucket", s3Cfg.Bucket, "err", err)
 		} else if !exists {
-			if err := client.MakeBucket(ctx, s3Cfg.Bucket, minio.MakeBucketOptions{Region: s3Cfg.Region}); err != nil {
+			if err := client.MakeBucket(ctx, s3Cfg.Bucket, s3.MakeBucketOptions{Region: s3Cfg.Region}); err != nil {
 				logger.Warn("Failed to create S3 bucket", "bucket", s3Cfg.Bucket, "err", err)
 			} else {
 				logger.Info("Created S3 bucket", "bucket", s3Cfg.Bucket)
@@ -180,7 +180,7 @@ func (m *Manager) uploadToS3(localPath string) error {
 	filename := filepath.Base(localPath)
 	objectName := m.s3Config.Prefix + filename
 
-	info, err := m.s3Client.FPutObject(ctx, m.s3Config.Bucket, objectName, localPath, minio.PutObjectOptions{
+	info, err := m.s3Client.FPutObject(ctx, m.s3Config.Bucket, objectName, localPath, s3.PutObjectOptions{
 		ContentType: "application/octet-stream",
 	})
 	if err != nil {
