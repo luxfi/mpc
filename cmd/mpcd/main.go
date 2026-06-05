@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -121,9 +122,9 @@ func main() {
 					},
 					&cli.StringFlag{
 						Name:    "threshold-listen",
-						Usage:   "Embedded threshold JSON-RPC dispatcher listen address (luxfi/threshold/pkg/thresholdd surface: cggmp21/frost/pulsar/corona/bls/doerner). Empty disables. Default 127.0.0.1:7300 — process-local IPC; production fronts this via the cluster ingress + KMS.",
+						Usage:   "Embedded threshold ZAP dispatcher listen address (luxfi/threshold/pkg/thresholdd surface: cggmp21/frost/pulsar/corona/magnetar/bls/doerner). Empty disables. Default 127.0.0.1:7301 — process-local IPC; production fronts this via the cluster ingress + KMS.",
 						Sources: cli.EnvVars("MPC_THRESHOLD_LISTEN"),
-						Value:   "127.0.0.1:7300",
+						Value:   "127.0.0.1:7301",
 					},
 					// HSM / password provider flags
 					&cli.StringFlag{
@@ -779,13 +780,11 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 		}
 	}
 
-	// Start embedded threshold JSON-RPC dispatcher
-	// (luxfi/threshold/pkg/thresholdd). One process, one wire, four
-	// active schemes (cggmp21/frost/bls + doerner-reserved-error) —
+	// Start embedded threshold ZAP dispatcher
+	// (luxfi/threshold/pkg/thresholdd). One process, one wire, seven
+	// schemes (cggmp21/frost/pulsar/corona/magnetar/bls/doerner) —
 	// consumed by teleport/mpc and any other client that speaks the
-	// threshold bus. Pulsar/Corona slots return a typed
-	// "not yet implemented" error pending stable wire encodings in
-	// luxfi/corona (Red HIGH B2).
+	// threshold bus.
 	//
 	// The dispatcher carries zero protocol policy on purpose: profile
 	// gating and audit live on the API surface above. Auth and bind
@@ -798,7 +797,7 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 	//      the same key without extra config. MPC_THRESHOLD_AUTH_TOKEN
 	//      overrides for explicit operator control.
 	//   2. Loopback-only bind. A non-loopback `threshold-listen`
-	//      (operator typo `--threshold-listen 0.0.0.0:7300` or env
+	//      (operator typo `--threshold-listen 0.0.0.0:7301` or env
 	//      override) is refused unless MPC_THRESHOLD_ALLOW_REMOTE=1
 	//      is set, which forces operators to acknowledge the exposure.
 	if thrAddr := c.String("threshold-listen"); thrAddr != "" {
@@ -809,40 +808,41 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 			)
 		}
 
-		thrSrv, thrErr := thresholdd.NewServer()
-		if thrErr != nil {
-			logger.Error("Failed to build threshold dispatcher", thrErr)
-		} else {
-			// Derive / read the per-cluster bearer token.
-			thrTok := os.Getenv("MPC_THRESHOLD_AUTH_TOKEN")
-			if thrTok == "" {
-				h := sha256.Sum256(append(privKey.Seed(), []byte("mpc-threshold-rpc")...))
-				thrTok = hex.EncodeToString(h[:])
-				logger.Warn("MPC_THRESHOLD_AUTH_TOKEN not set; derived threshold dispatcher token from node identity (set MPC_THRESHOLD_AUTH_TOKEN in production for cluster-wide consistency)")
-			}
-			thrSrv.SetAuthToken(thrTok)
+		// Derive / read the per-cluster bearer token.
+		thrTok := os.Getenv("MPC_THRESHOLD_AUTH_TOKEN")
+		if thrTok == "" {
+			h := sha256.Sum256(append(privKey.Seed(), []byte("mpc-threshold-rpc")...))
+			thrTok = hex.EncodeToString(h[:])
+			logger.Warn("MPC_THRESHOLD_AUTH_TOKEN not set; derived threshold dispatcher token from node identity (set MPC_THRESHOLD_AUTH_TOKEN in production for cluster-wide consistency)")
+		}
 
-			thrListener, listenErr := net.Listen("tcp", thrAddr)
-			if listenErr != nil {
-				logger.Error("Failed to bind threshold dispatcher", listenErr, "addr", thrAddr)
+		// Split host:port — ZapServerConfig takes int port.
+		_, thrPortStr, thrSplitErr := net.SplitHostPort(thrAddr)
+		if thrSplitErr != nil {
+			logger.Error("Failed to parse threshold-listen", thrSplitErr, "addr", thrAddr)
+		} else {
+			thrPort, thrAtoiErr := strconv.Atoi(thrPortStr)
+			if thrAtoiErr != nil {
+				logger.Error("Bad threshold-listen port", thrAtoiErr, "port", thrPortStr)
 			} else {
-				thrHTTP := &http.Server{
-					Handler:           thrSrv,
-					ReadHeaderTimeout: 5 * time.Second,
-				}
-				go func() {
+				thrSrv, thrErr := thresholdd.NewZapServer(thresholdd.ZapServerConfig{
+					NodeID:    "mpcd-threshold",
+					Port:      thrPort,
+					AuthToken: thrTok,
+				})
+				if thrErr != nil {
+					logger.Error("Failed to build threshold dispatcher", thrErr)
+				} else if startErr := thrSrv.Start(); startErr != nil {
+					logger.Error("Failed to start threshold dispatcher", startErr, "addr", thrAddr)
+				} else {
 					logger.Info(
-						"Threshold dispatcher starting",
-						"addr", thrListener.Addr().String(),
-						"schemes_active", "cggmp21,frost,bls",
-						"schemes_reserved_err", "pulsar,corona,doerner",
-						"auth", "bearer-token",
+						"Threshold dispatcher (ZAP) starting",
+						"addr", thrAddr,
+						"schemes", "cggmp21,frost,pulsar,corona,magnetar,bls,doerner",
+						"auth", "bearer-token (peer nodeID)",
 					)
-					if err := thrHTTP.Serve(thrListener); err != nil && err != http.ErrServerClosed {
-						logger.Error("Threshold dispatcher failed", err)
-					}
-				}()
-				defer thrHTTP.Close()
+					defer thrSrv.Stop()
+				}
 			}
 		}
 	}
