@@ -3,147 +3,105 @@
 
 // Verifies the embedded threshold dispatcher (luxfi/threshold/pkg/thresholdd)
 // is reachable from mpcd's process and answers a full keygen → sign → verify
-// round-trip with at least one production scheme (BLS — fast keygen, no
-// upstream flakiness).
+// round-trip over the ZAP wire with at least one production scheme (BLS —
+// fast keygen, no upstream flakiness).
 //
 // This is the smallest possible test that proves the consolidation is
 // real: mpcd embeds the same package the standalone thresholdd CLI uses,
-// the wire shape matches what teleport/mpc/src/signers/rpc.ts speaks,
-// and the dispatcher refuses unknown schemes with -32601.
+// the wire shape matches what teleport/mpc's ZAP client will speak once
+// it lands, and the dispatcher refuses unknown procedures explicitly.
 package main
 
 import (
-	"bytes"
-	"encoding/hex"
-	"encoding/json"
-	"net/http"
-	"net/http/httptest"
+	"context"
+	"fmt"
+	"net"
+	"strconv"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/luxfi/threshold/pkg/thresholdd"
 )
 
-// rpcCall posts a JSON-RPC 2.0 request against the embedded dispatcher
-// and unmarshals the result envelope. Mirrors the wire used by the
-// teleport mpc bus (signers/rpc.ts).
-func rpcCall(t *testing.T, url, method string, params any) (json.RawMessage, *struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
-}) {
+// startEmbeddedDispatcher brings up the threshold ZAP dispatcher on an
+// ephemeral loopback port and returns its addr + a cleanup func.
+func startEmbeddedDispatcher(t *testing.T, authToken string) (string, func()) {
 	t.Helper()
-	body, err := json.Marshal(map[string]any{
-		"jsonrpc": "2.0",
-		"id":      1,
-		"method":  method,
-		"params":  params,
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("alloc port: %v", err)
+	}
+	_, portStr, _ := net.SplitHostPort(ln.Addr().String())
+	ln.Close()
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		t.Fatalf("parse port: %v", err)
+	}
+	srv, err := thresholdd.NewZapServer(thresholdd.ZapServerConfig{
+		NodeID:    "mpcd-threshold-test",
+		Port:      port,
+		AuthToken: authToken,
 	})
 	if err != nil {
-		t.Fatalf("marshal: %v", err)
+		t.Fatalf("NewZapServer: %v", err)
 	}
-	resp, err := http.Post(url, "application/json", bytes.NewReader(body))
-	if err != nil {
-		t.Fatalf("post: %v", err)
+	if err := srv.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		t.Fatalf("status %d", resp.StatusCode)
-	}
-	var env struct {
-		Result json.RawMessage `json:"result"`
-		Error  *struct {
-			Code    int    `json:"code"`
-			Message string `json:"message"`
-		} `json:"error"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&env); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
-	return env.Result, env.Error
+	time.Sleep(20 * time.Millisecond)
+	return fmt.Sprintf("127.0.0.1:%d", port), srv.Stop
 }
 
 // TestEmbeddedDispatcher_BLSRoundTrip verifies the dispatcher mpcd
 // embeds answers a real BLS keygen → sign → verify round-trip on the
-// same wire teleport's PulsarSigner/CoronaSigner/Cggmp21Signer use.
+// same ZAP wire teleport's signers will speak.
 func TestEmbeddedDispatcher_BLSRoundTrip(t *testing.T) {
-	srv, err := thresholdd.NewServer()
-	if err != nil {
-		t.Fatalf("NewServer: %v", err)
-	}
-	ts := httptest.NewServer(srv)
-	defer ts.Close()
+	addr, stop := startEmbeddedDispatcher(t, "")
+	defer stop()
 
-	// keygen
-	res, rpcErr := rpcCall(t, ts.URL, "bls.keygen", map[string]any{
-		"threshold":    2,
-		"participants": 3,
-	})
-	if rpcErr != nil {
-		t.Fatalf("bls.keygen error %d: %s", rpcErr.Code, rpcErr.Message)
+	ctx := context.Background()
+	c, err := thresholdd.ConnectZap(ctx, addr, thresholdd.WithZapCallTimeout(30*time.Second))
+	if err != nil {
+		t.Fatalf("ConnectZap: %v", err)
 	}
-	var kg struct {
-		PublicKey string   `json:"publicKey"`
-		Shares    []string `json:"shares"`
+	defer c.Close()
+
+	pubKey, shares, err := c.Keygen(ctx, "bls", 2, 3)
+	if err != nil {
+		t.Fatalf("bls.keygen: %v", err)
 	}
-	if err := json.Unmarshal(res, &kg); err != nil {
-		t.Fatalf("unmarshal keygen: %v", err)
-	}
-	if kg.PublicKey == "" {
+	if len(pubKey) == 0 {
 		t.Fatalf("empty publicKey")
 	}
-	if len(kg.Shares) != 3 {
-		t.Fatalf("shares=%d want=3", len(kg.Shares))
+	if len(shares) != 3 {
+		t.Fatalf("shares=%d want=3", len(shares))
 	}
 
-	// sign
-	msg := hex.EncodeToString([]byte("mpcd embedded dispatch smoke test"))
-	res, rpcErr = rpcCall(t, ts.URL, "bls.sign", map[string]any{
-		"messageHex": msg,
-		"pubKeyHex":  kg.PublicKey,
-	})
-	if rpcErr != nil {
-		t.Fatalf("bls.sign error %d: %s", rpcErr.Code, rpcErr.Message)
+	msg := []byte("mpcd embedded dispatch smoke test")
+	sig, err := c.Sign(ctx, "bls", msg, pubKey)
+	if err != nil {
+		t.Fatalf("bls.sign: %v", err)
 	}
-	var sg struct {
-		SignatureHex string `json:"signatureHex"`
-	}
-	if err := json.Unmarshal(res, &sg); err != nil {
-		t.Fatalf("unmarshal sign: %v", err)
-	}
-	if sg.SignatureHex == "" {
-		t.Fatalf("empty signatureHex")
+	if len(sig) == 0 {
+		t.Fatalf("empty signature")
 	}
 
-	// verify
-	res, rpcErr = rpcCall(t, ts.URL, "bls.verify", map[string]any{
-		"messageHex":   msg,
-		"signatureHex": sg.SignatureHex,
-		"pubKeyHex":    kg.PublicKey,
-	})
-	if rpcErr != nil {
-		t.Fatalf("bls.verify error %d: %s", rpcErr.Code, rpcErr.Message)
+	ok, err := c.Verify(ctx, "bls", msg, sig, pubKey)
+	if err != nil {
+		t.Fatalf("bls.verify: %v", err)
 	}
-	var vr struct {
-		OK bool `json:"ok"`
-	}
-	if err := json.Unmarshal(res, &vr); err != nil {
-		t.Fatalf("unmarshal verify: %v", err)
-	}
-	if !vr.OK {
+	if !ok {
 		t.Fatalf("verify: round-trip signature failed under embedded dispatcher")
 	}
 
 	// forgery rejection — different message under same signature must fail
-	wrong := hex.EncodeToString([]byte("forged"))
-	res, rpcErr = rpcCall(t, ts.URL, "bls.verify", map[string]any{
-		"messageHex":   wrong,
-		"signatureHex": sg.SignatureHex,
-		"pubKeyHex":    kg.PublicKey,
-	})
-	if rpcErr != nil {
-		t.Fatalf("bls.verify(wrong) error %d: %s", rpcErr.Code, rpcErr.Message)
+	wrong := []byte("forged")
+	bad, err := c.Verify(ctx, "bls", wrong, sig, pubKey)
+	if err != nil {
+		t.Fatalf("bls.verify(wrong): %v", err)
 	}
-	_ = json.Unmarshal(res, &vr)
-	if vr.OK {
+	if bad {
 		t.Fatalf("verify: forgery accepted (different message)")
 	}
 }
@@ -151,20 +109,20 @@ func TestEmbeddedDispatcher_BLSRoundTrip(t *testing.T) {
 // TestIsThresholdLoopback locks the loopback policy that gates the
 // embedded dispatcher bind (Red HIGH B1). Bare `:port` is NOT loopback
 // — operators must spell out the host so an accidental
-// `--threshold-listen :7300` doesn't expose the dispatcher cluster-wide.
+// `--threshold-listen :7301` doesn't expose the dispatcher cluster-wide.
 func TestIsThresholdLoopback(t *testing.T) {
 	cases := []struct {
 		addr string
 		want bool
 	}{
-		{"127.0.0.1:7300", true},
-		{"127.0.0.99:7300", true},
-		{"[::1]:7300", true},
-		{"localhost:7300", true},
-		{"0.0.0.0:7300", false},
-		{":7300", false},
-		{"10.0.0.1:7300", false},
-		{"[2001:db8::1]:7300", false},
+		{"127.0.0.1:7301", true},
+		{"127.0.0.99:7301", true},
+		{"[::1]:7301", true},
+		{"localhost:7301", true},
+		{"0.0.0.0:7301", false},
+		{":7301", false},
+		{"10.0.0.1:7301", false},
+		{"[2001:db8::1]:7301", false},
 		{"not-an-addr", false},
 	}
 	for _, tc := range cases {
@@ -175,79 +133,68 @@ func TestIsThresholdLoopback(t *testing.T) {
 }
 
 // TestEmbeddedDispatcher_AuthGate proves that when mpcd installs an
-// auth token on the dispatcher, missing/bad bearer headers receive
-// 401 and the valid header passes through.
+// auth token on the dispatcher, mismatched peer NodeID receives an
+// unauthorized error and the matching NodeID passes through.
 func TestEmbeddedDispatcher_AuthGate(t *testing.T) {
-	srv, err := thresholdd.NewServer()
-	if err != nil {
-		t.Fatalf("NewServer: %v", err)
-	}
-	srv.SetAuthToken("cluster-token")
-	ts := httptest.NewServer(srv)
-	defer ts.Close()
+	addr, stop := startEmbeddedDispatcher(t, "cluster-token")
+	defer stop()
 
-	body, _ := json.Marshal(map[string]any{
-		"jsonrpc": "2.0", "id": 1, "method": "bls.keygen",
-		"params": map[string]any{"threshold": 2, "participants": 3},
-	})
+	ctx := context.Background()
 
-	// Missing auth → 401.
-	resp, err := http.Post(ts.URL, "application/json", bytes.NewReader(body))
+	// Wrong peer NodeID → unauthorized
+	bad, err := thresholdd.ConnectZap(ctx, addr,
+		thresholdd.WithZapNodeID("wrong-id"),
+		thresholdd.WithZapCallTimeout(10*time.Second))
 	if err != nil {
-		t.Fatalf("post: %v", err)
+		t.Fatalf("ConnectZap wrong-id: %v", err)
 	}
-	if resp.StatusCode != http.StatusUnauthorized {
-		resp.Body.Close()
-		t.Fatalf("missing-token: got %d, want 401", resp.StatusCode)
+	defer bad.Close()
+	_, _, err = bad.Keygen(ctx, "bls", 2, 3)
+	if err == nil {
+		t.Fatalf("wrong-id: expected unauthorized, got success")
 	}
-	resp.Body.Close()
+	if !strings.Contains(err.Error(), "unauthorized") {
+		t.Fatalf("wrong-id: error %v does not name unauthorized", err)
+	}
 
-	// Wrong token → 401.
-	req, _ := http.NewRequest("POST", ts.URL, bytes.NewReader(body))
-	req.Header.Set("Authorization", "Bearer wrong")
-	resp, err = http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatalf("do wrong: %v", err)
+	// Valid NodeID → success (under -short skip the heavy BLS keygen)
+	if !testing.Short() {
+		good, err := thresholdd.ConnectZap(ctx, addr,
+			thresholdd.WithZapNodeID("cluster-token"),
+			thresholdd.WithZapCallTimeout(30*time.Second))
+		if err != nil {
+			t.Fatalf("ConnectZap cluster-token: %v", err)
+		}
+		defer good.Close()
+		pubKey, _, err := good.Keygen(ctx, "bls", 2, 3)
+		if err != nil {
+			t.Fatalf("cluster-token Keygen: %v", err)
+		}
+		if len(pubKey) == 0 {
+			t.Fatalf("empty pubKey")
+		}
 	}
-	if resp.StatusCode != http.StatusUnauthorized {
-		resp.Body.Close()
-		t.Fatalf("wrong-token: got %d, want 401", resp.StatusCode)
-	}
-	resp.Body.Close()
-
-	// Valid token → 200.
-	req2, _ := http.NewRequest("POST", ts.URL, bytes.NewReader(body))
-	req2.Header.Set("Authorization", "Bearer cluster-token")
-	resp, err = http.DefaultClient.Do(req2)
-	if err != nil {
-		t.Fatalf("do valid: %v", err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		resp.Body.Close()
-		t.Fatalf("valid-token: got %d, want 200", resp.StatusCode)
-	}
-	resp.Body.Close()
 }
 
 // TestEmbeddedDispatcher_UnknownScheme verifies the dispatcher returns
-// a JSON-RPC -32601 method-not-found for an unrecognized scheme — the
-// teleport bus relies on this contract to route fall-back signers.
+// an explicit "unknown procedure" error for an unrecognized scheme —
+// the teleport bus relies on this contract to route fall-back signers.
 func TestEmbeddedDispatcher_UnknownScheme(t *testing.T) {
-	srv, err := thresholdd.NewServer()
-	if err != nil {
-		t.Fatalf("NewServer: %v", err)
-	}
-	ts := httptest.NewServer(srv)
-	defer ts.Close()
+	addr, stop := startEmbeddedDispatcher(t, "")
+	defer stop()
 
-	_, rpcErr := rpcCall(t, ts.URL, "bogus.keygen", map[string]any{
-		"threshold":    1,
-		"participants": 1,
-	})
-	if rpcErr == nil {
-		t.Fatalf("expected JSON-RPC error for bogus.keygen, got success")
+	ctx := context.Background()
+	c, err := thresholdd.ConnectZap(ctx, addr, thresholdd.WithZapCallTimeout(10*time.Second))
+	if err != nil {
+		t.Fatalf("ConnectZap: %v", err)
 	}
-	if rpcErr.Code != -32601 {
-		t.Fatalf("expected -32601 method-not-found, got code=%d msg=%q", rpcErr.Code, rpcErr.Message)
+	defer c.Close()
+
+	_, _, err = c.Keygen(ctx, "bogus", 1, 1)
+	if err == nil {
+		t.Fatalf("expected unknown-procedure error, got success")
+	}
+	if !strings.Contains(err.Error(), "unknown procedure") {
+		t.Fatalf("error %v does not name unknown procedure", err)
 	}
 }
