@@ -265,6 +265,7 @@ github.com/clipperhouse/uax29/v2 v2.7.0/go.mod h1:EFJ2TJMRUaplDxHKj1qAEhCtQPW2tJ
 github.com/cloudflare/circl v1.6.2/go.mod h1:2eXP6Qfat4O/Yhh8BznvKnJ+uzEoTQ6jVKJRn81BiS4=
 github.com/cloudflare/cloudflare-go v0.116.0/go.mod h1:Ds6urDwn/TF2uIU24mu7H91xkKP8gSAHxQ44DSZgVmU=
 github.com/cncf/xds/go v0.0.0-20251022180443-0feb69152e9f/go.mod h1:HlzOvOjVBOfTGSRXRyY0OiCS/3J1akRGQQpRO/7zyF4=
+github.com/cncf/xds/go v0.0.0-20260202195803-dba9d589def2/go.mod h1:qwXFYgsP6T7XnJtbKlf1HP8AjxZZyzxMmc+Lq5GjlU4=
 github.com/cockroachdb/datadriven v1.0.3-0.20230413201302-be42291fc80f/go.mod h1:a9RdTaap04u637JoCzcUoIcDmvwSUtcUFtT/C3kJlTU=
 github.com/cockroachdb/errors v1.12.0/go.mod h1:SvzfYNNBshAVbZ8wzNc/UPK3w1vf0dKDUP41ucAIf7g=
 github.com/cockroachdb/fifo v0.0.0-20240816210425-c5d0cb0b6fc0/go.mod h1:9/y3cnZ5GKakj/H4y9r9GTjCvAFta7KLgSHPJJYc52M=
@@ -330,8 +331,10 @@ github.com/emirpasic/gods v1.18.1/go.mod h1:8tpGGwCnJ5H4r6BWwaV6OrWmMoPhUl5jm/FM
 github.com/envoyproxy/go-control-plane v0.13.5-0.20251024222203-75eaa193e329/go.mod h1:Alz8LEClvR7xKsrq3qzoc4N0guvVNSS8KmSChGYr9hs=
 github.com/envoyproxy/go-control-plane v0.14.0/go.mod h1:NcS5X47pLl/hfqxU70yPwL9ZMkUlwlKxtAohpi2wBEU=
 github.com/envoyproxy/go-control-plane/envoy v1.35.0/go.mod h1:09qwbGVuSWWAyN5t/b3iyVfz5+z8QWGrzkoqm/8SbEs=
+github.com/envoyproxy/go-control-plane/envoy v1.37.0/go.mod h1:DReE9MMrmecPy+YvQOAOHNYMALuowAnbjjEMkkWOi6A=
 github.com/envoyproxy/go-control-plane/ratelimit v0.1.0/go.mod h1:Wk+tMFAFbCXaJPzVVHnPgRKdUdwW/KdbRt94AzgRee4=
 github.com/envoyproxy/protoc-gen-validate v1.2.1/go.mod h1:d/C80l/jxXLdfEIhX1W2TmLfsJ31lvEjwamM4DxlWXU=
+github.com/envoyproxy/protoc-gen-validate v1.3.3/go.mod h1:TsndJ/ngyIdQRhMcVVGDDHINPLWB7C82oDArY51KfB0=
 github.com/ethereum/c-kzg-4844/v2 v2.1.5/go.mod h1:u59hRTTah4Co6i9fDWtiCjTrblJv0UwsqZKCc0GfgUs=
 github.com/ethereum/c-kzg-4844/v2 v2.1.7/go.mod h1:8HMkUZ5JRv4hpw/XUrYWSQNAUzhHMg2UDb/U+5m+XNw=
 github.com/ethereum/go-bigmodexpfix v0.0.0-20250911101455-f9e208c548ab/go.mod h1:IuLm4IsPipXKF7CW5Lzf68PIbZ5yl7FFd74l/E0o9A8=
@@ -547,6 +550,7 @@ github.com/luxfi/cache v1.1.0/go.mod h1:9GvlEEE9rFPaaWxvVpSPwW8ZMo2+8VMNNcuPa4Aw
 github.com/luxfi/cache v1.2.0/go.mod h1:Esn48WMB3JL/+UOdCEV2Chyjr1MG3SSckXWLhB/P080=
 github.com/luxfi/chains v1.2.3/go.mod h1:aofU2aS8s5tHiD8VVQydcYStQCpR356f1UPHGlNi67U=
 github.com/luxfi/codec v1.1.2/go.mod h1:T+DV0Jau5bi+8wMcaoj51zS1rgt80VovQKzaN2CV5Mg=
+github.com/luxfi/codec v1.1.5/go.mod h1:/ugIv5iEgI+VAuPIetzxNT0eJaEjOID/mrIsgIjJh8g=
 github.com/luxfi/compress v0.0.2/go.mod h1:cfa7L3STdZdsMwJc9faZML1modLNh1n2u72n/DOfuNU=
 github.com/luxfi/compress v0.0.4/go.mod h1:/eN0eca98igoE6DDsLv/4w7n1gsQKwa+HUTxmWz/iWw=
 github.com/luxfi/concurrent v0.0.2/go.mod h1:SwEDrQXVAXgBiObXVg0pfmLzU1xsa9ZeBRptkBdyNUU=
@@ -564,6 +568,7 @@ github.com/luxfi/consensus v1.22.70/go.mod h1:y6y+bVjvpDLkkTBCCKLcch6R4PRW8EA+lT
 github.com/luxfi/consensus v1.22.84/go.mod h1:y6y+bVjvpDLkkTBCCKLcch6R4PRW8EA+lTfr+6sB6F8=
 github.com/luxfi/consensus v1.22.85/go.mod h1:y6y+bVjvpDLkkTBCCKLcch6R4PRW8EA+lTfr+6sB6F8=
 github.com/luxfi/consensus v1.23.15/go.mod h1:mrc2b8y3VZy/PFntr60WaytMKaEBmM0Xe5nd1Q3fxoI=
+github.com/luxfi/consensus v1.25.0/go.mod h1:jkKzKyIgg/JqaEumxZOJd9ofWM3pXnVVLlQp+3qo9SM=
 github.com/luxfi/consensus v1.25.13/go.mod h1:7/tlpy+byv2tP7YZSMG+XtS8C2bbz3qpB4H8jxXhHxk=
 github.com/luxfi/const v1.4.0/go.mod h1:qWfecjdImPY3kXsy3UAe4ZVpMcsp2/iUlHwUMPVREoI=
 github.com/luxfi/const v1.4.1/go.mod h1:qWfecjdImPY3kXsy3UAe4ZVpMcsp2/iUlHwUMPVREoI=
@@ -571,6 +576,7 @@ github.com/luxfi/constants v1.4.2/go.mod h1:xk+0eA7UY1GkHrmI7yqR+9LDe4TUe3p1VfRv
 github.com/luxfi/constants v1.4.4/go.mod h1:ENkJ121cmDEkwQPDiKK4QhnTnW9u37PGpepbrdVcAmc=
 github.com/luxfi/constants v1.5.2/go.mod h1:hOszZ2NDQ8gMZKncfcZ67PXkb5OIbnwAzXC3oFbQwW0=
 github.com/luxfi/constants v1.5.7/go.mod h1:z+Wc7skybZAA+xuBWNcmtv402S/BFqixL+FiSQXPg8U=
+github.com/luxfi/constants v1.5.8-0.20260603055356-93c2c2ceb9ca/go.mod h1:z+Wc7skybZAA+xuBWNcmtv402S/BFqixL+FiSQXPg8U=
 github.com/luxfi/container v0.0.2/go.mod h1:nnK+TxHmGry0mGnfun4jx0tLqWJgV/GbZXTETMuFJn4=
 github.com/luxfi/coreth v0.15.71/go.mod h1:Z/OTRrw+q+uSNrCh1Fg0hkMf1fRquzbTQelx7wR0HOM=
 github.com/luxfi/crypto v1.17.28/go.mod h1:v6eaW5ejuzW2gecChWKQqx4CtVhoM1b+e40ro/6WVPg=
@@ -605,8 +611,10 @@ github.com/luxfi/genesis v1.5.21/go.mod h1:XI1T2oMh/VS/f+LWMWPDQIEhEneCNVHodhn2Q
 github.com/luxfi/genesis v1.5.22/go.mod h1:ernOqYxKPEZnwu/QvgJ9y4Lb+IUpfoOtZ3/DubzExv0=
 github.com/luxfi/genesis v1.7.1/go.mod h1:k26ZZvzES8e9cep9oWUDggBX+6oa5bnIQ7MmQP7dm4A=
 github.com/luxfi/genesis v1.9.8-0.20260512210243-caa876fa623c/go.mod h1:MYq833r+bWynDN3NcYRxuxYukkDw9qT0rvbG/Op5afQ=
+github.com/luxfi/genesis v1.12.15/go.mod h1:D0uksf3ID3Syb4FU7EE77OU+yaU5zHSsUoUS5Ev8D/E=
 github.com/luxfi/genesis v1.13.8/go.mod h1:iwXcnFHY997cWUKzyP4SCBl7o493SYHQniy3QViZOAg=
 github.com/luxfi/genesis/pkg/genesis/security v1.13.8/go.mod h1:DzU+GYUFv12ja4Vc46bWKNBBmNYbcow3u/DASx4wpfI=
+github.com/luxfi/geth v1.16.67/go.mod h1:QWPyY3vlGQfm8SX/PE6q4XHTBe7X4Gw+SGDJi5QU1pg=
 github.com/luxfi/geth v1.16.73/go.mod h1:CPzps7Zp3I7Og3KT3m+Qs41WW8z+YPGx1TOJQnHdBHY=
 github.com/luxfi/geth v1.16.77/go.mod h1:al8oFHXxsVly+Y3fcRHIhNhBSgAFNRR5Ey6YKemEDUs=
 github.com/luxfi/geth v1.16.90/go.mod h1:ynzwEXqLboNr1R1wdht/SqYnGINtaU4lYajR779JxgE=
@@ -623,6 +631,7 @@ github.com/luxfi/ids v1.2.7/go.mod h1:svLsj7e6ixJVfRYaQqv9RWjBIW11Vz738+d08BVpeC
 github.com/luxfi/ids v1.2.8/go.mod h1:14vKgM828w7yqnh6z0LhNrObXHVvtyRDyWBEmWBj5i8=
 github.com/luxfi/ids v1.2.10/go.mod h1:QBIwy3OHvrtskbUqKh1+OYRa6PsyR7f7oNX33sOfK7w=
 github.com/luxfi/ids v1.2.13/go.mod h1:QWjJvggX/nRkmrz1AGSaF2Y6mnOvz3g7lFOzs3Zd+JM=
+github.com/luxfi/ids v1.2.14/go.mod h1:Nntz4RGro9m/Wlogv70z/hsA6ykYgusg+XXmBIp8nVo=
 github.com/luxfi/keychain v1.0.1/go.mod h1:X7HLk5QRZ1VHJxovAyBL6z7f/nlosoXlveEtvUGhoaw=
 github.com/luxfi/keychain v1.0.2/go.mod h1:q/4ULgZBlstKkwzOzG/0T6y73BDPgnkrcibbJyTvmbU=
 github.com/luxfi/keys v1.0.7/go.mod h1:Faz87SfMIzVpE+2uIsYQnw+36rRhQNKydd/3mEEXPbg=
@@ -653,6 +662,7 @@ github.com/luxfi/net v0.0.4/go.mod h1:QvgHzCa767cVWtPpui0P7HW1IrA2+c++hhvaQ/t0yy
 github.com/luxfi/netrunner v1.14.35/go.mod h1:vfeCr7L49R9yoSjZCpZe2+xtoNdPt4fstEtbKt7Jtls=
 github.com/luxfi/netrunner v1.14.38/go.mod h1:NNwjhS4+wJ3OBCImF9UWrjE2YJlXiOrlaw62ePW8/YI=
 github.com/luxfi/netrunner v1.18.2/go.mod h1:9j6HfMh8987BjKaAsKsNMEkIOoVZij6mAiG0wpljd9k=
+github.com/luxfi/netrunner v1.18.5-0.20260519042948-50731517be59/go.mod h1:DSjlJfY4I+1Lgkhfmp13DL4lrhTct9rjZdbddDZWMLU=
 github.com/luxfi/node v1.22.83/go.mod h1:0Yxmo6cLWD4iQky8WoJECYzxAUdu+c9uj9CNTOuULLg=
 github.com/luxfi/node v1.22.87/go.mod h1:sqpc9GRi4PrYs+iXoXwkXMiVOpEir1OanFRwbY/jXIc=
 github.com/luxfi/oracle v0.1.1-0.20260429020431-76258cfcddf9/go.mod h1:ueeF3b4SrhpCNb8hUYeP/kV7qgkp/BKKjsKbUhEjg40=
@@ -662,6 +672,7 @@ github.com/luxfi/p2p v1.18.7/go.mod h1:X829+oxzPyY2e5S9CyyMFiOtk6nyuNnxZSaSxGxrp
 github.com/luxfi/p2p v1.18.8/go.mod h1:aaoeZW5MdrVNylN1hOP2ALWj+YPaB+sL2l6qAShQqfg=
 github.com/luxfi/p2p v1.18.9/go.mod h1:X829+oxzPyY2e5S9CyyMFiOtk6nyuNnxZSaSxGxrpKw=
 github.com/luxfi/p2p v1.19.2/go.mod h1:tI9Bt1R0ouvVtJvXG4e20GlGeV4AR230k4mFF9Vglzk=
+github.com/luxfi/p2p v1.21.1/go.mod h1:SsNPR5fPGWWNem9plGWhSmRqyDoysJ3kPAN0zG0g3iw=
 github.com/luxfi/password v0.0.1/go.mod h1:xKhi28+V3xqPc4+kIZHRp7oZ1W7nUKze6EauvMVq19s=
 github.com/luxfi/pq v1.0.1-0.20260512064747-3d4c9414e15e/go.mod h1:8bppZcRElfrVt0n3nYCZW3iX1TvhvzNbdjNdK1irgIE=
 github.com/luxfi/precompile v0.4.1/go.mod h1:Wqb52S3F5jA4H1In3Ygau+cAaiLq5iiS9AFLnBCozSE=
@@ -674,6 +685,8 @@ github.com/luxfi/precompile v0.5.23/go.mod h1:K/1lY+UEYpQKelLFKhh0vnMM50uhW9HEf5
 github.com/luxfi/precompile v0.5.27/go.mod h1:boKRJeoa4XEhCoylRnPI/0IGfBgm5bZnFNI9llDktWo=
 github.com/luxfi/proto v1.0.0/go.mod h1:pZLKsCmhiPtmm3z7ezBbnsYT2m79q+cFSmzxvuBeANE=
 github.com/luxfi/proto v1.0.2/go.mod h1:pZLKsCmhiPtmm3z7ezBbnsYT2m79q+cFSmzxvuBeANE=
+github.com/luxfi/proto v1.2.1/go.mod h1:JkzinRBQu02HsVPIGQvLVhG/xyO1ovTqoEAphOiNBso=
+github.com/luxfi/proto v1.3.0/go.mod h1:JkzinRBQu02HsVPIGQvLVhG/xyO1ovTqoEAphOiNBso=
 github.com/luxfi/protocol v0.0.1/go.mod h1:TyBeSLGH2PzXoh7gwYAOtt/N57nK8E0MfirEkrsD6E4=
 github.com/luxfi/protocol v0.0.2/go.mod h1:Yjn2VRwn5PXim0+JTalAyrVG6YbmuSnYOfeUXSbAsqA=
 github.com/luxfi/protocol v0.0.4/go.mod h1:9f35GLNlcHAz6LCvFBDZP5fTD2QnN0URXWGUOcD1JPU=
@@ -694,6 +707,7 @@ github.com/luxfi/sdk v1.16.42/go.mod h1:CecKZ5Ss+amSbl7/+rRNiUsK34E5xInDKXZVFd54
 github.com/luxfi/sdk v1.16.44/go.mod h1:8dnvFmRVl899ilGSPwGE3c+EYIba3Fn6i7UiIJUmIzc=
 github.com/luxfi/sdk v1.16.48/go.mod h1:hWvy9A9Mk0M7+YXwFg4ibmXxUBykLRpLfh09o/Yt8MY=
 github.com/luxfi/sdk v1.16.60/go.mod h1:se4G9mlLc6WdjLQlydg6J3pFEeMlEH+MCO1puJ8sYYc=
+github.com/luxfi/sdk v1.17.6/go.mod h1:Kmo6Iuvjxfcri/BLW64/xygfPK/VegJ3upKTxR/RxNI=
 github.com/luxfi/sdk/api v0.0.2/go.mod h1:p0fv13IlUKFTx16y//rtpp6D/qBZa8xX9gYkKp6j/9g=
 github.com/luxfi/staking v1.0.0/go.mod h1:E+fm3upfQTOu0fLCr3Uo4xYgAm7r/vEzgcUpNAhJuSE=
 github.com/luxfi/staking v1.1.0/go.mod h1:xwYacmreoKoy31ELT6QPno6b5M8q7bg4zJrmmt524X4=
@@ -710,13 +724,16 @@ github.com/luxfi/tls v1.0.3/go.mod h1:dQqSiGE7YxXUxOwICoReUuIitBms9DYOaCeteBwmIW
 github.com/luxfi/trace v0.1.4/go.mod h1:Az7HWh+PCuPftXjQu+ssjv51nKauaFu+q2un7bmZYBA=
 github.com/luxfi/units v1.0.0/go.mod h1:tma28v4ed1tupdS0kpSeyO+u1wWK/g1NqODPbN1YzmA=
 github.com/luxfi/upgrade v1.0.0/go.mod h1:DZF7dO4erhUEKf907B2e65k4/vGkCPkUngpvIEUS3eI=
+github.com/luxfi/upgrade v1.0.1-0.20260603055252-f51810805436/go.mod h1:zBBG2VkZmWLr6u6DxzI/4DSFYjHizHrr7MqCDZkMSJc=
 github.com/luxfi/utils v1.1.0/go.mod h1:ABqhBdGNig0CaDcnNYldv1byS0BTNi5IKPbJSPF1p98=
 github.com/luxfi/utils v1.1.1/go.mod h1:DL7634uXEcCu2tCBll0bmX0SVnMJeABbmhm5NkLMu78=
+github.com/luxfi/utils v1.1.5/go.mod h1:T2OCKT1xG9jtKR/gyJQoSkticzrE9WFQ8eohJHGu9Fg=
 github.com/luxfi/utxo v0.0.1/go.mod h1:cwkUv/J6zNohRI7+xrj03wi39bm6CYkek+6XRhQrPTU=
 github.com/luxfi/utxo v0.2.3/go.mod h1:I23ZJND7kU6NUklD2nY24mU93jQXBPGu1c9Y1hjX9Vk=
 github.com/luxfi/utxo v0.2.4/go.mod h1:7XEJzJE7apaXGs4LVzLt4djtpHDBsnfZi8jjyZmJWY0=
 github.com/luxfi/utxo v0.3.0/go.mod h1:e1KQHhjYTpc0zugPbGuffezUoz2ZFvha5I3LoFB10/M=
 github.com/luxfi/utxo v0.3.2/go.mod h1:O8Ucl6Sj0nM7l3Y+uqzucVu309yHcRQY++rg9yXmmdo=
+github.com/luxfi/utxo v0.3.7/go.mod h1:dbJ7RHU8qj5ttobGYK/A2PsZIQpCsHAIay6xKwc8YQ8=
 github.com/luxfi/validators v1.0.0/go.mod h1:QGppjtI/gqprbplWc10J+4OIK8UYWpv+53mfH2aKhy4=
 github.com/luxfi/validators v1.2.0/go.mod h1:GYLulrNXAan23ZlX7sgWVbVnLpUexeB/m2qr2ymsXok=
 github.com/luxfi/version v1.0.1/go.mod h1:Y5fPkQ2DB0XRBCxgSPXp4ISzL1/jptKnmFknShRJCyg=
@@ -730,6 +747,8 @@ github.com/luxfi/vm v1.0.26/go.mod h1:6p/iZP4xtNPpqysB8/ITkSZs86a1VSeqNRIm+eOL6R
 github.com/luxfi/vm v1.0.27/go.mod h1:6p/iZP4xtNPpqysB8/ITkSZs86a1VSeqNRIm+eOL6Rk=
 github.com/luxfi/vm v1.0.36/go.mod h1:s/ycKEqieJeCua7q0DGPtdCu3AL9dFeX2M54ddWEIYc=
 github.com/luxfi/vm v1.0.40/go.mod h1:Y5WUKhT76PR6HnbUykHBWI2f5sjssrm5BL6/o7b6IfQ=
+github.com/luxfi/vm v1.1.10/go.mod h1:ybXH96CamX2C99u/Oq6rna+4yDS2vQpLMmDXWem/qvI=
+github.com/luxfi/vm v1.1.11/go.mod h1:qcikiqrAX12ZEPsoQqZbBHLAfUoWOJE3uVRCTaqnZSQ=
 github.com/luxfi/warp v1.18.2/go.mod h1:qu3TZv98repNhIDf04I6pzXePSgHjzP+JoSfWmF4PBA=
 github.com/luxfi/warp v1.18.4/go.mod h1:5kXaZGYBBzOFyzPoDukVynvTTPskElrA8EQ5TVgovqc=
 github.com/luxfi/warp v1.18.5/go.mod h1:SFyC529HDvbP/TWRAdYQSyJUliMa5JKFRtBrTLEElp4=
@@ -967,6 +986,7 @@ go.etcd.io/etcd/client/v2 v2.305.0/go.mod h1:h9puh54ZTgAKtEbut2oe9P4L/oqKCVB6xsX
 go.opentelemetry.io/auto/sdk v1.1.0/go.mod h1:3wSPjt5PWp2RhlCcmmOial7AvC4DQqZb7a7wCow3W8A=
 go.opentelemetry.io/contrib/detectors/gcp v1.38.0/go.mod h1:SU+iU7nu5ud4oCb3LQOhIZ3nRLj6FNVrKgtflbaf2ts=
 go.opentelemetry.io/contrib/detectors/gcp v1.39.0/go.mod h1:t/OGqzHBa5v6RHZwrDBJ2OirWc+4q/w2fTbLZwAKjTk=
+go.opentelemetry.io/contrib/detectors/gcp v1.42.0/go.mod h1:W9zQ439utxymRrXsUOzZbFX4JhLxXU4+ZnCt8GG7yA8=
 go.opentelemetry.io/contrib/zpages v0.62.0/go.mod h1:C8kXoiC1Ytvereztus2R+kqdSa6W/MZ8FfS8Zwj+LiM=
 go.opentelemetry.io/otel v1.37.0/go.mod h1:ehE/umFRLnuLa/vSccNq9oS1ErUlkkK71gMcN34UG8I=
 go.opentelemetry.io/otel v1.38.0/go.mod h1:zcmtmQ1+YmQM9wrNsTGV/q/uyusom3P8RxwExxkZhjM=
@@ -1190,15 +1210,18 @@ google.golang.org/genproto v0.0.0-20230410155749-daa745c078e1/go.mod h1:nKE/iIaL
 google.golang.org/genproto/googleapis/api v0.0.0-20251222181119-0a764e51fe1b/go.mod h1:Xa7le7qx2vmqB/SzWUBa7KdMjpdpAHlh5QCSnjessQk=
 google.golang.org/genproto/googleapis/api v0.0.0-20260120221211-b8f7ae30c516/go.mod h1:p3MLuOwURrGBRoEyFHBT3GjUwaCQVKeNqqWxlcISGdw=
 google.golang.org/genproto/googleapis/api v0.0.0-20260209200024-4cfbd4190f57/go.mod h1:kSJwQxqmFXeo79zOmbrALdflXQeAYcUbgS7PbpMknCY=
+google.golang.org/genproto/googleapis/api v0.0.0-20260226221140-a57be14db171/go.mod h1:M5krXqk4GhBKvB596udGL3UyjL4I1+cTbK0orROM9ng=
 google.golang.org/genproto/googleapis/bytestream v0.0.0-20260319201613-d00831a3d3e7/go.mod h1:6TABGosqSqU2l1+fJ3jdvOYPPVryeKybxYF0cCZkTBE=
 google.golang.org/genproto/googleapis/rpc v0.0.0-20251222181119-0a764e51fe1b/go.mod h1:j9x/tPzZkyxcgEFkiKEEGxfvyumM01BEtsW8xzOahRQ=
 google.golang.org/genproto/googleapis/rpc v0.0.0-20260120221211-b8f7ae30c516/go.mod h1:j9x/tPzZkyxcgEFkiKEEGxfvyumM01BEtsW8xzOahRQ=
 google.golang.org/genproto/googleapis/rpc v0.0.0-20260209200024-4cfbd4190f57/go.mod h1:j9x/tPzZkyxcgEFkiKEEGxfvyumM01BEtsW8xzOahRQ=
+google.golang.org/genproto/googleapis/rpc v0.0.0-20260226221140-a57be14db171/go.mod h1:4Hqkh8ycfw05ld/3BWL7rJOSfebL2Q+DVDeRgYgxUU8=
 google.golang.org/genproto/googleapis/rpc v0.0.0-20260401001100-f93e5f3e9f0f/go.mod h1:4Hqkh8ycfw05ld/3BWL7rJOSfebL2Q+DVDeRgYgxUU8=
 google.golang.org/grpc v1.78.0/go.mod h1:I47qjTo4OKbMkjA/aOOwxDIiPSBofUtQUI5EfpWvW7U=
 google.golang.org/grpc v1.79.1/go.mod h1:KmT0Kjez+0dde/v2j9vzwoAScgEPx/Bw1CYChhHLrHQ=
 google.golang.org/grpc v1.79.2/go.mod h1:KmT0Kjez+0dde/v2j9vzwoAScgEPx/Bw1CYChhHLrHQ=
 google.golang.org/grpc v1.79.3/go.mod h1:KmT0Kjez+0dde/v2j9vzwoAScgEPx/Bw1CYChhHLrHQ=
+google.golang.org/grpc v1.81.1/go.mod h1:xGH9GfzOyMTGIOXBJmXt+BX/V0kcdQbdcuwQ/zNw42I=
 google.golang.org/grpc/examples v0.0.0-20250407062114-b368379ef8f6/go.mod h1:6ytKWczdvnpnO+m+JiG9NjEDzR1FJfsnmJdG7B8QVZ8=
 google.golang.org/protobuf v1.33.0/go.mod h1:c6P6GXX6sHbq/GpV6MGZEdwhWPcYBgnhAHhKbcUYpos=
 google.golang.org/protobuf v1.35.1/go.mod h1:9fA7Ob0pmnwhb644+1+CVWFRbNajQ6iRojtC/QF5bRE=
