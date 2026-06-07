@@ -1,6 +1,6 @@
 module github.com/luxfi/mpc
 
-go 1.26.3
+go 1.26.4
 
 require (
 	cloud.google.com/go/kms v1.27.0
