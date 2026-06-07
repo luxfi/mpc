@@ -50,7 +50,6 @@ import (
 	"github.com/luxfi/mpc/pkg/mpc"
 	"github.com/luxfi/mpc/pkg/transport"
 	"github.com/luxfi/mpc/pkg/types"
-	"github.com/luxfi/mpc/pkg/zapauth"
 )
 
 const (
@@ -732,46 +731,12 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 	// Start KMS-facing ZAP server. KMS dials this for threshold-signing
 	// requests after running the ML-KEM-768 hybrid handshake. Empty
 	// --kms-zap-listen disables it (e.g., for legacy compose stacks that
-	// only need the HTTP dashboard). Default :9653 matches the
-	// Liquid operator's zapPort so no LiquidMPC CR change is needed.
-	//
-	// Optional bearer-token gate (LP-103, v1.14.0):
-	//   ZAP_JWKS_URL          — JWKS endpoint (default cluster-internal IAM)
-	//   ZAP_EXPECTED_ISS      — expected JWT iss
-	//   ZAP_EXPECTED_AUDIENCES — comma-separated allow-list (e.g. "")
-	//   ZAP_AUTH_REQUIRED     — "true" to reject unauthenticated peers
+	// Default :9653 matches the Liquid operator's zapPort so no
+	// LiquidMPC CR change is needed. Trust at the network boundary
+	// (NetworkPolicy + ZAP wire).
 	kmsZapAddr := c.String("kms-zap-listen")
 	if kmsZapAddr != "" {
-		kmsZapCfg := mpcapi.KMSZapConfig{}
-		if jwksURL := os.Getenv("ZAP_JWKS_URL"); jwksURL != "" {
-			expIss := os.Getenv("ZAP_EXPECTED_ISS")
-			audCSV := os.Getenv("ZAP_EXPECTED_AUDIENCES")
-			var auds []string
-			for _, a := range strings.Split(audCSV, ",") {
-				if a = strings.TrimSpace(a); a != "" {
-					auds = append(auds, a)
-				}
-			}
-			if expIss == "" || len(auds) == 0 {
-				logger.Error("ZAP auth requested but ZAP_EXPECTED_ISS or ZAP_EXPECTED_AUDIENCES missing",
-					fmt.Errorf("incomplete config"),
-					"jwksUrl", jwksURL, "iss", expIss, "auds", audCSV)
-			} else {
-				v, vErr := zapauth.NewVerifier(zapauth.Config{
-					JWKSURL: jwksURL, ExpectedIssuer: expIss, ExpectedAudiences: auds,
-				})
-				if vErr != nil {
-					logger.Error("ZAP auth verifier init failed", vErr,
-						"jwksUrl", jwksURL, "iss", expIss)
-				} else {
-					kmsZapCfg.Verifier = v
-					kmsZapCfg.AuthRequired = strings.EqualFold(os.Getenv("ZAP_AUTH_REQUIRED"), "true")
-					logger.Info("ZAP auth verifier configured",
-						"iss", expIss, "auds", auds, "required", kmsZapCfg.AuthRequired)
-				}
-			}
-		}
-		kmsZap, kmsZapErr := mpcapi.StartKMSZAPWith(mpcBackend, fmt.Sprintf("mpcd-kms-zap-%s", nodeID), kmsZapAddr, kmsZapCfg)
+		kmsZap, kmsZapErr := mpcapi.StartKMSZAP(mpcBackend, fmt.Sprintf("mpcd-kms-zap-%s", nodeID), kmsZapAddr)
 		if kmsZapErr != nil {
 			logger.Error("Failed to start KMS ZAP server", kmsZapErr, "addr", kmsZapAddr)
 		} else {
