@@ -39,7 +39,7 @@ jobs:
   manifest:
     needs: [docker]
     if: always() && contains(needs.docker.result, 'success')
-    runs-on: luxfi-build-amd64
+    runs-on: evo
     steps:
       - uses: docker/login-action@v3
         with:
