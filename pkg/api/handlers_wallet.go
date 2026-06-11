@@ -1,7 +1,7 @@
 // Tiered wallet handlers — /v1/wallet/* surface.
 //
 // This is the API for the 9-tier wallet architecture (pkg/wallet). It is
-// distinct from /v1/mpc/wallets (Liquidity MPC spec surface) and
+// distinct from /v1/mpc/wallets (MPC spec surface) and
 // /v1/mpc/treasury/* (3-of-5 governance). One purpose per surface, no
 // aliasing.
 //
