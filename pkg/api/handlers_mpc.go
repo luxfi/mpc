@@ -29,7 +29,7 @@ import (
 )
 
 // logBiometricBindingWarning records a structured warning when the R3-8
-// envelope→enrollment binding was weak (e.g.  has not yet shipped
+// envelope→enrollment binding was weak (e.g. the liveness provider has not yet shipped
 // the extended envelope and the server is running in LAX mode). Never fires
 // in STRICT mode — those calls are rejected outright.
 func (s *Server) logBiometricBindingWarning(orgID, userID, msg string) {
@@ -615,15 +615,15 @@ func (s *Server) handleMpcSignSettlement(w http.ResponseWriter, r *http.Request)
 //  3. authenticatorData[0:32] is compared against sha256(rpID); the UP and
 //     UV flags are enforced so locked authenticators are rejected.
 //  4. Liveness score is NEVER accepted from the request body. Instead the
-//     client attaches a -signed Ed25519 attestation envelope
+//     client attaches a provider-signed Ed25519 attestation envelope
 //     over (providerId, userId, score, timestamp, nonce). The server verifies
-//     the signature against the configured  pubkey and enforces
+//     the signature against the configured the liveness provider pubkey and enforces
 //     userId match, score floor, and max age.
 func (s *Server) handleBiometricEnroll(w http.ResponseWriter, r *http.Request) {
 	orgID := getOrgID(r.Context())
 	userID := getUserID(r.Context())
 
-	if len(s.PubKey) == 0 {
+	if s.livenessVerifier == nil {
 		writeError(w, http.StatusServiceUnavailable, "biometric enrollment unavailable: liveness verifier not configured")
 		return
 	}
@@ -668,8 +668,8 @@ func (s *Server) handleBiometricEnroll(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// R3-8: compute the credentialHash and challengeID the envelope must
-	// bind to.  signs these into the attestation so a stolen
-	// envelope cannot be replayed to enroll an attacker-controlled key.
+	// bind to. The liveness provider signs these into the attestation so a
+	// stolen envelope cannot be replayed to enroll an attacker-controlled key.
 	pubKeyBytes, decErr := base64.StdEncoding.DecodeString(req.PublicKey)
 	if decErr != nil {
 		writeError(w, http.StatusBadRequest, "invalid publicKey encoding")
@@ -679,21 +679,19 @@ func (s *Server) handleBiometricEnroll(w http.ResponseWriter, r *http.Request) {
 	expectedCredentialHash := base64.StdEncoding.EncodeToString(credentialHashRaw[:])
 	expectedChallengeID := base64.RawURLEncoding.EncodeToString(chalBytes)
 
-	// Verify the server-signed liveness attestation. Fails closed.
-	// Binding mode default = Strict; an operator may relax to Lax during
-	// the  rollout window by setting MPC_LIVENESS_BINDING=lax.
-	// The relaxed mode still warns on every call so the rollout progress
-	// is observable in logs.
+	// Verify the provider-signed liveness attestation through the configured
+	// Verifier. Fails closed. Binding mode default = Strict; an operator may
+	// relax to Lax during a vendor's extended-envelope rollout by setting
+	// MPC_LIVENESS_BINDING=lax. The relaxed mode still warns on every call so
+	// the rollout progress is observable in logs.
 	const minLivenessScore = 0.8
-	if _, err := webauthn.VerifyLiveness(req.LivenessAttestation, &webauthn.LivenessOpts{
-		PubKey:                 s.PubKey,
-		ProviderID:             s.ProviderID,
+	if _, err := s.livenessVerifier.Verify(req.LivenessAttestation, webauthn.Binding{
 		UserID:                 userID,
 		MinScore:               minLivenessScore,
 		MaxAge:                 2 * time.Minute,
 		ExpectedCredentialHash: expectedCredentialHash,
 		ExpectedChallengeID:    expectedChallengeID,
-		BindingMode:            s.livenessBindingMode,
+		Mode:                   s.livenessBindingMode,
 		WarnFn: func(msg string) {
 			s.logBiometricBindingWarning(orgID, userID, msg)
 		},
