@@ -77,15 +77,17 @@ type Server struct {
 	oidcIssuers     []string
 	webauthnRPID    string
 	webauthnOrigins map[string]bool
-	// PubKey is the Ed25519 verifying key used to validate
-	//  (or any other configured PAD-2 liveness provider) attestations
-	// attached to /v1/mpc/biometric/enroll. Nil disables the endpoint.
-	PubKey     ed25519.PublicKey
-	ProviderID string
+	// livenessVerifier validates the liveness attestation attached to
+	// /v1/mpc/biometric/enroll. Resolved at boot from the configured
+	// provider id: a white-label-registered Verifier if present, else the
+	// OSS-default Ed25519 envelope verifier built from the configured
+	// public key. Nil disables the endpoint (fails closed).
+	livenessVerifier   webauthn.Verifier
+	livenessProviderID string
 	// livenessBindingMode controls the R3-8 envelope→enrollment binding.
 	// BindingStrict (default) rejects envelopes that don't carry
 	// credentialHash/challengeId. BindingLax logs a warning instead —
-	// intended only for the  extended-envelope rollout window.
+	// intended only for the liveness provider extended-envelope rollout window.
 	// Configured via MPC_LIVENESS_BINDING=strict|lax (default strict).
 	livenessBindingMode webauthn.BindingMode
 	router              chi.Router
@@ -155,24 +157,36 @@ func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, o
 		Database: database,
 	})
 
-	//  liveness attestation verifier. Configure via:
+	// Liveness attestation verifier. Resolve the active Verifier from the
+	// configured provider id:
 	//
-	//   MPC__PUBKEY_ED25519  — base64-standard Ed25519 public key
-	//   MPC__PROVIDER_ID     — optional provider id lock (e.g. "")
+	//   MPC_LIVENESS_PROVIDER_ID     — provider id; also the registry key a
+	//                                  white-label deployment registers under
+	//   MPC_LIVENESS_PUBKEY_ED25519  — base64-standard Ed25519 public key for
+	//                                  the OSS-default envelope verifier
 	//
-	// Without the pubkey configured, /v1/mpc/biometric/enroll refuses every
-	// request. This is deliberate: an unconfigured verifier MUST NOT fall
-	// back to trusting body-supplied liveness scores.
-	var sgKey ed25519.PublicKey
-	if raw := os.Getenv("MPC__PUBKEY_ED25519"); raw != "" {
+	// A deployment that registers its own webauthn.Verifier under the
+	// provider id (e.g. liquidity wiring its regulated PAD-2 vendor) wins;
+	// otherwise, if a public key is configured, the OSS-default Ed25519
+	// envelope verifier is used. With neither, livenessVerifier stays nil
+	// and /v1/mpc/biometric/enroll refuses every request — an unconfigured
+	// verifier MUST NOT fall back to trusting body-supplied scores.
+	livenessProviderID := os.Getenv("MPC_LIVENESS_PROVIDER_ID")
+	var livenessVerifier webauthn.Verifier
+	if v, ok := webauthn.LookupVerifier(livenessProviderID); ok {
+		livenessVerifier = v
+	} else if raw := os.Getenv("MPC_LIVENESS_PUBKEY_ED25519"); raw != "" {
 		if dec, err := base64.StdEncoding.DecodeString(raw); err == nil && len(dec) == ed25519.PublicKeySize {
-			sgKey = ed25519.PublicKey(dec)
+			livenessVerifier = webauthn.Ed25519EnvelopeVerifier{
+				PubKey:     ed25519.PublicKey(dec),
+				ProviderID: livenessProviderID,
+			}
 		}
 	}
 
-	// R3-8 binding mode. Default STRICT; ops may toggle to LAX during
-	// the  extended-envelope rollout. LAX emits a warn log on
-	// every permissive accept so rollout progress is observable.
+	// R3-8 binding mode. Default STRICT; ops may toggle to LAX during a
+	// vendor's extended-envelope rollout. LAX emits a warn log on every
+	// permissive accept so rollout progress is observable.
 	bindingMode := webauthn.BindingStrict
 	if strings.ToLower(strings.TrimSpace(os.Getenv("MPC_LIVENESS_BINDING"))) == "lax" {
 		bindingMode = webauthn.BindingLax
@@ -186,9 +200,9 @@ func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, o
 		oidcIssuers:          oidcIssuers,
 		webauthnRPID:         rpID,
 		webauthnOrigins:      webauthnOrigins,
-		PubKey:     sgKey,
-		ProviderID: os.Getenv("MPC__PROVIDER_ID"),
-		livenessBindingMode:  bindingMode,
+		livenessVerifier:    livenessVerifier,
+		livenessProviderID:  livenessProviderID,
+		livenessBindingMode: bindingMode,
 		replayGuard:          newReplayGuard(),
 		Events:               NewEventBus(),
 	}

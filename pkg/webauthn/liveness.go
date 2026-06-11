@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// LivenessAttestation is the signed envelope  (or any other PAD-2
+// LivenessAttestation is the signed envelope the liveness provider (or any other PAD-2
 // liveness provider) returns when it scores a capture. The structure is
 // canonicalized to JSON with sorted keys before signing. The KMS verifies:
 //
@@ -24,7 +24,7 @@ import (
 //     enroll an attacker-controlled public key.
 //
 // Clients MUST NOT send a bare liveness score — the server-to-server trust
-// anchor is the  signature, not a float in the body. Without this
+// anchor is the liveness provider signature, not a float in the body. Without this
 // envelope the body is rejected.
 type LivenessAttestation struct {
 	ProviderID string  `json:"providerId"`
@@ -61,7 +61,7 @@ const (
 
 	// BindingLax logs a warning (via opts.WarnFn) when neither field is
 	// supplied but does not reject. Intended ONLY for the transition
-	// window while  rolls out the extended envelope. Tracked
+	// window while the liveness provider rolls out the extended envelope. Tracked
 	// as a deployment blocker in the MPC LLM.md.
 	BindingLax
 )
@@ -175,7 +175,7 @@ func VerifyLiveness(envelopeB64 string, opts *LivenessOpts) (*LivenessAttestatio
 		// cross-ceremony replay: an envelope whose challengeId matches
 		// the current ceremony's challenge but whose credentialHash is
 		// absent would be accepted — an attacker who observes a fresh
-		// challenge can trick  into signing an envelope that
+		// challenge can trick the liveness provider into signing an envelope that
 		// binds to the challenge alone, then replay it against any
 		// ceremony for the same userId that reuses an uncaptured
 		// credentialHash expectation.
@@ -185,7 +185,7 @@ func VerifyLiveness(envelopeB64 string, opts *LivenessOpts) (*LivenessAttestatio
 		//
 		//   1. When BOTH expected fields are set AND the envelope
 		//      supplies BOTH, require BOTH to match. This closes the
-		//      "either-or" loophole for the happy path where 
+		//      "either-or" loophole for the happy path where the liveness provider
 		//      has already rolled out the extended envelope.
 		//
 		//   2. credentialHash is mandatory at minimum in LAX. The
@@ -230,10 +230,10 @@ func VerifyLiveness(envelopeB64 string, opts *LivenessOpts) (*LivenessAttestatio
 		}
 		if !matched {
 			if opts.BindingMode == BindingStrict {
-				return nil, errors.New("liveness: envelope carries no binding (credentialHash/challengeId);  must emit the extended envelope")
+				return nil, errors.New("liveness: envelope carries no binding (credentialHash/challengeId); the liveness provider must emit the extended envelope")
 			}
 			if opts.WarnFn != nil {
-				opts.WarnFn("liveness: envelope carries no binding — accepted in LAX mode; tracked  rollout")
+				opts.WarnFn("liveness: envelope carries no binding — accepted in LAX mode; tracked the liveness provider rollout")
 			}
 		}
 	}
