@@ -25,7 +25,7 @@ func signEnvelope(t *testing.T, priv ed25519.PrivateKey, att LivenessAttestation
 func TestLiveness_Accepts(t *testing.T) {
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
 	att := LivenessAttestation{
-		ProviderID: "",
+		ProviderID: "liveness",
 		UserID:     "u-1",
 		Score:      0.95,
 		Timestamp:  time.Now().Unix(),
@@ -34,7 +34,7 @@ func TestLiveness_Accepts(t *testing.T) {
 	env := signEnvelope(t, priv, att)
 	got, err := VerifyLiveness(env, &LivenessOpts{
 		PubKey:     pub,
-		ProviderID: "",
+		ProviderID: "liveness",
 		UserID:     "u-1",
 		MinScore:   0.8,
 		MaxAge:     2 * time.Minute,
@@ -49,7 +49,7 @@ func TestLiveness_Accepts(t *testing.T) {
 
 func TestLiveness_RejectsBadSig(t *testing.T) {
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
-	att := LivenessAttestation{ProviderID: "", UserID: "u-1", Score: 0.9, Timestamp: time.Now().Unix()}
+	att := LivenessAttestation{ProviderID: "liveness", UserID: "u-1", Score: 0.9, Timestamp: time.Now().Unix()}
 	env := signEnvelope(t, priv, att)
 	// Corrupt: swap a byte in the envelope (base64 re-decode still works but
 	// the JSON.sig no longer matches the attestation).
@@ -69,7 +69,7 @@ func TestLiveness_RejectsBadSig(t *testing.T) {
 
 func TestLiveness_RejectsWrongUser(t *testing.T) {
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
-	att := LivenessAttestation{ProviderID: "", UserID: "attacker", Score: 0.9, Timestamp: time.Now().Unix()}
+	att := LivenessAttestation{ProviderID: "liveness", UserID: "attacker", Score: 0.9, Timestamp: time.Now().Unix()}
 	env := signEnvelope(t, priv, att)
 	_, err := VerifyLiveness(env, &LivenessOpts{PubKey: pub, UserID: "u-1", MinScore: 0.8, MaxAge: time.Minute})
 	if err == nil || !strings.Contains(err.Error(), "userId") {
@@ -79,7 +79,7 @@ func TestLiveness_RejectsWrongUser(t *testing.T) {
 
 func TestLiveness_RejectsStale(t *testing.T) {
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
-	att := LivenessAttestation{ProviderID: "", UserID: "u-1", Score: 0.9, Timestamp: time.Now().Add(-10 * time.Minute).Unix()}
+	att := LivenessAttestation{ProviderID: "liveness", UserID: "u-1", Score: 0.9, Timestamp: time.Now().Add(-10 * time.Minute).Unix()}
 	env := signEnvelope(t, priv, att)
 	_, err := VerifyLiveness(env, &LivenessOpts{PubKey: pub, UserID: "u-1", MinScore: 0.8, MaxAge: time.Minute})
 	if err == nil || !strings.Contains(err.Error(), "too old") {
@@ -89,7 +89,7 @@ func TestLiveness_RejectsStale(t *testing.T) {
 
 func TestLiveness_RejectsLowScore(t *testing.T) {
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
-	att := LivenessAttestation{ProviderID: "", UserID: "u-1", Score: 0.5, Timestamp: time.Now().Unix()}
+	att := LivenessAttestation{ProviderID: "liveness", UserID: "u-1", Score: 0.5, Timestamp: time.Now().Unix()}
 	env := signEnvelope(t, priv, att)
 	_, err := VerifyLiveness(env, &LivenessOpts{PubKey: pub, UserID: "u-1", MinScore: 0.8, MaxAge: time.Minute})
 	if err == nil || !strings.Contains(err.Error(), "below threshold") {
@@ -101,7 +101,7 @@ func TestLiveness_RejectsWrongProvider(t *testing.T) {
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
 	att := LivenessAttestation{ProviderID: "evil", UserID: "u-1", Score: 0.9, Timestamp: time.Now().Unix()}
 	env := signEnvelope(t, priv, att)
-	_, err := VerifyLiveness(env, &LivenessOpts{PubKey: pub, ProviderID: "", UserID: "u-1", MinScore: 0.8, MaxAge: time.Minute})
+	_, err := VerifyLiveness(env, &LivenessOpts{PubKey: pub, ProviderID: "liveness", UserID: "u-1", MinScore: 0.8, MaxAge: time.Minute})
 	if err == nil || !strings.Contains(err.Error(), "providerId") {
 		t.Fatalf("want providerId mismatch, got %v", err)
 	}
@@ -114,7 +114,7 @@ func TestLiveness_RejectsWrongProvider(t *testing.T) {
 func TestLiveness_R38_AcceptsMatchingCredentialHash(t *testing.T) {
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
 	att := LivenessAttestation{
-		ProviderID:     "",
+		ProviderID:     "liveness",
 		UserID:         "u-1",
 		Score:          0.9,
 		Timestamp:      time.Now().Unix(),
@@ -136,7 +136,7 @@ func TestLiveness_R38_AcceptsMatchingCredentialHash(t *testing.T) {
 func TestLiveness_R38_RejectsMismatchedCredentialHash(t *testing.T) {
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
 	att := LivenessAttestation{
-		ProviderID:     "",
+		ProviderID:     "liveness",
 		UserID:         "u-1",
 		Score:          0.9,
 		Timestamp:      time.Now().Unix(),
@@ -158,7 +158,7 @@ func TestLiveness_R38_RejectsMismatchedCredentialHash(t *testing.T) {
 func TestLiveness_R38_RejectsMissingBindingStrict(t *testing.T) {
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
 	att := LivenessAttestation{
-		ProviderID: "",
+		ProviderID: "liveness",
 		UserID:     "u-1",
 		Score:      0.9,
 		Timestamp:  time.Now().Unix(),
@@ -182,7 +182,7 @@ func TestLiveness_R38_RejectsMissingBindingStrict(t *testing.T) {
 func TestLiveness_R38_LaxRejectsMissingBindingWhenCredentialHashExpected(t *testing.T) {
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
 	att := LivenessAttestation{
-		ProviderID: "",
+		ProviderID: "liveness",
 		UserID:     "u-1",
 		Score:      0.9,
 		Timestamp:  time.Now().Unix(),
@@ -205,7 +205,7 @@ func TestLiveness_R38_LaxRejectsMissingBindingWhenCredentialHashExpected(t *test
 func TestLiveness_R38_LaxWarnsOnMissing_ChallengeIDOnly(t *testing.T) {
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
 	att := LivenessAttestation{
-		ProviderID: "",
+		ProviderID: "liveness",
 		UserID:     "u-1",
 		Score:      0.9,
 		Timestamp:  time.Now().Unix(),
@@ -232,7 +232,7 @@ func TestLiveness_R38_LaxWarnsOnMissing_ChallengeIDOnly(t *testing.T) {
 func TestLiveness_R38_AcceptsMatchingChallengeID(t *testing.T) {
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
 	att := LivenessAttestation{
-		ProviderID:  "",
+		ProviderID:  "liveness",
 		UserID:      "u-1",
 		Score:       0.9,
 		Timestamp:   time.Now().Unix(),
@@ -253,7 +253,7 @@ func TestLiveness_R38_AcceptsMatchingChallengeID(t *testing.T) {
 func TestLiveness_R38_RejectsMismatchedChallengeID(t *testing.T) {
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
 	att := LivenessAttestation{
-		ProviderID:  "",
+		ProviderID:  "liveness",
 		UserID:      "u-1",
 		Score:       0.9,
 		Timestamp:   time.Now().Unix(),
@@ -274,7 +274,7 @@ func TestLiveness_R38_RejectsMismatchedChallengeID(t *testing.T) {
 //
 // Previous LAX behavior accepted an envelope that had ONLY challengeId and
 // no credentialHash, so long as the challengeId matched. An attacker
-// observing a fresh challenge could persuade  to sign an
+// observing a fresh challenge could persuade the liveness provider to sign an
 // envelope binding to the challenge alone and replay it against any
 // enrollment for the same userId. The challengeId binds the ceremony;
 // the credentialHash binds the specific pubkey being enrolled. Without
@@ -286,7 +286,7 @@ func TestLiveness_R38_RejectsMismatchedChallengeID(t *testing.T) {
 func TestLiveness_R38_LaxRejectsMissingCredentialHash(t *testing.T) {
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
 	att := LivenessAttestation{
-		ProviderID:  "",
+		ProviderID:  "liveness",
 		UserID:      "u-1",
 		Score:       0.9,
 		Timestamp:   time.Now().Unix(),
@@ -305,11 +305,11 @@ func TestLiveness_R38_LaxRejectsMissingCredentialHash(t *testing.T) {
 }
 
 // LAX + both fields present + both match → accept (happy path for the
-// extended envelope post--rollout).
+// extended envelope post-the liveness provider-rollout).
 func TestLiveness_R38_LaxAcceptsBothMatch(t *testing.T) {
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
 	att := LivenessAttestation{
-		ProviderID:     "",
+		ProviderID:     "liveness",
 		UserID:         "u-1",
 		Score:          0.9,
 		Timestamp:      time.Now().Unix(),
@@ -334,7 +334,7 @@ func TestLiveness_R38_LaxAcceptsBothMatch(t *testing.T) {
 func TestLiveness_R38_LaxRejectsMismatchedCredentialHashBothPresent(t *testing.T) {
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
 	att := LivenessAttestation{
-		ProviderID:     "",
+		ProviderID:     "liveness",
 		UserID:         "u-1",
 		Score:          0.9,
 		Timestamp:      time.Now().Unix(),
@@ -357,7 +357,7 @@ func TestLiveness_R38_LaxRejectsMismatchedCredentialHashBothPresent(t *testing.T
 func TestLiveness_R38_LaxRejectsMismatchedChallengeIDBothPresent(t *testing.T) {
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
 	att := LivenessAttestation{
-		ProviderID:     "",
+		ProviderID:     "liveness",
 		UserID:         "u-1",
 		Score:          0.9,
 		Timestamp:      time.Now().Unix(),
@@ -377,18 +377,18 @@ func TestLiveness_R38_LaxRejectsMismatchedChallengeIDBothPresent(t *testing.T) {
 }
 
 // LAX + credentialHash only (no challengeId) + match → accept.
-// This is the " not yet rolled out challengeId" case. The
+// This is the "the liveness provider not yet rolled out challengeId" case. The
 // mandatory credentialHash floor is satisfied, so the envelope carries
 // enough binding to be safe.
 func TestLiveness_R38_LaxAcceptsCredentialHashOnly(t *testing.T) {
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
 	att := LivenessAttestation{
-		ProviderID:     "",
+		ProviderID:     "liveness",
 		UserID:         "u-1",
 		Score:          0.9,
 		Timestamp:      time.Now().Unix(),
 		CredentialHash: "HASH-OK",
-		// no ChallengeID — simulates the current  envelope
+		// no ChallengeID — simulates the current the liveness provider envelope
 	}
 	env := signEnvelope(t, priv, att)
 	_, err := VerifyLiveness(env, &LivenessOpts{

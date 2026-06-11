@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"sync"
 
@@ -250,9 +251,8 @@ func (s *KMSZapServer) setSession(peerID string, sess *kmszap.Session) {
 
 // handleHandshake is the per-opcode handler for OpClientHello.
 func (s *KMSZapServer) handleHandshake(_ context.Context, from string, msg *zap.Message) (*zap.Message, error) {
-	if !s.checkAuth(from, kmszap.OpClientHello) {
-		return s.respond(from, kmszap.OpServerHello, errBody("auth required")), nil
-	}
+	// Trust is at the network boundary (NetworkPolicy + ZAP wire), not an
+	// application-layer auth gate — see 7600a13 "rip zapauth gate".
 	raw := extractPayload(msg)
 	if len(raw) < 2 {
 		return s.respond(from, kmszap.OpServerHello, errBody("empty handshake payload")), nil
