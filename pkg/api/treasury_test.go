@@ -150,12 +150,12 @@ func TestTreasury_Create_RejectsInsufficientSigners(t *testing.T) {
 // tenant B's platform HSM key.
 func TestTreasury_Create_RejectsWrongOrgHSM(t *testing.T) {
 	s := newTreasuryServer(t)
-	orgA := "liquidity"
-	// Try to reference mlc's HSM path while authenticated as liquidity.
+	orgA := "acme"
+	// Try to reference globex's HSM path while authenticated as acme.
 	body := mkTreasuryCreateBody(orgA, false)
 	for i := range body.Signers {
 		if body.Signers[i].Role == db.TreasurySignerPlatformHSM {
-			body.Signers[i].KeyRef = expectedPlatformHSMKeyRef("mlc")
+			body.Signers[i].KeyRef = expectedPlatformHSMKeyRef("globex")
 		}
 	}
 	buf := &bytes.Buffer{}
@@ -163,7 +163,7 @@ func TestTreasury_Create_RejectsWrongOrgHSM(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/v1/mpc/treasury/wallets", buf)
 	req.Header.Set("Content-Type", "application/json")
 	reqCtx := context.WithValue(req.Context(), ctxOrgID, orgA)
-	reqCtx = context.WithValue(reqCtx, ctxUserID, "u-liquidity-admin")
+	reqCtx = context.WithValue(reqCtx, ctxUserID, "u-acme-admin")
 	reqCtx = context.WithValue(reqCtx, ctxRole, "admin")
 	req = req.WithContext(reqCtx)
 	rec := httptest.NewRecorder()
@@ -449,7 +449,7 @@ func TestTreasury_RotateSigner_PlatformHSMScoped(t *testing.T) {
 	// Attempt: rotate platform_hsm to tenant-B's key path.
 	rbody := rotateSignerRequest{
 		Role:      db.TreasurySignerPlatformHSM,
-		NewKeyRef: expectedPlatformHSMKeyRef("mlc"),
+		NewKeyRef: expectedPlatformHSMKeyRef("globex"),
 	}
 	buf := &bytes.Buffer{}
 	_ = json.NewEncoder(buf).Encode(rbody)
@@ -527,17 +527,17 @@ func TestTreasury_TierEscalation_QuorumFromPolicy(t *testing.T) {
 // TestTreasury_HSMKeyRefIsPerOrg asserts expectedPlatformHSMKeyRef generates
 // distinct, disjoint paths per org and includes the full prefix/suffix.
 func TestTreasury_HSMKeyRefIsPerOrg(t *testing.T) {
-	a := expectedPlatformHSMKeyRef("liquidity")
-	b := expectedPlatformHSMKeyRef("mlc")
+	a := expectedPlatformHSMKeyRef("acme")
+	b := expectedPlatformHSMKeyRef("globex")
 	c := expectedPlatformHSMKeyRef("vcc")
 	if a == b || b == c || a == c {
 		t.Fatalf("HSM keyRefs must be distinct across orgs: %s / %s / %s", a, b, c)
 	}
-	if a != "providers/liquidity/mpc-cosigner-key" {
-		t.Fatalf("liquidity path=%q", a)
+	if a != "providers/acme/mpc-cosigner-key" {
+		t.Fatalf("acme path=%q", a)
 	}
-	if b != "providers/mlc/mpc-cosigner-key" {
-		t.Fatalf("mlc path=%q", b)
+	if b != "providers/globex/mpc-cosigner-key" {
+		t.Fatalf("globex path=%q", b)
 	}
 }
 

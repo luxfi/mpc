@@ -390,7 +390,7 @@ type Settlement struct {
 	StatusHistory []StatusTransition `json:"statusHistory,omitempty"`
 }
 
-// HSMSignature is an attestation from a liquidity multisig signer backed by HSM.
+// HSMSignature is an attestation from a custody multisig signer backed by HSM.
 type HSMSignature struct {
 	SignerID  string    `json:"signerId"`
 	KeyID     string    `json:"keyId"`
@@ -533,8 +533,8 @@ func init() { orm.Register[Session]("mpc-session") }
 //  2. `platform_hsm` signer's `KeyRef` MUST be the per-org KMS path
 //     `providers/{OrgID}/mpc-cosigner-key`. Cross-org HSM reuse is rejected
 //     at the handler layer (the JWT `owner` claim is the source of truth
-//     for `OrgID`; a treasury wallet owned by `liquidity` can never sign
-//     with `mlc`'s HSM key).
+//     for `OrgID`; a treasury wallet owned by `acme` can never sign
+//     with `globex`'s HSM key).
 //  3. Tiers are evaluated highest-to-lowest by `MaxValue`; the first tier
 //     whose value envelope covers the op supplies the required threshold.
 //  4. When `RegulatorShard=true`, tiers with `RequireRegulator=true` MUST

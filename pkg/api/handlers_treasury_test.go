@@ -5,7 +5,7 @@
 // The handler must return 409 and revert the op to pending_approval so
 // the regulator's approval can still land.
 //
-// Spec: ~/work/liquidity/openapi/mpc.yaml → TreasuryTier.requireRegulator.
+// Spec: the MPC OpenAPI spec → TreasuryTier.requireRegulator.
 // Handler: handlers_treasury.go handleTreasurySign regulator invariant.
 package api
 

@@ -291,10 +291,10 @@ event_initiator_pubkey: "hex-encoded-pubkey"
 - `LUX_MPC_BACKUP` - Backup file magic (on-disk format identifier; NOT an env var)
 - `MODE` - "consensus" (new) or "legacy" (NATS/Consul) (Viper config key `mode`, override via env)
 
-## /v1/mpc/* Spec Surface (Liquidity MPC API)
+## /v1/mpc/* Spec Surface (MPC API)
 
 The `/v1/mpc/*` subrouter implements the frozen spec at
-`~/work/liquidity/openapi/mpc.yaml`. One and only one canonical path per
+the MPC OpenAPI spec. One and only one canonical path per
 operation — no aliases, no backwards compatibility layers.
 
 Mount point: `pkg/api/server.go` inside the authenticated `/v1` group under
@@ -509,7 +509,7 @@ make e2e-test
       implementation, delegating to the audited `VerifyLiveness`. Zero-code
       path for any vendor whose attestation is an Ed25519-signed envelope.
     - `RegisterVerifier(providerID, Verifier)` / `LookupVerifier(providerID)`
-      — registry. A white-label deployment (e.g. liquidity wiring a
+      — registry. A white-label deployment (e.g. a regulated broker wiring a
       regulated PAD-2 vendor) registers its own `Verifier` before boot.
 
     `pkg/api/server.go` resolves the active verifier at boot from
