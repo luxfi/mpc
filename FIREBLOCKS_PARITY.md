@@ -123,7 +123,7 @@ the Hanzo HTTP contract.
 
 | # | Feature | Fireblocks | lux/mpc | Status | Location | Priority | Effort |
 |---|---|---|---|---|---|---|---|
-| 8.1 | REST API + OpenAPI | yes | yes — frozen spec at `~/work/liquidity/openapi/mpc.yaml` | shipped | `pkg/api/server.go` | P0 | shipped |
+| 8.1 | REST API + OpenAPI | yes | yes — frozen MPC OpenAPI spec | shipped | `pkg/api/server.go` | P0 | shipped |
 | 8.2 | Go SDK | yes | yes — `pkg/client/` | shipped | `pkg/client/` | P0 | shipped |
 | 8.3 | TypeScript / JS SDK | yes | yes — `ui/src/lib/api.ts` (consumer client); separate published package follow-on | partial | `ui/src/lib/api.ts` | P1 | small (extract package) |
 | 8.4 | Python SDK | yes | no — out of scope; HTTP client is trivial | missing | n/a | P2 | small |
