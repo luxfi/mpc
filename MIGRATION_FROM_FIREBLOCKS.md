@@ -36,7 +36,7 @@ your auditor wants the trail.
 | 3 | Provision Hanzo IAM org + invite signers | compliance | Each signer has logged in once and has WebAuthn registered |
 | 4 | Spin up lux/mpc UI on `mpc.<your-domain>` | platform | TLS cert valid, login works |
 | 5 | Configure Chainalysis KYT + (optional) TRM Labs | compliance | Test address screen returns Verdict |
-| 6 | Configure  (or alternative liveness provider) Ed25519 pubkey | platform | `MPC__PUBKEY_ED25519` set, biometric enroll returns 200 |
+| 6 | Configure the liveness provider (or alternative liveness provider) Ed25519 pubkey | platform | `MPC_LIVENESS_PUBKEY_ED25519` set, biometric enroll returns 200 |
 | 7 | Audit log dispatcher → choose mode: WORM file, M-Chain anchor, or composite | compliance | First audit event lands at the destination |
 | 8 | Webhook receivers — every Fireblocks consumer rewires to the new endpoint | engineering | `/v1/webhooks/{id}/test` succeeds end-to-end |
 | 9 | Backup procedure — wallet shares to S3 + KMS-wrapped Glacier | platform | `lux-mpc-cli recover` round-trip on a test wallet |

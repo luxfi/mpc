@@ -477,7 +477,7 @@ make e2e-test
 
 29. **Cluster API key forwarding**: api-deployment now passes `--cluster-api-key $(MPC_CLUSTER_API_KEY)` when proxying to internal MPC API. The `apiOnlyMPCBackend.doRequest` sends it as `Authorization: Bearer` header.
 
-30. **R2-1 Biometric enroll hardened**: `handleBiometricEnroll` now verifies a WebAuthn create ceremony AND a -signed liveness attestation. `pkg/webauthn/verify.go` centralizes: challenge comparison against the random bytes we issued (not the DB row ID), origin allowlist, rpIDHash check, UP+UV flag enforcement. `pkg/webauthn/liveness.go` verifies Ed25519-signed `LivenessAttestation` envelopes against `MPC__PUBKEY_ED25519`; body-supplied scores are rejected. If pubkey is unconfigured, enroll returns 503.
+30. **R2-1 Biometric enroll hardened**: `handleBiometricEnroll` now verifies a WebAuthn create ceremony AND a provider-signed liveness attestation. `pkg/webauthn/verify.go` centralizes: challenge comparison against the random bytes we issued (not the DB row ID), origin allowlist, rpIDHash check, UP+UV flag enforcement. `pkg/webauthn/liveness.go` verifies Ed25519-signed `LivenessAttestation` envelopes against `MPC_LIVENESS_PUBKEY_ED25519`; body-supplied scores are rejected. If pubkey is unconfigured, enroll returns 503.
 
 31. **R2-2 CAS under Postgres**: Session consume + operation approve now use `orm.GetForUpdate` (SELECT ... FOR UPDATE) inside READ COMMITTED tx via `orm.RunInTransactionWith(IsolationReadCommitted)`. Requires `hanzoai/orm@v0.4.0`. Postgres-backed regression tests in `cas_postgres_test.go` — skipped when no Postgres available, `TEST_PG_DSN` overrides DSN. `pkg/db.New` now accepts `postgres://...` DSNs alongside SQLite.
 
@@ -485,22 +485,49 @@ make e2e-test
 
 33. **R3-2 No `*` wildcard in API-key permissions**: `hasPermission` no longer honors `*`. Every API key must enumerate explicit permissions. Tests `TestRequireRoleOrAPIPermission_WildcardRejectedOnSensitive` + `TestRequirePermission_WildcardRejected` assert `permissions=["*"]` is REJECTED for every sensitive name (`mpc:sign`, `mpc:settlement:sign`, `mpc:operations:approve`, `mpc:wallet:sweep`, `mpc:policy:write`, plus `trade:submit`). Breaking change: re-issue keys with explicit permissions; bump to v1.7.0.
 
-34. **R3-8 Liveness envelope bound to enrollment**: `LivenessAttestation` now carries `credentialHash = sha256(pubKey)` and/or `challengeId`. `handleBiometricEnroll` passes expected values to `VerifyLiveness` so a stolen envelope cannot be replayed against a different WebAuthn public key. Mode toggle via `MPC_LIVENESS_BINDING=strict|lax` (default `strict`). **Blocker for mainnet biometric enroll**:  must ship the extended envelope; while in LAX the server emits a `mpc.biometric.binding_warn` log on every permissive accept.
+34. **R3-8 Liveness envelope bound to enrollment**: `LivenessAttestation` now carries `credentialHash = sha256(pubKey)` and/or `challengeId`. `handleBiometricEnroll` passes expected values to `VerifyLiveness` so a stolen envelope cannot be replayed against a different WebAuthn public key. Mode toggle via `MPC_LIVENESS_BINDING=strict|lax` (default `strict`). **Blocker for mainnet biometric enroll**: the liveness provider must ship the extended envelope; while in LAX the server emits a `mpc.biometric.binding_warn` log on every permissive accept.
 
-35. **F4 (2026-04-18) LAX tightening — credentialHash floor + both-must-match**: Red round 4 flagged that the previous LAX mode accepted envelopes with ONLY `challengeId` (no `credentialHash`), enabling a cross-ceremony replay: an attacker observing a fresh challenge could trick  into signing an envelope binding to the challenge alone and replay it against any enrollment for the same `userId`. Two tightenings in `VerifyLiveness`:
+35. **F4 (2026-04-18) LAX tightening — credentialHash floor + both-must-match**: Red round 4 flagged that the previous LAX mode accepted envelopes with ONLY `challengeId` (no `credentialHash`), enabling a cross-ceremony replay: an attacker observing a fresh challenge could trick the liveness provider into signing an envelope binding to the challenge alone and replay it against any enrollment for the same `userId`. Two tightenings in `VerifyLiveness`:
     - LAX + server expects `credentialHash` + envelope omits it → **reject** (`credentialHash required in LAX mode`). `credentialHash` is now a hard floor — `challengeId` alone cannot satisfy the binding requirement in LAX.
     - Envelope supplies BOTH `credentialHash` AND `challengeId` AND server expects both → require BOTH to match (no more "either-or" loophole).
 
     LAX warn-on-missing still works when the call site does NOT commit a `credentialHash` expectation. Tests in `pkg/webauthn/liveness_test.go`:
     - `TestLiveness_R38_LaxRejectsMissingCredentialHash` — challengeId-only envelope rejected
-    - `TestLiveness_R38_LaxAcceptsBothMatch` — happy path (extended envelope after  rollout)
+    - `TestLiveness_R38_LaxAcceptsBothMatch` — happy path (extended envelope after the liveness provider rollout)
     - `TestLiveness_R38_LaxRejectsMismatchedCredentialHashBothPresent`
     - `TestLiveness_R38_LaxRejectsMismatchedChallengeIDBothPresent`
-    - `TestLiveness_R38_LaxAcceptsCredentialHashOnly` — current  envelope shape
+    - `TestLiveness_R38_LaxAcceptsCredentialHashOnly` — current provider envelope shape
     - `TestLiveness_R38_LaxRejectsMissingBindingWhenCredentialHashExpected` — replaces the old lax-warns-missing path
     - `TestLiveness_R38_LaxWarnsOnMissing_ChallengeIDOnly` — warn path still available when `credentialHash` not expected
 
     `handleBiometricEnroll` always commits `ExpectedCredentialHash` (derived from the enrollment pubKey via `sha256`), so the LAX floor always engages for WebAuthn enrollment. `v1.7.1` follows `v1.7.0`.
+
+36. **Pluggable liveness Verifier (vendor-neutral)**: lux OSS names NO PAD-2
+    / liveness vendor. `pkg/webauthn` exposes the extension seam:
+    - `Verifier` interface — `Verify(envelope string, b Binding) (*LivenessAttestation, error)`.
+    - `Ed25519EnvelopeVerifier{PubKey, ProviderID}` — the one OSS-shipped
+      implementation, delegating to the audited `VerifyLiveness`. Zero-code
+      path for any vendor whose attestation is an Ed25519-signed envelope.
+    - `RegisterVerifier(providerID, Verifier)` / `LookupVerifier(providerID)`
+      — registry. A white-label deployment (e.g. liquidity wiring a
+      regulated PAD-2 vendor) registers its own `Verifier` before boot.
+
+    `pkg/api/server.go` resolves the active verifier at boot from
+    `MPC_LIVENESS_PROVIDER_ID`: a registered custom `Verifier` wins; else, if
+    `MPC_LIVENESS_PUBKEY_ED25519` is set, the OSS-default Ed25519 envelope
+    verifier is used; with neither, `livenessVerifier` is nil and
+    `/v1/mpc/biometric/enroll` fails closed (503). `handleBiometricEnroll`
+    calls `s.livenessVerifier.Verify(envelope, webauthn.Binding{...})` — no
+    vendor code in lux. To plug a vendor in from a downstream binary:
+
+    ```go
+    import "github.com/luxfi/mpc/pkg/webauthn"
+    // Ed25519-envelope vendor — just supply the public key:
+    webauthn.RegisterVerifier("acme-pad2", webauthn.Ed25519EnvelopeVerifier{
+        PubKey: acmePubKey, ProviderID: "acme-pad2",
+    })
+    // or a wholly different scheme — implement webauthn.Verifier.
+    ```
 
 ### Consensus-Embedded Transport (Jan 2026)
 
