@@ -1,7 +1,7 @@
-// Package api — MPC spec handlers (Liquidity /v1/mpc surface).
+// Package api — MPC spec handlers (/v1/mpc surface).
 //
 // This file implements the spec-shaped endpoints defined in
-// `~/work/liquidity/openapi/mpc.yaml`. Legacy paths (/v1/transactions,
+// the MPC OpenAPI spec. Legacy paths (/v1/transactions,
 // /v1/policies, /v1/audit) are superseded by their /v1/mpc/* equivalents.
 //
 // The canonical `Operation` view (unified across sign/send/mint/burn/transfer

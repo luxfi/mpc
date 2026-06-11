@@ -1,7 +1,7 @@
 // Unit tests for Registry quorum semantics — P0-1 from the 2026-04-20
 // Red/Scientist evidence report.
 //
-// Repro: Scientist scaled  from 3 → 2 replicas. Surviving nodes
+// Repro: Scientist scaled the mpc cluster from 3 → 2 replicas. Surviving nodes
 // returned HTTP 503 because ArePeersReady() reported false (not all peers
 // connected), even though 2 nodes were sufficient to form a 2-of-3 signing
 // quorum. The fix added HasSigningQuorum(threshold) which is true when
