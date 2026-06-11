@@ -294,7 +294,7 @@ jobs:
           echo "Syft: $(jq '.artifacts | length' sbom.syft.json)"
 
   build:
-    runs-on: lux-build
+    runs-on: [self-hosted, linux, amd64]
     needs: [test, lint, codeql-analysis, sbom]
     env:
       GOEXPERIMENT: runtimesecret
