@@ -26,7 +26,7 @@ type HSMProvider interface {
 	Verify(ctx context.Context, keyID string, message, signature []byte) (bool, error)
 }
 
-// HSMSignature is an attestation from a liquidity multisig signer backed by HSM.
+// HSMSignature is an attestation from a custody multisig signer backed by HSM.
 type HSMSignature struct {
 	SignerID  string    `json:"signerId"`
 	KeyID     string    `json:"keyId"`

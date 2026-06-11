@@ -166,7 +166,7 @@ func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, o
 	//                                  the OSS-default envelope verifier
 	//
 	// A deployment that registers its own webauthn.Verifier under the
-	// provider id (e.g. liquidity wiring its regulated PAD-2 vendor) wins;
+	// provider id (e.g. a regulated broker wiring its own PAD-2 vendor) wins;
 	// otherwise, if a public key is configured, the OSS-default Ed25519
 	// envelope verifier is used. With neither, livenessVerifier stays nil
 	// and /v1/mpc/biometric/enroll refuses every request — an unconfigured
@@ -440,8 +440,8 @@ func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, o
 			r.Get("/status", s.handleStatus)
 			r.Get("/info", s.handleInfo)
 
-			// ── /v1/mpc/* — Liquidity MPC spec surface
-			// Canonical routes defined in ~/work/liquidity/openapi/mpc.yaml.
+			// ── /v1/mpc/* — MPC spec surface
+			// Canonical routes defined in the MPC OpenAPI spec.
 			// No alias paths, no backwards compatibility.
 			r.Route("/mpc", func(r chi.Router) {
 				// Wallets
