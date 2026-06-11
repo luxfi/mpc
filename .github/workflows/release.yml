@@ -15,7 +15,7 @@ jobs:
         arch: [amd64, arm64]
     # All builds run on the amd64 self-hosted runner. arm64 cross-compiles
     # via GOARCH; CGO_ENABLED=0 keeps it pure-Go (no cross-compiler needed).
-    runs-on: lux-build
+    runs-on: [self-hosted, linux, amd64]
     env:
       GONOSUMCHECK: '*'
       GONOSUMDB: '*'
@@ -38,7 +38,7 @@ jobs:
 
   release:
     needs: build
-    runs-on: lux-build
+    runs-on: [self-hosted, linux, amd64]
     permissions:
       contents: write
     steps:
