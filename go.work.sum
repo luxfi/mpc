@@ -695,7 +695,6 @@ github.com/luxfi/pulsar v1.1.2/go.mod h1:U7tPleeAHJ9dZ61ymtstzLKKoZjxM2zFeGZ+RSj
 github.com/luxfi/qzmq v0.1.4/go.mod h1:PxxnNCYUKvY/lVfPh2q84niDBlOLxkCbfN0h3oSh1+U=
 github.com/luxfi/relay v0.0.0-20260429020048-c629fe160d3c/go.mod h1:P408Sn9NGwtcDOoGdkmWe0484dkWDvEvDDBM44Cv+s4=
 github.com/luxfi/resource v0.0.1/go.mod h1:wWpZktciYwIi6RNqA+fHwzmPrUJa7PRX7urfwT+spRE=
-github.com/luxfi/corona v0.2.0/go.mod h1:SZ+aDLUdfSAtaTRaaYzeDZ5DNQiLaOCelSaIGjL21R0=
 github.com/luxfi/rpc v1.0.0/go.mod h1:dhxzM5rFqNpEOOHB7+8YBQ9d/V4haa6/id9AQTIIJvQ=
 github.com/luxfi/rpc v1.0.2/go.mod h1:pgiHwMWgOuxYYIa0vsUBvrBI+Op6bhZ39guM9vtMUcE=
 github.com/luxfi/runtime v1.0.0/go.mod h1:lCoz8vCfR4ZU0GNxe0VdHEdq8G0W7rKzQpTnXvew/dM=
