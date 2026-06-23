@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
 	"net"
@@ -432,6 +433,27 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 	}
 	logger.Info("[READY] Node is ready (consensus mode)", "nodeID", nodeID)
 
+	// MPCBackend wraps the consensus transport so the internal HTTP API
+	// (port 9800), the Dashboard API (port 8081), and the KMS ZAP server
+	// (port 9653) can all drive keygen/sign/reshare against the same node.
+	// Hoisted above the internal HTTP API block so the /sign handler can call
+	// TriggerSign; it depends only on values constructed above (pubSub,
+	// peerRegistry, factory, keyInfoStore, identity, nodeID, threshold).
+	mpcBackend := &ConsensusMPCBackend{
+		pubSub:       pubSub,
+		peerRegistry: peerRegistry,
+		factory:      factory,
+		keyInfoStore: factory.KeyInfoStore(),
+		identity:     consensusIdentity,
+		nodeID:       nodeID,
+		threshold:    threshold,
+	}
+
+	// Per-node idempotency cache for the internal /sign endpoint. Anti-oracle:
+	// a reused idempotency key with conflicting content is refused without
+	// signing; concurrent duplicates collapse to a single threshold-sign.
+	signIdem := newSignIdempotencyCache()
+
 	// Start HTTP API server (internal MPC node API on port 9800)
 	apiAddr := c.String("api")
 	if apiAddr != "" {
@@ -681,6 +703,95 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 				})
 			}
 		})))
+		// POST /sign — threshold-sign a payload hash for an org-scoped wallet.
+		// Wire contract (lux/wallet apps/backend/internal/custody/mpc.go):
+		//   req:  {org_id, wallet_id, key_type, chain_id, payload_hash(hex), idempotency_key}
+		//   resp: {session_id, signature(hex), status, error}
+		//
+		// Unlike /keygen (which needs ALL peers), signing an existing key only
+		// needs a t-of-n quorum — gated on HasSigningQuorum, matching /healthz.
+		// Idempotency (anti-oracle) is enforced before any signing machinery is
+		// touched: empty key → 400, reused key with conflicting content → 409
+		// (never signs), duplicate of an in-flight/completed request → cached.
+		mux.HandleFunc("/sign", internalAuth(internalRateLimit(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			if r.Method != http.MethodPost {
+				w.WriteHeader(http.StatusMethodNotAllowed)
+				json.NewEncoder(w).Encode(map[string]string{"error": "method not allowed"})
+				return
+			}
+
+			// Signing needs only a t-of-n quorum, not every peer. 503 → the
+			// custody adapter surfaces "MPC peers not ready" and retries.
+			if !peerRegistry.HasSigningQuorum(threshold) {
+				w.WriteHeader(http.StatusServiceUnavailable)
+				json.NewEncoder(w).Encode(map[string]string{"error": "peers not ready"})
+				return
+			}
+
+			var req struct {
+				OrgID          string `json:"org_id"`
+				WalletID       string `json:"wallet_id"`
+				KeyType        string `json:"key_type"`
+				ChainID        int    `json:"chain_id"`
+				PayloadHash    string `json:"payload_hash"`
+				IdempotencyKey string `json:"idempotency_key"`
+			}
+			if r.Body != nil {
+				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+					w.WriteHeader(http.StatusBadRequest)
+					json.NewEncoder(w).Encode(map[string]string{"error": "invalid JSON body"})
+					return
+				}
+			}
+
+			fields := signFields{
+				OrgID:       req.OrgID,
+				WalletID:    req.WalletID,
+				KeyType:     req.KeyType,
+				ChainID:     req.ChainID,
+				PayloadHash: req.PayloadHash,
+			}
+			// Boundary validation: idempotency_key + org_id required.
+			if err := validateSignRequest(req.IdempotencyKey, fields); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+				return
+			}
+
+			// payload_hash must be valid hex and exactly 32 bytes (the digest
+			// to sign). Decode here so a malformed hash fails at the boundary,
+			// never inside the signer.
+			payload, err := hex.DecodeString(strings.TrimPrefix(req.PayloadHash, "0x"))
+			if err != nil || len(payload) != 32 {
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]string{"error": "payload_hash must be 32-byte hex"})
+				return
+			}
+
+			// Idempotent single-flight threshold sign. Conflict → 409, no sign.
+			res, err := signIdem.Do(req.IdempotencyKey, fields, payload, mpcBackend.TriggerSign)
+			if errors.Is(err, errIdempotencyConflict) {
+				w.WriteHeader(http.StatusConflict)
+				json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+				return
+			}
+			if err != nil {
+				// Sign protocol failure (timeout, MPC error). Per the adapter
+				// contract, 200 + non-empty error → "sign rejected". 503 is
+				// reserved for no-quorum (handled above), so do NOT use it here.
+				logger.Info("Audit: sign rejected", "nodeID", nodeID, "orgID", req.OrgID, "walletID", req.WalletID, "remote", r.RemoteAddr, "reason", err.Error())
+				json.NewEncoder(w).Encode(map[string]string{"status": "rejected", "error": err.Error()})
+				return
+			}
+
+			logger.Info("Audit: sign completed", "nodeID", nodeID, "orgID", req.OrgID, "walletID", req.WalletID, "sessionID", res.SessionID, "remote", r.RemoteAddr)
+			json.NewEncoder(w).Encode(map[string]string{
+				"session_id": res.SessionID,
+				"signature":  res.Signature,
+				"status":     res.Status,
+			})
+		})))
 
 		srv := &http.Server{
 			Addr:              apiAddr,
@@ -711,21 +822,6 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 			defer backupMgr.Stop()
 			logger.Info("Backup manager started", "period", "5m", "s3", s3Cfg != nil)
 		}
-	}
-
-	// MPCBackend wraps the consensus transport so both the Dashboard API
-	// (HTTP, port 8081) and the KMS ZAP server (port 9970) can drive
-	// keygen/sign/reshare against the same node. Hoisted out of the
-	// dashboard branch so the KMS ZAP server can attach without depending
-	// on a JWT secret being set.
-	mpcBackend := &ConsensusMPCBackend{
-		pubSub:       pubSub,
-		peerRegistry: peerRegistry,
-		factory:      factory,
-		keyInfoStore: factory.KeyInfoStore(),
-		identity:     consensusIdentity,
-		nodeID:       nodeID,
-		threshold:    threshold,
 	}
 
 	// Start KMS-facing ZAP server. KMS dials this for threshold-signing
