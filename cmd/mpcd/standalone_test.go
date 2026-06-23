@@ -77,8 +77,13 @@ func TestStandaloneSelfQuorum(t *testing.T) {
 	)
 	cmd.Env = append(os.Environ(),
 		// Standalone uses env-provider for the ZapDB password to keep
-		// the test self-contained — no cloud KMS required.
+		// the test self-contained — no cloud KMS required. The `env`
+		// provider reads MPC_PASSWORD (its native var); ZAPDB_PASSWORD is
+		// the viper-config fallback. Set BOTH so the password resolves
+		// regardless of which path the startup takes (the env provider is
+		// tried first, so MPC_PASSWORD is what actually unlocks ZapDB).
 		"MPC_HSM_PROVIDER=env",
+		"MPC_PASSWORD=smoke-test-password",
 		"ZAPDB_PASSWORD=smoke-test-password",
 		// Skip the event_initiator_pubkey requirement: in standalone
 		// mode there's no external event initiator.
