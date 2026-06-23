@@ -94,6 +94,12 @@ type FactoryConfig struct {
 
 	// BackupDir for ZapDB incremental S3 backups
 	BackupDir string
+
+	// OnPeerIdentity, if set, is invoked when this node learns a peer's
+	// Ed25519 public key from the transport identity exchange. Wire it to the
+	// consensus identity store's AddPeerPublicKey so wire-message signature
+	// verification can resolve peer keys. See transport.Config.OnPeerIdentity.
+	OnPeerIdentity func(nodeID string, pubKey ed25519.PublicKey)
 }
 
 // Factory creates and manages the consensus-embedded transport stack
@@ -135,9 +141,10 @@ func NewFactory(config FactoryConfig) (*Factory, error) {
 		Peers:        config.Peers,
 		PrivateKey:   config.PrivateKey,
 		PublicKey:    config.PublicKey,
-		ReadTimeout:  DefaultConfig().ReadTimeout,
-		WriteTimeout: DefaultConfig().WriteTimeout,
-		BufferSize:   DefaultConfig().BufferSize,
+		ReadTimeout:    DefaultConfig().ReadTimeout,
+		WriteTimeout:   DefaultConfig().WriteTimeout,
+		BufferSize:     DefaultConfig().BufferSize,
+		OnPeerIdentity: config.OnPeerIdentity,
 	}
 
 	// Create transport

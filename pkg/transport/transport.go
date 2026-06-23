@@ -51,6 +51,18 @@ type Config struct {
 
 	// BufferSize for read/write buffers
 	BufferSize int
+
+	// OnPeerIdentity, if set, is invoked whenever this node learns a peer's
+	// Ed25519 public key from the identity exchange (the MsgMPCReady handshake
+	// carried in ReadySignal.PublicKey). It lets the consensus identity store
+	// learn peer keys dynamically — the consensus-mode analog of the legacy
+	// NATS path's peers.json + *_identity.json seeding (pkg/identity.fileStore).
+	// Without it, wire-message signature verification cannot find peer keys and
+	// every inbound keygen/signing message is dropped. The transport stays
+	// ignorant of the identity store's concrete type (no import cycle): it just
+	// reports (nodeID, pubKey). Idempotent — may be called more than once per
+	// peer across reconnects.
+	OnPeerIdentity func(nodeID string, pubKey ed25519.PublicKey)
 }
 
 // DefaultConfig returns sensible defaults
@@ -302,6 +314,18 @@ func (t *Transport) handleIncoming(ctx context.Context, conn net.Conn) {
 	}
 	logger.Info("Incoming connection from peer", "nodeID", ready.NodeID)
 
+	// Learn the peer's Ed25519 public key from its identity message. The
+	// dialer sends its identity right after connecting (sendIdentity); the
+	// acceptor reads it here. Propagate it so wire-message verification can
+	// find this peer's key.
+	t.notifyPeerIdentity(ready.NodeID, ready.PublicKey)
+
+	// Send our identity back over the surviving connection so the dialer
+	// learns OUR key too. Tie-break keeps a single connection per pair, so the
+	// acceptor must reply or the dialer would never receive the acceptor's
+	// key and one direction of verification would fail.
+	t.sendIdentity(peer)
+
 	// Handle messages from this peer
 	t.handlePeer(ctx, peer)
 
@@ -407,6 +431,10 @@ func (t *Transport) handleMessage(from string, msgType uint8, payload []byte) {
 			return
 		}
 		logger.Debug("Received ready signal", "from", ready.NodeID, "ready", ready.Ready)
+		// An identity message carries the sender's Ed25519 public key. The
+		// dialer learns the acceptor's key here (the acceptor replies via
+		// sendIdentity in handleIncoming); re-announcements refresh it.
+		t.notifyPeerIdentity(ready.NodeID, ready.PublicKey)
 
 	case MsgMPCPing:
 		// Send pong back
@@ -576,6 +604,26 @@ func (t *Transport) broadcast(msgType uint8, payload []byte) error {
 		return fmt.Errorf("broadcast errors: %v", errs)
 	}
 	return nil
+}
+
+// notifyPeerIdentity reports a learned peer Ed25519 public key to the
+// OnPeerIdentity observer (if configured). It skips empty keys, our own
+// nodeID, and wrong-length keys so the observer only ever receives a real
+// peer's valid Ed25519 public key. Idempotent at the observer.
+func (t *Transport) notifyPeerIdentity(nodeID string, pubKey ed25519.PublicKey) {
+	if t.config.OnPeerIdentity == nil {
+		return
+	}
+	if nodeID == "" || nodeID == t.config.NodeID {
+		return
+	}
+	if len(pubKey) != ed25519.PublicKeySize {
+		return
+	}
+	// Copy: the unmarshalled slice may be reused by the caller's buffer.
+	keyCopy := make(ed25519.PublicKey, ed25519.PublicKeySize)
+	copy(keyCopy, pubKey)
+	t.config.OnPeerIdentity(nodeID, keyCopy)
 }
 
 // sendIdentity sends our identity to a peer
