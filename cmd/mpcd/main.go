@@ -360,7 +360,12 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 	// Get ZapDB password via HSM provider (supports AWS KMS, GCP Cloud KMS, Azure Key Vault, env, file)
 	zapDBPassword := resolveZapDBPassword(ctx, c)
 
-	// Create transport factory (uses ZapDB for embedded key-share storage)
+	// Create transport factory (uses ZapDB for embedded key-share storage).
+	// OnPeerIdentity feeds peer Ed25519 public keys learned from the transport
+	// identity handshake into the consensus identity store, so wire-message
+	// signature verification (keygen/signing rounds) can resolve peer keys.
+	// This is the consensus-mode analog of the legacy NATS path's peers.json +
+	// *_identity.json seeding; without it every inbound peer message is dropped.
 	factoryCfg := transport.FactoryConfig{
 		NodeID:        nodeID,
 		ListenAddr:    listenAddr,
@@ -370,6 +375,9 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 		ZapDBPath:     filepath.Join(dataDir, "db"),
 		ZapDBPassword: zapDBPassword,
 		BackupDir:     filepath.Join(dataDir, "backups"),
+		OnPeerIdentity: func(peerNodeID string, peerPubKey ed25519.PublicKey) {
+			consensusIdentity.AddPeerPublicKey(peerNodeID, peerPubKey)
+		},
 	}
 
 	factory, err := transport.NewFactory(factoryCfg)
