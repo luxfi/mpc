@@ -181,7 +181,7 @@ func (k *KMSEnabledKVStore) Delete(key string) error {
 
 // isKeyShare checks if a key represents an MPC key share that requires KMS encryption.
 // Key shares are stored under org-scoped paths ("org:<orgID>:<walletID>") or with
-// known key-type prefixes (frost:, bls:, sr25519:, tfhe:). Metadata keys that do not
+// known key-type prefixes (frost:, sr25519:, tfhe:). Metadata keys that do not
 // match these patterns pass through to regular storage unencrypted.
 func isKeyShare(key string) bool {
 	// Org-scoped keys are always key shares
@@ -189,7 +189,7 @@ func isKeyShare(key string) bool {
 		return true
 	}
 	// Known key-type prefixed shares
-	for _, prefix := range []string{"frost:", "bls:", "sr25519:", "tfhe:"} {
+	for _, prefix := range []string{"frost:", "sr25519:", "tfhe:"} {
 		if strings.HasPrefix(key, prefix) {
 			return true
 		}

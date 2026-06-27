@@ -236,8 +236,6 @@ func (ec *eventConsumer) consumeTxSigningEvent() error {
 			ec.handleSigningEventFROST(&msg, natMsg)
 		case types.KeyTypeSR25519:
 			ec.handleSigningEventSR25519(&msg, natMsg)
-		case types.KeyTypeBLS:
-			ec.handleSigningEventBLS(&msg, natMsg)
 		default:
 			logger.Error("Unsupported key type for signing", nil,
 				"walletID", msg.WalletID,
@@ -637,8 +635,6 @@ func sessionTypeFromKeyType(keyType types.KeyType) (mpc.SessionType, error) {
 		return mpc.SessionTypeEDDSA, nil
 	case types.KeyTypeSR25519:
 		return mpc.SessionTypeSR25519, nil
-	case types.KeyTypeBLS:
-		return mpc.SessionTypeBLS, nil
 	default:
 		logger.Warn("Unsupported key type", "keyType", keyType)
 		return "", fmt.Errorf("unsupported key type: %v", keyType)

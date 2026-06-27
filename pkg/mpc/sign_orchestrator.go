@@ -3,7 +3,7 @@
 //
 // The orchestrator is the integration point for the
 // "MPC node signs only if it independently verifies the policy bundle"
-// control. Every signing entry point — CGGMP21, FROST, LSS, BLS,
+// control. Every signing entry point — CGGMP21, FROST, LSS,
 // SR25519 — must call SignGate.AuthorizeSign before its session emits
 // a share. Failure FAILS CLOSED: no fallback to "trust the coordinator".
 //
