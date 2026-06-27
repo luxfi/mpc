@@ -100,7 +100,6 @@ const (
 	SessionTypeECDSA   SessionType = "ecdsa"
 	SessionTypeEDDSA   SessionType = "eddsa"
 	SessionTypeSR25519 SessionType = "sr25519"
-	SessionTypeBLS     SessionType = "bls"
 )
 
 var (
