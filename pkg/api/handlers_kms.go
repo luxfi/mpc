@@ -14,12 +14,15 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// ValidatorKeySet holds MPC wallet references for a validator's BLS and Corona keys.
+// ValidatorKeySet holds the MPC wallet reference for a validator's custodied
+// Corona PQ-threshold key. The validator's BLS consensus key is deliberately
+// NOT here: BLS is consensus-only and lives as the validator's own native
+// per-validator crypto/bls key (PoP + signature aggregation, the consensus
+// fast-path), never threshold-custodied by this service. Only the Corona
+// PQ-threshold key is custodied (dealerless DKG).
 type ValidatorKeySet struct {
 	ValidatorID     string    `json:"validatorId"`
-	BLSWalletID     string    `json:"blsWalletId"`
 	CoronaWalletID  string    `json:"coronaWalletId"`
-	BLSPublicKey    string    `json:"blsPublicKey"`
 	CoronaPublicKey string    `json:"coronaPublicKey"`
 	Threshold       int       `json:"threshold"`
 	Parties         int       `json:"parties"`
@@ -89,8 +92,11 @@ func (s *Server) handleKMSGenerate(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	blsWalletID := fmt.Sprintf("validator-%s-bls", req.ValidatorID)
-	blsResult, err := s.mpc.TriggerKeygen(orgID, blsWalletID)
+	// Custody only the Corona PQ-threshold key (dealerless DKG). The validator's
+	// BLS consensus key is native (held by the validator's node), never
+	// threshold-custodied here.
+	coronaWalletID := fmt.Sprintf("validator-%s-corona", req.ValidatorID)
+	coronaResult, err := s.mpc.TriggerKeygen(orgID, coronaWalletID)
 	if err != nil {
 		if strings.Contains(err.Error(), "already exists") {
 			writeError(w, http.StatusConflict, err.Error())
@@ -100,19 +106,10 @@ func (s *Server) handleKMSGenerate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	coronaWalletID := fmt.Sprintf("validator-%s-corona", req.ValidatorID)
-	coronaResult, err := s.mpc.TriggerKeygen(orgID, coronaWalletID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
 	now := time.Now().UTC()
 	ks := &ValidatorKeySet{
 		ValidatorID:     req.ValidatorID,
-		BLSWalletID:     blsResult.WalletID,
 		CoronaWalletID:  coronaResult.WalletID,
-		BLSPublicKey:    blsResult.ECDSAPubKey,
 		CoronaPublicKey: coronaResult.EDDSAPubKey,
 		Threshold:       req.Threshold,
 		Parties:         req.Parties,
@@ -186,12 +183,10 @@ func (s *Server) handleKMSSign(w http.ResponseWriter, r *http.Request) {
 
 	var walletID string
 	switch req.KeyType {
-	case "bls":
-		walletID = ks.BLSWalletID
 	case "corona":
 		walletID = ks.CoronaWalletID
 	default:
-		writeError(w, http.StatusBadRequest, "key_type must be 'bls' or 'corona'")
+		writeError(w, http.StatusBadRequest, "key_type must be 'corona'")
 		return
 	}
 
@@ -229,10 +224,6 @@ func (s *Server) handleKMSRotate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.mpc.TriggerReshare(orgID, ks.BLSWalletID, req.NewThreshold, req.NewParticipants); err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Sprintf("bls reshare: %v", err))
-		return
-	}
 	if err := s.mpc.TriggerReshare(orgID, ks.CoronaWalletID, req.NewThreshold, req.NewParticipants); err != nil {
 		writeError(w, http.StatusInternalServerError, fmt.Sprintf("corona reshare: %v", err))
 		return
