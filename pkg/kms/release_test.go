@@ -9,7 +9,7 @@ import (
 
 	"golang.org/x/crypto/curve25519"
 
-	"github.com/luxfi/mpc/cc/attest"
+	"github.com/luxfi/cc/attest"
 )
 
 // x25519Basepoint multiplies priv by the curve25519 basepoint.
