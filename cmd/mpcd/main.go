@@ -122,9 +122,20 @@ func main() {
 					},
 					&cli.StringFlag{
 						Name:    "threshold-listen",
-						Usage:   "Embedded threshold ZAP dispatcher listen address (luxfi/threshold/pkg/thresholdd surface: cggmp21/frost/pulsar/corona/magnetar/bls/doerner). Empty disables. Default 127.0.0.1:7301 — process-local IPC; production fronts this via the cluster ingress + KMS.",
+						Usage:   "Embedded threshold ZAP dispatcher listen address (luxfi/threshold/pkg/thresholdd surface: cggmp21/frost/pulsar/corona/magnetar/doerner). Empty disables. Default 127.0.0.1:7301 — process-local IPC; production fronts this via the cluster ingress + KMS.",
 						Sources: cli.EnvVars("MPC_THRESHOLD_LISTEN"),
 						Value:   "127.0.0.1:7301",
+					},
+					&cli.StringFlag{
+						Name:    "chain-profile",
+						Usage:   "Node chain-security posture for the embedded threshold dispatcher's strict-PQ gate: strict-pq|legacy-compat|unknown. Default strict-pq (fail-closed) — the single-party dealer shortcut on ctx-bound sign_ctx (pulsar/magnetar) is REFUSED unless a chain is allow-listed via --legacy-chains. Set legacy-compat only for dev / non-PQ chains.",
+						Sources: cli.EnvVars("MPC_CHAIN_PROFILE"),
+						Value:   "strict-pq",
+					},
+					&cli.StringFlag{
+						Name:    "legacy-chains",
+						Usage:   "Comma/space-separated chainIDs exempt from the strict-PQ gate (permitted the dealer shortcut) even when --chain-profile is strict-pq. Empty by default — nothing is exempt.",
+						Sources: cli.EnvVars("MPC_LEGACY_CHAINS"),
 					},
 					// HSM / password provider flags
 					&cli.StringFlag{
@@ -901,16 +912,36 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 				})
 				if thrErr != nil {
 					logger.Error("Failed to build threshold dispatcher", thrErr)
-				} else if startErr := thrSrv.Start(); startErr != nil {
-					logger.Error("Failed to start threshold dispatcher", startErr, "addr", thrAddr)
 				} else {
-					logger.Info(
-						"Threshold dispatcher (ZAP) starting",
-						"addr", thrAddr,
-						"schemes", "cggmp21,frost,pulsar,corona,magnetar,bls,doerner",
-						"auth", "bearer-token (peer nodeID)",
+					// Strict-PQ gate (Red M-2): the dispatcher's
+					// Sign_Ctx_Profile consults a ChainProfileResolver before
+					// allowing the single-party dealer shortcut on ctx-bound
+					// signing (pulsar/magnetar sign_ctx). With NO resolver
+					// wired the gate fails OPEN — every chainID, strict-PQ
+					// chains included, slips through. Wire the node's posture
+					// BEFORE Start so the gate is live on the first accepted
+					// sign_ctx, and fails CLOSED by default.
+					profDef, profErr := chainProfileFromString(c.String("chain-profile"))
+					if profErr != nil {
+						logger.Fatal("Invalid --chain-profile", profErr)
+					}
+					thrSrv.SetChainProfileResolver(
+						buildChainProfileResolver(profDef, splitCSV(c.String("legacy-chains"))),
 					)
-					defer thrSrv.Stop()
+
+					if startErr := thrSrv.Start(); startErr != nil {
+						logger.Error("Failed to start threshold dispatcher", startErr, "addr", thrAddr)
+					} else {
+						logger.Info(
+							"Threshold dispatcher (ZAP) starting",
+							"addr", thrAddr,
+							"schemes", "cggmp21,frost,pulsar,corona,magnetar,doerner",
+							"auth", "bearer-token (peer nodeID)",
+							"strict_pq_default", profDef.String(),
+							"legacy_chains", c.String("legacy-chains"),
+						)
+						defer thrSrv.Stop()
+					}
 				}
 			}
 		}
