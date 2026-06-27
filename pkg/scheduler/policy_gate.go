@@ -83,7 +83,7 @@ func (l IOLevel) String() string {
 
 // Worker is the scheduler's view of a candidate node for a session.
 // All fields are populated by the registry from attested measurements
-// (see pkg/attestation/nvidia for the GPU side).
+// (see github.com/luxfi/cc/attest/nvidia for the GPU side).
 type Worker struct {
 	ID                 string
 	TrustMode          TrustMode

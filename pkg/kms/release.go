@@ -51,7 +51,7 @@ import (
 	"golang.org/x/crypto/chacha20poly1305"
 	"golang.org/x/crypto/curve25519"
 
-	"github.com/luxfi/mpc/cc/attest"
+	"github.com/luxfi/cc/attest"
 )
 
 // CompositeAttestation is the contract surface the release gate consumes
