@@ -23,7 +23,6 @@ require (
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/go-chi/cors v1.2.2
 	github.com/golang-jwt/jwt/v5 v5.3.1
-	github.com/google/go-sev-guest v0.14.1
 	github.com/google/uuid v1.6.0
 	github.com/gtank/ristretto255 v0.2.0
 	github.com/hanzoai/base v0.39.1
@@ -31,12 +30,13 @@ require (
 	github.com/hanzoai/orm v0.5.2
 	github.com/hanzos3/go-sdk v1.0.2
 	github.com/hashicorp/consul/api v1.33.7
+	github.com/luxfi/cc v0.0.0-00010101000000-000000000000
 	github.com/luxfi/crypto v1.19.17
 	github.com/luxfi/database v1.18.3
 	github.com/luxfi/fhe v1.8.2
 	github.com/luxfi/hsm v1.1.3
 	github.com/luxfi/lattice/v7 v7.1.4
-	github.com/luxfi/log v1.4.1
+	github.com/luxfi/log v1.4.3
 	github.com/luxfi/metric v1.5.7
 	github.com/luxfi/threshold v1.9.9
 	github.com/luxfi/zap v0.8.1
@@ -85,7 +85,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sso v1.30.14 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.35.18 // indirect
 	github.com/aws/smithy-go v1.24.2 // indirect
-	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/boombuler/barcode v1.1.0 // indirect
 	github.com/cenkalti/backoff v2.2.1+incompatible // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
@@ -113,6 +112,7 @@ require (
 	github.com/golang/mock v1.6.0 // indirect
 	github.com/google/flatbuffers v25.12.19+incompatible // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
+	github.com/google/go-sev-guest v0.14.1 // indirect
 	github.com/google/logger v1.1.1 // indirect
 	github.com/google/s2a-go v0.1.9 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.14 // indirect
@@ -167,7 +167,7 @@ require (
 	github.com/luxfi/utils v1.1.4 // indirect
 	github.com/luxfi/zapdb v1.8.0 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
-	github.com/mattn/go-isatty v0.0.20 // indirect
+	github.com/mattn/go-isatty v0.0.21 // indirect
 	github.com/mgutz/ansi v0.0.0-20200706080929-d51e80ef957d // indirect
 	github.com/miekg/dns v1.1.72 // indirect
 	github.com/miekg/pkcs11 v1.1.1 // indirect
@@ -177,21 +177,15 @@ require (
 	github.com/minio/minio-go/v7 v7.0.100 // indirect
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/montanaflynn/stats v0.9.0 // indirect
-	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/nats-io/nkeys v0.4.15 // indirect
 	github.com/nats-io/nuid v1.0.1 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/nexus-rpc/sdk-go v0.6.0 // indirect
-	github.com/onsi/ginkgo/v2 v2.28.1 // indirect
 	github.com/pelletier/go-toml/v2 v2.3.0 // indirect
 	github.com/philhofer/fwd v1.2.0 // indirect
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
-	github.com/prometheus/client_golang v1.23.2 // indirect
-	github.com/prometheus/client_model v0.6.2 // indirect
-	github.com/prometheus/common v0.67.5 // indirect
-	github.com/prometheus/procfs v0.20.1 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/robfig/cron v1.2.0 // indirect
 	github.com/rs/xid v1.6.0 // indirect
@@ -218,7 +212,6 @@ require (
 	go.uber.org/mock v0.6.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.1 // indirect
-	go.yaml.in/yaml/v2 v2.4.4 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/exp v0.0.0-20260312153236-7ab1446f8b90 // indirect
 	golang.org/x/image v0.38.0 // indirect
@@ -249,6 +242,12 @@ require (
 replace github.com/agl/ed25519 => github.com/luxfi/edwards25519 v0.1.0
 
 replace github.com/luxfi/log v1.3.0 => github.com/luxfi/log v1.4.1
+
+// cc/attest + pkg/attestation/nvidia were extracted into the orthogonal
+// leaf module github.com/luxfi/cc (one attestation verifier, depended on by
+// mpc/tee/ai, coupled to none). Local replace until the leaf is published;
+// drop this once github.com/luxfi/cc is tagged.
+replace github.com/luxfi/cc => ../cc
 
 // luxfi/genesis v1.5.21 / v1.5.22 are missing from proxy.golang.org; no
 // luxfi/mpc code path imports them, but transitive resolution can pick them

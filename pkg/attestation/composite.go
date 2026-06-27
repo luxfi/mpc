@@ -46,7 +46,7 @@ import (
 
 	"github.com/fxamacker/cbor/v2"
 	lattice "github.com/luxfi/lattice/v7/types"
-	"github.com/luxfi/mpc/cc/attest"
+	"github.com/luxfi/cc/attest"
 )
 
 // EnvelopeVersion is the schema version of the CompositeAttestation
@@ -308,9 +308,11 @@ func (c *CompositeAttestation) validate() error {
 //
 // Behaviour by issuer:
 //
-//   - "amd.sev.snp"    → cc/attest.SEVSNP{} (PRODUCTION)
-//   - "intel.tdx"      → cc/attest.TDX{}    (panics; tracked at #222 stage 2)
-//   - "nvidia.nras.v1" → cc/attest.NRAS{}   (panics; tracked at #222 stage 3)
+//   - "amd.sev.snp"    → cc/attest.SEVSNP{}  (PRODUCTION)
+//   - "intel.tdx"      → cc/attest.TDX{}     (ErrNotImplemented; #222 stage 2)
+//   - "nvidia.nras.v1" → cc/attest.NVTrust{} (PRODUCTION local-RIM verify;
+//     supply the signed RIM + trust roots via attest.WithNVTrustRIM /
+//     attest.WithNVTrustTrustRoots in the AttestOptions)
 //   - other issuers    → out[i] is nil (no verifier registered yet)
 //
 // The returned slice has the same length and order as c.Evidence;
@@ -355,7 +357,7 @@ func evidenceKindForIssuer(issuer string) (attest.Kind, bool) {
 	case "intel.tdx":
 		return attest.KindTDX, true
 	case "nvidia.nras.v1":
-		return attest.KindNRAS, true
+		return attest.KindNVTrust, true
 	default:
 		return "", false
 	}
