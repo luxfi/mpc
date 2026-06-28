@@ -238,8 +238,11 @@ require (
 
 // Required by decred/dcrd/dcrec/edwards/v2 (all versions). Cannot remove until upstream fixes.
 
-// agl/ed25519 upstream archived; redirect to luxfi fork with go.mod
-replace github.com/agl/ed25519 => github.com/luxfi/edwards25519 v0.1.0
+// agl/ed25519 upstream archived; redirect to luxfi fork with go.mod.
+// v0.1.1 (not v0.1.0): v0.1.0's git bytes were force-republished, so its zip
+// hash diverges from the immutable sum.golang.org pin and no copy verifies;
+// v0.1.1 is the clean patch the proxy + checksum db agree on.
+replace github.com/agl/ed25519 => github.com/luxfi/edwards25519 v0.1.1
 
 replace github.com/luxfi/log v1.3.0 => github.com/luxfi/log v1.4.1
 
