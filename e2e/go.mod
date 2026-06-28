@@ -153,4 +153,6 @@ require (
 )
 
 // agl/ed25519 has no packages at upstream path; redirect required by decred/dcrd/dcrec/edwards/v2.
-replace github.com/agl/ed25519 => github.com/luxfi/edwards25519 v0.1.0
+// v0.1.1, not v0.1.0: v0.1.0 was force-republished and its zip hash no longer
+// matches the immutable sum.golang.org pin; v0.1.1 is the clean patch.
+replace github.com/agl/ed25519 => github.com/luxfi/edwards25519 v0.1.1
