@@ -23,7 +23,8 @@ FROM --platform=$BUILDPLATFORM golang:1.26.3-alpine AS builder
 # /v1/mpc/wallets returned 503; the workaround was seeding wallets into
 # TA's user_wallets table out-of-band.
 RUN apk add --no-cache git ca-certificates gcc musl-dev sqlite-dev linux-headers
-ENV GONOSUMDB=github.com/luxfi/*,github.com/hanzoai/*
+# luxfi/* + hanzoai/* are PUBLIC modules — fetched and checksum-verified through
+# the default immutable proxy.golang.org + sum.golang.org. No GONOSUMDB bypass.
 
 WORKDIR /app
 COPY go.mod go.sum ./

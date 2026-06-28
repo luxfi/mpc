@@ -16,11 +16,9 @@ jobs:
     # All builds run on the amd64 self-hosted runner. arm64 cross-compiles
     # via GOARCH; CGO_ENABLED=0 keeps it pure-Go (no cross-compiler needed).
     runs-on: [self-hosted, linux, amd64]
-    env:
-      GONOSUMCHECK: '*'
-      GONOSUMDB: '*'
-      GOPRIVATE: 'github.com/luxfi/*'
-      GOPROXY: direct
+    # luxfi/* are PUBLIC modules — fetched and checksum-verified through the
+    # default immutable proxy.golang.org + sum.golang.org. No GOPRIVATE /
+    # GONOSUMDB / GOPROXY=direct bypass (those route around the checksum db).
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
