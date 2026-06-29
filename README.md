@@ -1,3 +1,5 @@
+<p align="center"><img src=".github/hero.svg" alt="mpc" width="880"></p>
+
 # MPC
 
 Threshold signing engine -- CGGMP21 (ECDSA), FROST (EdDSA/Schnorr), BLS, SR25519, and post-quantum lattice signatures (Pulsar M-LWE, Corona R-LWE, and double-lattice composition) via the embedded `thresholdd` dispatcher. No full private key reconstruction, ever.
