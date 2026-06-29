@@ -19,7 +19,7 @@ require (
 	github.com/cronokirby/saferith v0.33.0
 	github.com/decred/dcrd/dcrec/edwards/v2 v2.0.4
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.1
-	github.com/fxamacker/cbor/v2 v2.9.1
+	github.com/fxamacker/cbor/v2 v2.9.2
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/go-chi/cors v1.2.2
 	github.com/golang-jwt/jwt/v5 v5.3.1
@@ -152,7 +152,7 @@ require (
 	github.com/luxfi/concurrent v0.0.3 // indirect
 	github.com/luxfi/constants v1.4.7 // indirect
 	github.com/luxfi/container v0.0.4 // indirect
-	github.com/luxfi/corona v0.7.6 // indirect
+	github.com/luxfi/corona v0.10.2 // indirect
 	github.com/luxfi/geth v1.16.98 // indirect
 	github.com/luxfi/ids v1.2.9 // indirect
 	github.com/luxfi/lens v0.1.4 // indirect
@@ -160,9 +160,10 @@ require (
 	github.com/luxfi/math v1.4.1 // indirect
 	github.com/luxfi/math/big v0.1.0 // indirect
 	github.com/luxfi/mdns v0.1.1 // indirect
+	github.com/luxfi/mlwe v0.2.1 // indirect
 	github.com/luxfi/mock v0.1.1 // indirect
 	github.com/luxfi/pq v1.0.3 // indirect
-	github.com/luxfi/pulsar v1.1.1 // indirect
+	github.com/luxfi/pulsar v1.7.1 // indirect
 	github.com/luxfi/sampler v1.0.0 // indirect
 	github.com/luxfi/utils v1.1.4 // indirect
 	github.com/luxfi/zapdb v1.8.0 // indirect
