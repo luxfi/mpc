@@ -38,7 +38,7 @@ require (
 	github.com/luxfi/lattice/v7 v7.1.4
 	github.com/luxfi/log v1.4.3
 	github.com/luxfi/metric v1.5.7
-	github.com/luxfi/threshold v1.9.9
+	github.com/luxfi/threshold v1.12.0
 	github.com/luxfi/zap v1.0.1
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/mr-tron/base58 v1.2.0
@@ -113,6 +113,7 @@ require (
 	github.com/google/flatbuffers v25.12.19+incompatible // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/go-sev-guest v0.14.1 // indirect
+	github.com/google/go-tdx-guest v0.3.1 // indirect
 	github.com/google/logger v1.1.1 // indirect
 	github.com/google/s2a-go v0.1.9 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.14 // indirect
@@ -143,18 +144,19 @@ require (
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/klauspost/crc32 v1.3.0 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
-	github.com/luxfi/accel v1.1.9 // indirect
+	github.com/luxfi/accel v1.2.0 // indirect
 	github.com/luxfi/age v1.4.0 // indirect
 	github.com/luxfi/atomic v1.0.0 // indirect
 	github.com/luxfi/cache v1.2.1 // indirect
 	github.com/luxfi/codec v1.1.4 // indirect
 	github.com/luxfi/compress v0.0.5 // indirect
 	github.com/luxfi/concurrent v0.0.3 // indirect
-	github.com/luxfi/constants v1.4.7 // indirect
+	github.com/luxfi/constants v1.5.8 // indirect
 	github.com/luxfi/container v0.0.4 // indirect
 	github.com/luxfi/corona v0.10.3 // indirect
+	github.com/luxfi/dkg v0.3.5 // indirect
 	github.com/luxfi/geth v1.16.98 // indirect
-	github.com/luxfi/ids v1.2.9 // indirect
+	github.com/luxfi/ids v1.3.0 // indirect
 	github.com/luxfi/lens v0.1.4 // indirect
 	github.com/luxfi/magnetar v1.2.0 // indirect
 	github.com/luxfi/math v1.4.1 // indirect
@@ -163,8 +165,8 @@ require (
 	github.com/luxfi/mlwe v0.2.1 // indirect
 	github.com/luxfi/mock v0.1.1 // indirect
 	github.com/luxfi/pq v1.0.3 // indirect
-	github.com/luxfi/pulsar v1.8.0 // indirect
-	github.com/luxfi/sampler v1.0.0 // indirect
+	github.com/luxfi/pulsar v1.9.0 // indirect
+	github.com/luxfi/sampler v1.1.0 // indirect
 	github.com/luxfi/utils v1.1.4 // indirect
 	github.com/luxfi/zapdb v1.8.0 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
@@ -199,6 +201,7 @@ require (
 	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/supranational/blst v0.3.16 // indirect
 	github.com/tinylib/msgp v1.6.3 // indirect
+	github.com/veraison/go-cose v1.3.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/zeebo/blake3 v0.2.4 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect

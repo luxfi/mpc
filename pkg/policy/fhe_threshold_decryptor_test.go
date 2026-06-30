@@ -1,3 +1,5 @@
+//go:build experimental_tfhe
+
 // Tests for RealThresholdDecryptor. The PartyClient interface is
 // stubbed out with a thin in-memory adapter that wraps the
 // fhethr.PartialDecrypter directly — exercising the dispatcher fan-out
