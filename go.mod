@@ -39,7 +39,7 @@ require (
 	github.com/luxfi/log v1.4.3
 	github.com/luxfi/metric v1.5.7
 	github.com/luxfi/threshold v1.9.9
-	github.com/luxfi/zap v0.8.1
+	github.com/luxfi/zap v1.0.1
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/mr-tron/base58 v1.2.0
 	github.com/nats-io/nats.go v1.50.0
@@ -152,7 +152,7 @@ require (
 	github.com/luxfi/concurrent v0.0.3 // indirect
 	github.com/luxfi/constants v1.4.7 // indirect
 	github.com/luxfi/container v0.0.4 // indirect
-	github.com/luxfi/corona v0.10.2 // indirect
+	github.com/luxfi/corona v0.10.3 // indirect
 	github.com/luxfi/geth v1.16.98 // indirect
 	github.com/luxfi/ids v1.2.9 // indirect
 	github.com/luxfi/lens v0.1.4 // indirect
@@ -163,7 +163,7 @@ require (
 	github.com/luxfi/mlwe v0.2.1 // indirect
 	github.com/luxfi/mock v0.1.1 // indirect
 	github.com/luxfi/pq v1.0.3 // indirect
-	github.com/luxfi/pulsar v1.7.1 // indirect
+	github.com/luxfi/pulsar v1.8.0 // indirect
 	github.com/luxfi/sampler v1.0.0 // indirect
 	github.com/luxfi/utils v1.1.4 // indirect
 	github.com/luxfi/zapdb v1.8.0 // indirect
