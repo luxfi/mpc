@@ -1,6 +1,8 @@
 // Copyright (c) 2026, Lux Industries Inc.
 // SPDX-License-Identifier: BSD-3-Clause
-//
+
+//go:build experimental_tfhe
+
 // TestMain opts the policy-package tests that touch
 // luxfi/threshold/protocols/tfhe (RealThresholdDecryptor wires its
 // PartialDecrypter / ShareAggregator) into the placeholder UNSAFE primitive
