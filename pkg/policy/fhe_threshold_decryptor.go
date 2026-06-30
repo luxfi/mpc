@@ -1,7 +1,24 @@
+//go:build experimental_tfhe
+
 // RealThresholdDecryptor wires the FHEVerifier's ThresholdDecryptor
 // interface to the t-of-n committee implemented in
-// luxfi/threshold/protocols/tfhe — the canonical home for threshold
-// FHE primitives. There is one and only one place to define
+// luxfi/threshold/protocols/tfhe.
+//
+// EXPERIMENTAL — gated behind the `experimental_tfhe` build tag because
+// the upstream luxfi/threshold/protocols/tfhe primitive is a fail-loud
+// placeholder that is NOT a real threshold scheme: every party stores
+// the full master key, PartialDecrypt returns an HMAC tag, and
+// CombineShares ignores partials and runs single-party decryption (it
+// panics at every entry point unless ALLOW_FAKE_TFHE_FOR_TESTING_ONLY=1,
+// by design). That package was deleted from luxfi/threshold upstream
+// (v1.10.0+); this file builds only against the older v1.9.x line and
+// only verifies dispatcher fan-out + aggregator wiring shape — it proves
+// NO threshold-security property. Default production builds compile
+// fhe_threshold_decryptor_stub.go instead, which fails CLOSED with
+// ErrThresholdFHENotWired. Real-threshold wiring (luxfi/fhe pkg/threshold
+// Shamir/LWE: ShareLWESecretKey / PartialDecryptLWE / CombineLWE) is
+// tracked per LP-137 §2.6.
+//
 // FHECiphertext / FHEThresholdShare / KeyShare / ShareAggregator.
 //
 // Flow:
