@@ -395,13 +395,20 @@ func (s *cggmp21KeygenSession) publishResult() {
 		return
 	}
 
-	// Convert public key to hex
-	// Use the X coordinate as a simple representation
+	// Serialize the FULL public-key POINT (33-byte compressed: 0x02/0x03 || X),
+	// NOT the bare 32-byte X-scalar. MarshalBinary preserves the Y parity, which
+	// the address/recovery paths need. Emitting only X loses parity, and
+	// pubKeyToEVMAddress/pubKeyToBtcAddress then GUESS even-Y (0x02) — deriving the
+	// WRONG address (the sibling curve point) for ~50% of keys (every odd-Y key),
+	// so the reported address does not match the key the ring actually signs with.
+	// The signing session already uses PublicPoint().MarshalBinary() (see
+	// signing_session_lss.go); keygen MUST serialize identically so keygen address
+	// == signing key. pubKeyToEVMAddress/pubKeyToBtcAddress + CalculateRecoveryByte
+	// all accept the 33-byte compressed form.
 	var pubKeyHex string
 	if s.config != nil && s.config.PublicPoint() != nil {
-		if xScalar := s.config.PublicPoint().XScalar(); xScalar != nil {
-			xBytes, _ := xScalar.MarshalBinary()
-			pubKeyHex = fmt.Sprintf("%x", xBytes)
+		if pubBytes, err := s.config.PublicPoint().MarshalBinary(); err == nil && len(pubBytes) > 0 {
+			pubKeyHex = fmt.Sprintf("%x", pubBytes)
 		}
 	}
 
