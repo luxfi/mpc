@@ -1521,12 +1521,21 @@ func pubKeyToEVMAddress(pubKey []byte) string {
 		// Uncompressed: 0x04 || X(32) || Y(32)
 		xyBytes = pubKey[1:]
 	case 33:
-		// Compressed: 0x02/0x03 || X(32) — decompress via secp256k1
+		// Compressed: 0x02/0x03 || X(32) — decompress via secp256k1.
 		x, y := ellipticUnmarshalCompressed(pubKey)
 		if x == nil {
 			return ""
 		}
-		xyBytes = append(x.Bytes(), y.Bytes()...)
+		// LEFT-PAD each coordinate to 32 bytes. big.Int.Bytes() drops leading
+		// zero bytes, so a coordinate < 2^248 (X or Y with a high zero byte,
+		// ~1/256 of keys) would make xyBytes != 64 and the len guard below return
+		// "" — an EMPTY address for an otherwise valid key. FillBytes zero-pads
+		// into a fixed 32-byte slice. (case 32 already pads; case 33 did not.)
+		xb := make([]byte, 32)
+		yb := make([]byte, 32)
+		x.FillBytes(xb)
+		y.FillBytes(yb)
+		xyBytes = append(xb, yb...)
 	case 32:
 		// Raw x-coordinate only — try decompressing with 0x02 prefix (even y)
 		compressed := append([]byte{0x02}, pubKey...)
