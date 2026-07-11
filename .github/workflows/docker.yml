@@ -17,7 +17,7 @@ jobs:
         arch: [amd64, arm64]
     # No GH-hosted arm runners. arm64 builds via Docker buildx with QEMU on
     # the amd64 self-hosted runner (QEMU is acceptable for Docker builds).
-    runs-on: [self-hosted, linux, amd64]
+    runs-on: lux-build-amd64
     steps:
       - uses: actions/checkout@v4
       - name: Set up QEMU
@@ -43,7 +43,7 @@ jobs:
 
   manifest:
     needs: build
-    runs-on: [self-hosted, linux, amd64]
+    runs-on: lux-build-amd64
     steps:
       - uses: docker/login-action@v3
         with:
@@ -62,7 +62,7 @@ jobs:
   notify:
     needs: manifest
     if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: [self-hosted, linux, amd64]
+    runs-on: lux-build-amd64
     steps:
       - uses: peter-evans/repository-dispatch@v3
         with:
