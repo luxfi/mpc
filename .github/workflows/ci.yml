@@ -8,7 +8,7 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: lux-build-amd64
     env:
       GOEXPERIMENT: runtimesecret
 
@@ -45,7 +45,7 @@ jobs:
           name: codecov-umbrella
 
   lint:
-    runs-on: ubuntu-latest
+    runs-on: lux-build-amd64
 
     steps:
       - name: Checkout code
@@ -69,7 +69,7 @@ jobs:
 
   # Security vulnerability scanning
   security-scan:
-    runs-on: ubuntu-latest
+    runs-on: lux-build-amd64
     name: Security Vulnerability Scan
     permissions:
       actions: read
@@ -146,7 +146,7 @@ jobs:
   # CodeQL Analysis
   codeql-analysis:
     name: CodeQL Analysis
-    runs-on: ubuntu-latest
+    runs-on: lux-build-amd64
     permissions:
       actions: read
       contents: read
@@ -197,7 +197,7 @@ jobs:
 
   # SBOM Generation
   sbom:
-    runs-on: ubuntu-latest
+    runs-on: lux-build-amd64
     name: Generate SBOM
     permissions:
       actions: read
