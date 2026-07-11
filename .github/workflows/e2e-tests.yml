@@ -9,7 +9,7 @@ on:
 jobs:
   # Build job that creates the binaries needed by all E2E test jobs
   build:
-    runs-on: ubuntu-latest
+    runs-on: lux-build-amd64
     outputs:
       cache-key: ${{ steps.cache-key.outputs.key }}
 
@@ -65,7 +65,7 @@ jobs:
 
   # Key Generation E2E Tests
   e2e-keygen:
-    runs-on: ubuntu-latest
+    runs-on: lux-build-amd64
     needs: build
 
     steps:
@@ -147,7 +147,7 @@ jobs:
 
   # Signing E2E Tests
   e2e-signing:
-    runs-on: ubuntu-latest
+    runs-on: lux-build-amd64
     needs: build
 
     steps:
@@ -229,7 +229,7 @@ jobs:
 
   # Resharing E2E Tests
   e2e-resharing:
-    runs-on: ubuntu-latest
+    runs-on: lux-build-amd64
     needs: build
 
     steps:
@@ -311,7 +311,7 @@ jobs:
 
   # Summary job that depends on all E2E tests
   e2e-summary:
-    runs-on: ubuntu-latest
+    runs-on: lux-build-amd64
     needs: [e2e-keygen, e2e-signing, e2e-resharing]
     if: always()
 
