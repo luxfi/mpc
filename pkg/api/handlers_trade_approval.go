@@ -19,7 +19,7 @@ import (
 
 // handleTradeSubmit accepts a trade from the ATS and creates a pending approval.
 // The user gets a push notification on their registered device.
-// POST /api/v1/trade/submit
+// POST /v1/trade/submit
 func (s *Server) handleTradeSubmit(w http.ResponseWriter, r *http.Request) {
 	orgID := getOrgID(r.Context())
 
@@ -111,7 +111,7 @@ func (s *Server) handleTradeSubmit(w http.ResponseWriter, r *http.Request) {
 
 // handleTradeApprove verifies a WebAuthn assertion (biometric) and approves the trade.
 // After approval, triggers MPC signing via the intent flow.
-// POST /api/v1/trade/approve
+// POST /v1/trade/approve
 func (s *Server) handleTradeApprove(w http.ResponseWriter, r *http.Request) {
 	orgID := getOrgID(r.Context())
 	userID := getUserID(r.Context())
@@ -265,7 +265,7 @@ func (s *Server) handleTradeApprove(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleTradeReject rejects a pending trade.
-// POST /api/v1/trade/reject
+// POST /v1/trade/reject
 func (s *Server) handleTradeReject(w http.ResponseWriter, r *http.Request) {
 	orgID := getOrgID(r.Context())
 	userID := getUserID(r.Context())
@@ -306,7 +306,7 @@ func (s *Server) handleTradeReject(w http.ResponseWriter, r *http.Request) {
 }
 
 // handlePendingTrades lists pending trade approvals for a wallet.
-// GET /api/v1/trade/pending?wallet_id=xxx
+// GET /v1/trade/pending?wallet_id=xxx
 func (s *Server) handlePendingTrades(w http.ResponseWriter, r *http.Request) {
 	orgID := getOrgID(r.Context())
 
