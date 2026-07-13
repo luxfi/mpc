@@ -7,11 +7,13 @@ import (
 	"bufio"
 	"context"
 	"crypto/ed25519"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -260,6 +262,11 @@ func (t *Transport) connectToPeer(ctx context.Context, nodeID, addr string) {
 
 		backoff = time.Second // Reset backoff on success
 
+		// Learn the peer's Ed25519 identity from the authenticated TLS server
+		// certificate before any tie-break decision, so the peer key is
+		// recorded even if this connection is later collapsed by tie-break.
+		t.learnPeerIdentityFromTLS(conn)
+
 		peer, accepted := t.addPeerTieBreak(nodeID, addr, conn, true)
 		if !accepted {
 			conn.Close()
@@ -284,6 +291,11 @@ func (t *Transport) connectToPeer(ctx context.Context, nodeID, addr string) {
 // handleIncoming handles an incoming connection
 func (t *Transport) handleIncoming(ctx context.Context, conn net.Conn) {
 	defer t.wg.Done()
+
+	// Learn the peer's Ed25519 identity from the (now required) authenticated
+	// TLS client certificate first — the deterministic identity source,
+	// independent of the MsgMPCReady handshake below and of tie-break.
+	t.learnPeerIdentityFromTLS(conn)
 
 	// Read identity message first
 	msgType, payload, err := ReadMessage(conn)
@@ -624,6 +636,47 @@ func (t *Transport) notifyPeerIdentity(nodeID string, pubKey ed25519.PublicKey) 
 	keyCopy := make(ed25519.PublicKey, ed25519.PublicKeySize)
 	copy(keyCopy, pubKey)
 	t.config.OnPeerIdentity(nodeID, keyCopy)
+}
+
+// learnPeerIdentityFromTLS derives the peer's (nodeID, Ed25519 public key)
+// from the mutually-authenticated TLS peer certificate and reports it via
+// notifyPeerIdentity.
+//
+// This is the deterministic, race-free source of peer identity. The node's
+// TLS certificate carries CommonName "mpc-<nodeID>" and its certificate public
+// key IS the node's Ed25519 identity key (see transport/tls.go
+// newSelfSignedCert); the TLS handshake's CertificateVerify step proves the
+// peer possesses the corresponding private key. Learning identity here — for
+// BOTH the dialer (server cert) and the acceptor (client cert, now required
+// via ClientAuth: RequireAnyClientCert) — removes the dependency on the
+// MsgMPCReady application handshake, whose single announcement can be dropped
+// when simultaneous connections are collapsed by addPeerTieBreak, leaving one
+// direction of keygen/signing signature verification unable to resolve a peer
+// key ("public key not found for node …").
+func (t *Transport) learnPeerIdentityFromTLS(conn net.Conn) {
+	tc, ok := conn.(*tls.Conn)
+	if !ok {
+		return
+	}
+	// The acceptor's TLS handshake is lazy; force completion so PeerCertificates
+	// is populated. Idempotent — a no-op once the handshake has run.
+	if err := tc.Handshake(); err != nil {
+		return
+	}
+	cs := tc.ConnectionState()
+	if len(cs.PeerCertificates) == 0 {
+		return
+	}
+	cert := cs.PeerCertificates[0]
+	pub, ok := cert.PublicKey.(ed25519.PublicKey)
+	if !ok {
+		return
+	}
+	peerNodeID := strings.TrimPrefix(cert.Subject.CommonName, "mpc-")
+	if peerNodeID == "" || peerNodeID == t.config.NodeID {
+		return
+	}
+	t.notifyPeerIdentity(peerNodeID, pub)
 }
 
 // sendIdentity sends our identity to a peer
