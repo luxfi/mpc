@@ -35,16 +35,23 @@ RUN apk add --no-cache git ca-certificates gcc musl-dev sqlite-dev linux-headers
 #    luxfi/geth, whose proxy-cached version has no live git tag).
 ENV GOPRIVATE=github.com/luxfi/hsm
 ENV GOSUMDB=off
+ENV GOFLAGS=-mod=mod
 
 WORKDIR /app
-COPY go.mod go.sum ./
+COPY . .
+COPY --from=ui /ui/dist ./ui/dist/
+# Regenerate go.sum from the actual fetch sources (proxy for public modules,
+# authed git for private luxfi/hsm). Several first-party modules were re-tagged
+# or freshly published, so the proxy vs git content hashes drift and the
+# committed (git-sourced) go.sum fails proxy-fetch verification. rm + re-download
+# rebuilds go.sum from what is really fetched; GOFLAGS=-mod=mod + GOSUMDB=off let
+# it record those hashes. This is regenerate-not-bypass.
 RUN --mount=type=secret,id=gh_token \
     sh -c 'if [ -s /run/secrets/gh_token ]; then \
              git config --global url."https://x-access-token:$(cat /run/secrets/gh_token)@github.com/".insteadOf "https://github.com/"; \
            fi; \
-           go mod download'
-COPY . .
-COPY --from=ui /ui/dist ./ui/dist/
+           rm -f go.sum; \
+           go mod download all'
 
 # Per SCALE_STANDARD.md §2 (https://github.com/hanzoai/hips/blob/main/docs/SCALE_STANDARD.md)
 # — every Go production Dockerfile that emits JSON to a client builds
