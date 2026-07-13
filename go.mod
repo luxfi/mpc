@@ -30,7 +30,7 @@ require (
 	github.com/hanzoai/orm v0.5.2
 	github.com/hanzos3/go-sdk v1.0.2
 	github.com/hashicorp/consul/api v1.33.7
-	github.com/luxfi/cc v0.0.0-00010101000000-000000000000
+	github.com/luxfi/cc v0.3.0
 	github.com/luxfi/crypto v1.19.17
 	github.com/luxfi/database v1.18.3
 	github.com/luxfi/fhe v1.8.2
@@ -249,12 +249,6 @@ require (
 replace github.com/agl/ed25519 => github.com/luxfi/edwards25519 v0.1.1
 
 replace github.com/luxfi/log v1.3.0 => github.com/luxfi/log v1.4.1
-
-// cc/attest + pkg/attestation/nvidia were extracted into the orthogonal
-// leaf module github.com/luxfi/cc (one attestation verifier, depended on by
-// mpc/tee/ai, coupled to none). Local replace until the leaf is published;
-// drop this once github.com/luxfi/cc is tagged.
-replace github.com/luxfi/cc => ../cc
 
 // luxfi/genesis v1.5.21 / v1.5.22 are missing from proxy.golang.org; no
 // luxfi/mpc code path imports them, but transitive resolution can pick them
