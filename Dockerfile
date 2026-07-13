@@ -23,12 +23,18 @@ FROM --platform=$BUILDPLATFORM golang:1.26.4-alpine AS builder
 # /v1/mpc/wallets returned 503; the workaround was seeding wallets into
 # TA's user_wallets table out-of-band.
 RUN apk add --no-cache git ca-certificates gcc musl-dev sqlite-dev linux-headers
-# Most luxfi/* + hanzoai/* modules are public, but some (e.g. luxfi/hsm) are
-# private and freshly-published ones may not be cached on proxy.golang.org yet
-# (proxy 404 -> go falls back to direct git -> needs auth). Route all first-
-# party modules DIRECT and authenticate git with a token mounted as a BuildKit
-# secret (never baked into an image layer). go.sum still pins every hash.
-ENV GOPRIVATE=github.com/luxfi/*,github.com/hanzoai/*
+# Module fetch policy:
+#  - GOPRIVATE=luxfi/hsm: hsm is a PRIVATE repo -> fetch direct from git with
+#    the token below (proxy can't serve it).
+#  - GOSUMDB=off: verify module hashes against the committed go.sum ONLY, not
+#    sum.golang.org. Some first-party modules are freshly published or were
+#    re-tagged, so the public sumdb lags; go.sum is the source of truth.
+#  - Everything else uses the default proxy (proxy.golang.org,direct): public
+#    modules the proxy has cached resolve there; a proxy miss falls back to
+#    direct git (public tag exists) — NOT forced direct (which broke on
+#    luxfi/geth, whose proxy-cached version has no live git tag).
+ENV GOPRIVATE=github.com/luxfi/hsm
+ENV GOSUMDB=off
 
 WORKDIR /app
 COPY go.mod go.sum ./
