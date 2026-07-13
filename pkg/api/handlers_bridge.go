@@ -41,7 +41,7 @@ type bridgeSignData struct {
 	Vault            bool   `json:"vault"`
 }
 
-// handleBridgeSign handles POST /api/v1/generate_mpc_sig
+// handleBridgeSign handles POST /v1/generate_mpc_sig
 func (s *Server) handleBridgeSign(w http.ResponseWriter, r *http.Request) {
 	var req bridgeSignRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -158,7 +158,7 @@ func (s *Server) handleBridgeSign(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleBridgeComplete handles POST /api/v1/complete
+// handleBridgeComplete handles POST /v1/complete
 func (s *Server) handleBridgeComplete(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		HashedTxID string `json:"hashedTxId"`

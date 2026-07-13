@@ -14,8 +14,8 @@ const nextConfig = {
     if (process.env.NODE_ENV === 'production') return []
     return [
       {
-        source: '/api/v1/:path*',
-        destination: 'http://localhost:8081/api/v1/:path*',
+        source: '/v1/:path*',
+        destination: 'http://localhost:8081/v1/:path*',
       },
     ]
   },
