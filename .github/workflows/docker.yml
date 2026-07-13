@@ -24,10 +24,15 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and push (linux/amd64)
+        env:
+          # Token for fetching private/uncached first-party Go modules
+          # (e.g. luxfi/hsm) — mounted as a BuildKit secret, never in a layer.
+          GH_TOKEN: ${{ secrets.UNIVERSE_PAT }}
         run: |
           TAG=${GITHUB_REF#refs/tags/}
           docker buildx build \
             --platform linux/amd64 \
+            --secret id=gh_token,env=GH_TOKEN \
             --tag ghcr.io/luxfi/mpc:${TAG} \
             --tag ghcr.io/luxfi/mpc:${TAG}-amd64 \
             --push \
