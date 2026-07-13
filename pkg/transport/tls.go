@@ -78,9 +78,17 @@ func NewServerTLSConfig(nodeID string, privKey ed25519.PrivateKey, pubKey ed2551
 			tls.X25519,             // Classical fallback
 			tls.CurveP256,          // Classical fallback
 		},
-		// Skip client cert verification for now — nodes authenticate via Ed25519
-		// identity messages in the ZAP protocol after TLS handshake.
-		ClientAuth: tls.NoClientCert,
+		// Require the client certificate so the acceptor learns the dialer's
+		// Ed25519 identity directly from the mutually-authenticated TLS
+		// handshake (the cert's public key IS the node's Ed25519 key; the
+		// CertificateVerify step proves possession). Any self-signed client
+		// cert is accepted — the identity it carries is authenticated by
+		// proof-of-possession, and Transport.learnPeerIdentityFromTLS records
+		// it race-free. Without this the acceptor never sees the dialer's cert,
+		// so one direction of peer identity relied on the MsgMPCReady handshake,
+		// which is dropped when simultaneous connections collapse via tie-break
+		// ("public key not found for node …" → keygen/sign stalls).
+		ClientAuth: tls.RequireAnyClientCert,
 	}, nil
 }
 
