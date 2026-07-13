@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # Stage 1: Build embedded admin UI
 FROM node:22-alpine AS ui
 # Pin pnpm to a known-good version so corepack doesn't pull a tagged-but-unsigned
@@ -15,7 +16,6 @@ RUN pnpm build
 
 # MPC — single image ships both daemon (mpcd) + CLI (mpc).
 # Default entrypoint: mpcd. Override ENTRYPOINT / CMD with `mpc <cmd>` for CLI.
-# syntax=docker/dockerfile:1
 
 FROM --platform=$BUILDPLATFORM golang:1.26.4-alpine AS builder
 # CGO toolchain — required by go-sqlite3 (mattn) so the wallet HTTP API
@@ -23,12 +23,20 @@ FROM --platform=$BUILDPLATFORM golang:1.26.4-alpine AS builder
 # /v1/mpc/wallets returned 503; the workaround was seeding wallets into
 # TA's user_wallets table out-of-band.
 RUN apk add --no-cache git ca-certificates gcc musl-dev sqlite-dev linux-headers
-# luxfi/* + hanzoai/* are PUBLIC modules — fetched and checksum-verified through
-# the default immutable proxy.golang.org + sum.golang.org. No GONOSUMDB bypass.
+# Most luxfi/* + hanzoai/* modules are public, but some (e.g. luxfi/hsm) are
+# private and freshly-published ones may not be cached on proxy.golang.org yet
+# (proxy 404 -> go falls back to direct git -> needs auth). Route all first-
+# party modules DIRECT and authenticate git with a token mounted as a BuildKit
+# secret (never baked into an image layer). go.sum still pins every hash.
+ENV GOPRIVATE=github.com/luxfi/*,github.com/hanzoai/*
 
 WORKDIR /app
 COPY go.mod go.sum ./
-RUN go mod download
+RUN --mount=type=secret,id=gh_token \
+    sh -c 'if [ -s /run/secrets/gh_token ]; then \
+             git config --global url."https://x-access-token:$(cat /run/secrets/gh_token)@github.com/".insteadOf "https://github.com/"; \
+           fi; \
+           go mod download'
 COPY . .
 COPY --from=ui /ui/dist ./ui/dist/
 
