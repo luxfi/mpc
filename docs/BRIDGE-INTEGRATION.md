@@ -79,14 +79,14 @@ type BridgeCompatServer struct {
     mpcClient *client.Client
 }
 
-// POST /api/v1/generate_mpc_sig
+// POST /v1/generate_mpc_sig
 func (s *BridgeCompatServer) GenerateMPCSig(w http.ResponseWriter, r *http.Request) {
     // Parse bridge request format
     // Convert to MPC signing request
     // Return response in bridge format
 }
 
-// POST /api/v1/complete
+// POST /v1/complete
 func (s *BridgeCompatServer) CompleteSwap(w http.ResponseWriter, r *http.Request) {
     // Handle swap completion
 }

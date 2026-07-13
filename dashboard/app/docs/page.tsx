@@ -70,7 +70,7 @@ export default function DocsPage() {
       <div className="mt-12 rounded-xl border border-border bg-card p-6">
         <h2 className="mb-3 text-lg font-semibold">API Base URL</h2>
         <code className="rounded bg-background px-3 py-1.5 text-sm text-violet-400">
-          https://mpc-api.lux.network/api/v1
+          https://mpc-api.lux.network/v1
         </code>
         <p className="mt-3 text-sm text-muted-foreground">
           Authenticate with JWT (via Lux ID / Pars ID / Zoo ID) or API keys.
@@ -97,22 +97,22 @@ export default function DocsPage() {
         <h2 className="mb-3 text-lg font-semibold">Quick Example</h2>
         <pre className="overflow-x-auto rounded-lg bg-background p-4 text-sm leading-relaxed">
           <code>{`# 1. Authenticate
-curl -X POST https://mpc-api.lux.network/api/v1/auth/login \\
+curl -X POST https://mpc-api.lux.network/v1/auth/login \\
   -H "Content-Type: application/json" \\
   -d '{"email":"you@example.com","password":"..."}'
 
 # 2. Create a vault
-curl -X POST https://mpc-api.lux.network/api/v1/vaults \\
+curl -X POST https://mpc-api.lux.network/v1/vaults \\
   -H "Authorization: Bearer <token>" \\
   -d '{"name":"My Vault"}'
 
 # 3. Generate a wallet (triggers MPC keygen across 5 nodes)
-curl -X POST https://mpc-api.lux.network/api/v1/vaults/<id>/wallets \\
+curl -X POST https://mpc-api.lux.network/v1/vaults/<id>/wallets \\
   -H "Authorization: Bearer <token>" \\
   -d '{"name":"my-wallet","curve":"secp256k1","protocol":"cggmp21"}'
 
 # 4. Sign a transaction (3-of-5 threshold signature)
-curl -X POST https://mpc-api.lux.network/api/v1/transactions \\
+curl -X POST https://mpc-api.lux.network/v1/transactions \\
   -H "Authorization: Bearer <token>" \\
   -d '{"wallet_id":"<id>","tx_type":"transfer","chain":"ethereum",...}'`}</code>
         </pre>

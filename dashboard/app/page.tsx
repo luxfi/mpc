@@ -128,7 +128,7 @@ export default function LandingPage() {
           <a href="https://bridge.lux.network" className="text-muted-foreground transition-colors hover:text-foreground">
             Bridge Dashboard
           </a>
-          <a href="/api/v1/bridge/networks" className="text-muted-foreground transition-colors hover:text-foreground">
+          <a href="/v1/bridge/networks" className="text-muted-foreground transition-colors hover:text-foreground">
             Networks
           </a>
         </div>

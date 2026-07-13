@@ -71,7 +71,7 @@ export class APIClient {
   private refreshing: Promise<void> | null = null
 
   constructor(baseURL?: string) {
-    this.baseURL = baseURL ?? (process.env.NEXT_PUBLIC_API_URL || '/api/v1')
+    this.baseURL = baseURL ?? (process.env.NEXT_PUBLIC_API_URL || '/v1')
   }
 
   private async request<T>(
