@@ -32,11 +32,17 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and push
+        env:
+          # Token for BuildKit to fetch PRIVATE first-party modules (luxfi/hsm)
+          # via authed direct git — mounted as a secret, never baked in a layer.
+          # Regressed out in a prior "public modules" simplification; restored.
+          GH_TOKEN: ${{ secrets.UNIVERSE_PAT }}
         run: |
           TAG=${GITHUB_REF#refs/tags/}
           IMG=ghcr.io/luxfi/mpc:${TAG}-${{ matrix.arch }}
           docker buildx build \
             --platform linux/${{ matrix.arch }} \
+            --secret id=gh_token,env=GH_TOKEN \
             --tag "$IMG" \
             --push \
             .
