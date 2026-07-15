@@ -2,6 +2,64 @@
 
 This document provides comprehensive guidance for AI assistants working with the MPC (Multi-Party Computation) codebase.
 
+## 🔴 v1.17.12 — CRITICAL threshold-degree fix (was silently 1-of-n) + BRIDGE-ORACLE finding (2026-07-15)
+
+**The bug (fixed by commit `1e1d318`, in tag `v1.17.12`):** `--threshold=N` only drove the
+`HasSigningQuorum` health gate + status display. The CGGMP21 keygen DEGREE was read
+separately from viper key `mpc_threshold`, which nothing ever set (mpcd never calls
+`InitViperConfig`, so `AutomaticEnv` was off), so `viper.GetInt("mpc_threshold")` was
+always 0 → **polynomial degree 0 → 1-of-n: any single share produced a valid signature,
+with zero threshold protection against single-node compromise.** Every wallet keyed by
+every ring before this fix is degree-0.
+
+**The fix:** `keygenDegreeForThreshold(threshold) = threshold-1` (floored at 0), wired via
+`viper.Set("mpc_threshold", …)` at consensus start. `--threshold=3 → degree 2 → 3-of-5`;
+`--threshold=2 → degree 1 → 2-of-3`. Named + unit-tested (`cmd/mpcd/threshold_test.go`)
+so the security-critical off-by-one is explicit. Takes effect for NEW keygens ONLY —
+existing wallets must be RE-KEYED to gain threshold security (re-keying changes the
+wallet's address, so live wallets need a coordinated migration, never re-key in place).
+
+**Enforcement is two-layer + per-key:** the KEY's degree is stored as
+`keyinfo.KeyInfo.Threshold` (registry.go:248) at keygen (keygen_session.go:418). Every
+sign: `node.go CreateSignSession` rejects `len(signers) < keyInfo.Threshold+1`
+(`ErrNotEnoughParticipants`); the cmp library independently rejects it at
+`cmp.Sign → sign.StartSign → config.CanSign → ValidThreshold(t, n)` (false when `t > n-1`).
+Property pinned by `luxfi/threshold` test `protocols/cmp/degree2_proof_test.go` (degree-2:
+2 signers refused, 3 verify).
+
+### Ring status (2026-07-15)
+| Ring | ns / ctx | image | degree | status |
+|------|----------|-------|--------|--------|
+| zoo-mpc | zoo-mpc / do-sfo3-zoo-k8s | zooai/mpc:1.17.12 | **degree 2 (3-of-5)** | ✅ FIXED + PROVEN. Fresh wallet `zoo-threshold-proof-v1` (pub `02f21a7a…`, EVM `0x394d6480…`) real sign verifies; KMS-driven wallet `713f5c2d…` (pub `0360ac6b…`) also degree-2, KMS sign verifies. |
+| hanzo-mpc | hanzo-mpc / do-sfo3-hanzo-k8s | →hanzoai/mpc:1.17.12 | degree 1 (2-of-3) | deploy in progress (separate agent) |
+| bridge-mpc | bridge-mpc / do-sfo3-lux-k8s | luxfi/mpc:v1.17.9 | **degree 0 (1-of-5) 🔴** | VULNERABLE — see below |
+| lux-mpc | lux-mpc / do-sfo3-lux-k8s | luxfi/mpc:v1.10.0 | **degree 0 (1-of-n) 🔴** | STAGED (7-version jump = risky; 5 PVC snapshots `mpc-node-{0..4}-prefix1712` ReadyToUse) |
+| lux-bridge (own 3-node ring) | lux-bridge / do-sfo3-lux-k8s | luxfi/mpc:v1.5.3 | — | dormant, 0 keygens, holds NO keys → not a vuln |
+
+### 🔴 HIGH-STAKES BRIDGE-ORACLE FINDING
+The LUX↔ZOO corridor signer keys are **degree-0 (1-of-n)**: a SINGLE compromised MPC node
+can forge a valid bridge-oracle signature and drain the corridor.
+- **`bridge-mpc/bridge-oracle`** — keygen log `threshold=0` on all 5 nodes (2026-07-13); pub
+  `b534f9b5…`; derives to EVM **`0x46457f86bb0e8b3013eaae4699d529a98471c511`** (= the task's
+  `0x46457f86`). CONFIRMED 1-of-5.
+- **`lux-mpc` wallet `17727859650255619160017`** — the wallet the live `bridge-server`
+  actually signs with (`bridge-server` env: `MPC_API_URL=https://mpc.lux.network`,
+  `MPC_WALLET_ID=17727859650255619160017`, `MPC_KEY_PREFIX=bridge/mpc`). lux-mpc runs
+  v1.10.0 which provably has the degree-0 bug (keygen reads `viper mpc_threshold`, nothing
+  sets it) → degree 0 = 1-of-n. Likely the task's second oracle address `0x086f4aa1`.
+
+**Remediation (do NOT re-key the live oracle in place — it authorizes real value + changing
+its address orphans the corridor mapping):**
+1. Roll the fixed image (v1.17.12) onto bridge-mpc + lux-mpc in a maintenance window. lux-mpc
+   is a 7-minor-version jump (v1.10.0→v1.17.12) — canary the zapdb/wire compat on a restored
+   snapshot copy first; snapshots are ReadyToUse for rollback.
+2. Re-key a NEW oracle wallet at genuine degree 2 (3-of-5) on the fixed ring → NEW address.
+3. Migrate bridge-oracle authority old→new address via a coordinated bridge-contract owner
+   rotation on BOTH LUX and ZOO sides; pause/drain high-value transfers during the cutover.
+4. Until migrated: the corridor is protected ONLY by perimeter (NetworkPolicy / node
+   isolation), NOT by threshold. Treat any single bridge-mpc/lux-mpc node compromise as
+   full oracle-key compromise.
+
 ## v1.14.0 — pkg/zapauth (LP-103)
 
 Bearer-token gate on the KMS-facing ZAP server. JWKS-validated JWT
