@@ -738,6 +738,8 @@ github.com/hanzoai/kv-go/v9 v9.18.0 h1:vO2SD8dV0+H9WWCVKV9KHaWZq4yeMsZruohrsZN94
 github.com/hanzoai/kv-go/v9 v9.18.0/go.mod h1:S+Li20E6Bskpw6r+c8WWhfi4hCr8SVV32qPXO0wdl+E=
 github.com/hanzoai/orm v0.5.2 h1:0jbIGUDPENI1n47sT/IiXy9KBWdSHmiYuc5kV2lLgKo=
 github.com/hanzoai/orm v0.5.2/go.mod h1:LL21Snpds3jQeoFxE5VMsnEcq8jZ4hOzhI7CkjXJX7A=
+github.com/hanzoai/s3-go v1.0.0 h1:bDdAsy76iWiraHX+zLZALxICDPtmci0ma6mIhdNlViw=
+github.com/hanzoai/s3-go v1.0.0/go.mod h1:2Lp7RS4JS2HSbZ1NEbS5Xx/hnO5PKbnn56D77kOdSBw=
 github.com/hanzoai/vfs v0.4.3 h1:QN9SemEQBq9x1l/toi51/TZWctbt3i3mgUJfz5RPALY=
 github.com/hanzoai/vfs v0.4.3/go.mod h1:wTHfTpJ/165yz0qfPBNFcYRg+tGw8YDwPu+xgps88zU=
 github.com/hanzos3/go-sdk v1.0.2 h1:EOJQGVnwclkzIyRJyWqtqmA2muyaSsF4y+7KYC4Vhdw=
@@ -868,7 +870,7 @@ github.com/luxfi/mlwe v0.2.1 h1:pRwTjNUUtzUxRIlMbUPpeh9DE2/NdqfS17hfdogazp4=
 github.com/luxfi/mlwe v0.2.1/go.mod h1:DD9EHTeiyh/y0KGGeqL+q9S4n8raeGiGdaG/BQPAvT0=
 github.com/luxfi/mock v0.1.1 h1:0HEtIjg1J6CWz+IUyP6rsGqNWTcmxjFnSQIhaDuARwY=
 github.com/luxfi/mock v0.1.1/go.mod h1:jo35akl3Vtd8LbzDts8VJ0jmSVycrd1/eBi6g6t5hKU=
-github.com/luxfi/pq v1.0.3 h1:ksw1dmfTR0dqqNMRS7BjGcprCO2Fhc+3Iiq2/NMuONw=
+github.com/luxfi/pq v1.0.3 h1:pFlQm1+5FuKTDUh2y/23bXWkN4I2Rc5iuxJypwDFFMs=
 github.com/luxfi/pq v1.0.3/go.mod h1:8bppZcRElfrVt0n3nYCZW3iX1TvhvzNbdjNdK1irgIE=
 github.com/luxfi/precompile v0.5.60 h1:jxYzC0yW6cTEw6hWFd5+WjtJBAtAXm7+WGlOijd0JU8=
 github.com/luxfi/precompile v0.5.60/go.mod h1:tyjA+dXuY97A1evl+gAGiWuY41BBnXZhrSsW2db+he0=
