@@ -46,8 +46,12 @@ type KeygenResult struct {
 }
 
 type SignResult struct {
-	R         string `json:"r,omitempty"`
-	S         string `json:"s,omitempty"`
+	R string `json:"r,omitempty"`
+	S string `json:"s,omitempty"`
+	// V is the ECDSA recovery id ("0" or "1") for secp256k1 signatures, empty
+	// for schemes without recovery (ed25519/FROST). Signature carries the
+	// canonical ecrecover-ready blob r‖s‖v (65 bytes) when recoverable.
+	V         string `json:"v,omitempty"`
 	Signature string `json:"signature,omitempty"`
 }
 

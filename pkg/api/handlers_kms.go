@@ -200,6 +200,7 @@ func (s *Server) handleKMSSign(w http.ResponseWriter, r *http.Request) {
 		"signature": result.Signature,
 		"r":         result.R,
 		"s":         result.S,
+		"v":         result.V,
 	})
 }
 

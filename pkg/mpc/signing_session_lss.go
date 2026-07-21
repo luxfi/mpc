@@ -448,30 +448,32 @@ func (s *lssSigningSession) publishResult() {
 		return
 	}
 
-	// Convert signature to bytes
-	// R is a curve.Point - MarshalBinary returns compressed format (0x02/0x03 || X)
-	// We need just the X coordinate (32 bytes)
-	sigRCompressed, _ := s.signature.R.MarshalBinary()
-	sigRBytes := sigRCompressed
-	if len(sigRCompressed) == 33 {
-		// Strip the prefix byte to get raw X coordinate
-		sigRBytes = sigRCompressed[1:]
-	}
-	sigSBytes, _ := s.signature.S.MarshalBinary()
-
-	// Get public key bytes for recovery calculation
-	pubPointBytes, err := pubPoint.MarshalBinary()
+	// Canonical Ethereum-format signature via the shared threshold helper:
+	// EIP-2 low-S normalization + recovery id in one place (see the CGGMP21
+	// path for rationale). SigEthereum returns R.x‖S(low)‖V; a high-S S is
+	// rejected by luxfi/evm ecrecover.
+	ethSig, err := s.signature.SigEthereum()
 	if err != nil {
-		s.logger.Error().Err(err).Msg("LSS: Failed to marshal public point for recovery calculation")
+		s.logger.Error().Err(err).Msg("LSS: Failed to produce Ethereum-format signature")
 		s.externalFinishChan <- ""
 		return
 	}
+	sigRBytes := ethSig[:32]
+	sigSBytes := ethSig[32:64]
+	recoveryByte := ethSig[64]
 
-	// Calculate recovery byte
-	recoveryByte, err := CalculateRecoveryByte(sigRBytes, sigSBytes, s.messageHash, pubPointBytes)
+	// Self-verify the recovery id against this wallet's own public key. Fail
+	// closed rather than emit a signature that binds to the wrong address.
+	pubPointBytes, err := pubPoint.MarshalBinary()
 	if err != nil {
-		s.logger.Warn().Err(err).Msg("LSS: Failed to calculate recovery byte, using 0")
-		recoveryByte = 0
+		s.logger.Error().Err(err).Msg("LSS: Failed to marshal public point for recovery self-check")
+		s.externalFinishChan <- ""
+		return
+	}
+	if got, verr := CalculateRecoveryByte(sigRBytes, sigSBytes, s.messageHash, pubPointBytes); verr != nil || got != recoveryByte {
+		s.logger.Error().Err(verr).Uint8("sigEthV", recoveryByte).Msg("LSS: recovery-id self-check failed; refusing to emit signature")
+		s.externalFinishChan <- ""
+		return
 	}
 
 	s.logger.Debug().
