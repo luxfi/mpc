@@ -93,13 +93,18 @@ topology:
         - { network: "KSM",          name: "Kusama" }
       notes: "Schnorrkel/Ristretto255 via generic FROST over ristretto255 group"
 
+    # CORRECTION: mpcd does NOT provide bls12-381 threshold aggregation. There
+    # is no BLS signing session (only CGGMP21/FROST/LSS), so this deployment
+    # cannot threshold-sign bls12-381. Lux consensus BLS is a NATIVE
+    # per-validator bls12-381 key (PoP + aggregation) held by the validator
+    # itself, never threshold-custodied by this service. Validator signing that
+    # IS custodied here is secp256k1/CGGMP21 threshold ECDSA (see `ecdsa`).
     bls:
-      curve: "bls12-381"
-      protocol: "BLS-Threshold"
+      curve: "secp256k1"
+      protocol: "CGGMP21"
       chains:
-        - { network: "LUX",          name: "Lux consensus (validator signing)" }
-        - { network: "ETH",          name: "Ethereum beacon chain" }
-      notes: "Aggregatable threshold signatures for consensus"
+        - { network: "LUX", name: "Lux validator ECDSA (bridge/custody signing — NOT consensus)" }
+      notes: "secp256k1 threshold ECDSA. NOT bls12-381 aggregation; consensus BLS is native, not custodied here."
 
     frost_taproot:
       curve: "secp256k1"

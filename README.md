@@ -33,6 +33,17 @@ schemes — and is consumed by the teleport bus
 in `~/work/lux/threshold/CLAUDE.md` under "thresholdd — unified
 JSON-RPC daemon".
 
+> **Validator key slots vs. engine protocols (truthful naming).** The KMS
+> validator-key API (`pkg/api/handlers_kms.go`; hanzo KMS) provisions two slots
+> per validator whose NAMES do not describe their cryptography: the **"bls"
+> slot is secp256k1 signed via CGGMP21 threshold ECDSA** — NOT bls12-381
+> aggregation — and the **"corona" slot is ed25519 signed via FROST** — NOT the
+> Corona R-LWE lattice protocol and NOT post-quantum. The bls12-381,
+> Pulsar/Corona lattice, and double-lattice schemes in the table above are
+> `thresholdd` engine capabilities, not the validator-custody path. Lux
+> consensus BLS is a native per-validator bls12-381 key (PoP + aggregation),
+> never threshold-custodied by this service.
+
 ### Threshold Model
 
 ```
