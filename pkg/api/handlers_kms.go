@@ -15,11 +15,19 @@ import (
 )
 
 // ValidatorKeySet holds the MPC wallet reference for a validator's custodied
-// Corona PQ-threshold key. The validator's BLS consensus key is deliberately
-// NOT here: BLS is consensus-only and lives as the validator's own native
-// per-validator crypto/bls key (PoP + signature aggregation, the consensus
-// fast-path), never threshold-custodied by this service. Only the Corona
-// PQ-threshold key is custodied (dealerless DKG).
+// "Corona" slot key.
+//
+// NAMING (truthful): the "Corona" slot is ed25519 signed via FROST threshold.
+// It is NOT post-quantum and NOT the Corona R-LWE lattice protocol (that is a
+// separate primitive in luxfi/threshold's dispatcher) — "Corona" here is a
+// legacy slot label, not a PQ claim. Likewise the paired "BLS" slot is
+// secp256k1/CGGMP21 threshold ECDSA, not bls12-381 aggregation.
+//
+// The validator's real BLS consensus key is deliberately NOT here: it is a
+// native per-validator bls12-381 key (PoP + signature aggregation, the
+// consensus fast-path) held by the validator itself, never threshold-custodied
+// by this service. Only the ed25519/FROST "Corona" slot is custodied here
+// (dealerless DKG).
 type ValidatorKeySet struct {
 	ValidatorID     string    `json:"validatorId"`
 	CoronaWalletID  string    `json:"coronaWalletId"`
