@@ -1186,11 +1186,25 @@ func (b *ConsensusMPCBackend) TriggerSign(orgID, walletID string, payload []byte
 		}
 		sigR := hex.EncodeToString(result.R)
 		sigS := hex.EncodeToString(result.S)
-		var sigHex string
+		var sigHex, v string
 		if len(result.Signature) > 0 {
 			sigHex = hex.EncodeToString(result.Signature)
 		}
-		return &mpcapi.SignResult{R: sigR, S: sigS, Signature: sigHex}, nil
+		// Propagate the recovery id the signing session computed (0/1), and
+		// assemble the canonical 65-byte r‖s‖v when the scheme is recoverable
+		// (secp256k1) and no full blob was supplied — so KMS /sign never emits
+		// an empty signature and callers get an ecrecover-ready value.
+		if len(result.SignatureRecovery) > 0 {
+			v = strconv.Itoa(int(result.SignatureRecovery[0]))
+			if sigHex == "" && len(result.R) == 32 && len(result.S) == 32 {
+				canonical := make([]byte, 0, 65)
+				canonical = append(canonical, result.R...)
+				canonical = append(canonical, result.S...)
+				canonical = append(canonical, result.SignatureRecovery[0])
+				sigHex = hex.EncodeToString(canonical)
+			}
+		}
+		return &mpcapi.SignResult{R: sigR, S: sigS, V: v, Signature: sigHex}, nil
 	case <-time.After(60 * time.Second):
 		return nil, fmt.Errorf("signing timed out after 60s")
 	}

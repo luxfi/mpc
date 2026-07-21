@@ -431,30 +431,34 @@ func (s *cggmp21SigningSession) publishResult() {
 		return
 	}
 
-	// Convert signature to bytes
-	// R is a curve.Point - MarshalBinary returns compressed format (0x02/0x03 || X)
-	// We need just the X coordinate (32 bytes)
-	sigRCompressed, _ := s.signature.R.MarshalBinary()
-	sigRBytes := sigRCompressed
-	if len(sigRCompressed) == 33 {
-		// Strip the prefix byte to get raw X coordinate
-		sigRBytes = sigRCompressed[1:]
-	}
-	sigSBytes, _ := s.signature.S.MarshalBinary()
-
-	// Get public key bytes for recovery calculation
-	pubPointBytes, err := s.config.PublicPoint().MarshalBinary()
+	// Canonical Ethereum-format signature via the shared threshold helper:
+	// EIP-2 low-S normalization + recovery id in one place. The previous path
+	// emitted a raw, possibly high-S S; luxfi/evm ecrecover rejects a high-S
+	// signature ("invalid sender", EIP-2). SigEthereum returns R.x‖S(low)‖V so
+	// every consumer (KMS /sign, bridge) gets an EVM-ready signature.
+	ethSig, err := s.signature.SigEthereum()
 	if err != nil {
-		s.logger.Error().Err(err).Msg("Failed to marshal public point for recovery calculation")
+		s.logger.Error().Err(err).Msg("Failed to produce Ethereum-format signature")
 		s.externalFinishChan <- ""
 		return
 	}
+	sigRBytes := ethSig[:32]
+	sigSBytes := ethSig[32:64]
+	recoveryByte := ethSig[64]
 
-	// Calculate recovery byte
-	recoveryByte, err := CalculateRecoveryByte(sigRBytes, sigSBytes, s.messageHash, pubPointBytes)
+	// Self-verify the recovery id against this wallet's own public key: a wrong
+	// recovery id binds the signature to the wrong address. Fail closed rather
+	// than emit an unbindable signature.
+	pubPointBytes, err := s.config.PublicPoint().MarshalBinary()
 	if err != nil {
-		s.logger.Warn().Err(err).Msg("Failed to calculate recovery byte, using 0")
-		recoveryByte = 0
+		s.logger.Error().Err(err).Msg("Failed to marshal public point for recovery self-check")
+		s.externalFinishChan <- ""
+		return
+	}
+	if got, verr := CalculateRecoveryByte(sigRBytes, sigSBytes, s.messageHash, pubPointBytes); verr != nil || got != recoveryByte {
+		s.logger.Error().Err(verr).Uint8("sigEthV", recoveryByte).Msg("recovery-id self-check failed; refusing to emit signature")
+		s.externalFinishChan <- ""
+		return
 	}
 
 	s.logger.Debug().
