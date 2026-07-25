@@ -25,8 +25,25 @@ import (
 	"github.com/luxfi/mpc/pkg/protocol/frost"
 )
 
-func init() {
-	// Register MPC schemes with crypto/threshold registry
+// Register installs these adapters into the process-global crypto/threshold
+// registry. It is NOT called from init() on purpose — importing a package must
+// never silently change what every other package resolves SchemeCMP to.
+//
+// Two concrete hazards this avoids:
+//  1. Shadowing. Anything calling cryptothreshold.GetScheme(SchemeCMP) would
+//     transparently get THESE adapters, whose signer keeps the secret nonce
+//     scalar k inside NonceState (k||R). NonceState is local-only by contract;
+//     serialize it across a party boundary and the private key falls out of
+//     (k,s,r) as x = (s·k − H(m))/r. Production must not opt into that by
+//     accident — the daemon does not: `go list -deps ./cmd/mpcd` does not
+//     contain this package, and only examples/ import it.
+//  2. Startup panic. cryptothreshold.RegisterScheme panics on a duplicate ID
+//     (crypto@v1.20.2 threshold/registry.go:24-26). An ambient init() means the
+//     day crypto/threshold ships its own CMP/FROST scheme, merely importing
+//     this package kills the process at start.
+//
+// Call it explicitly, once, from a main() that has read the above.
+func Register() {
 	cryptothreshold.RegisterScheme(&CGGMP21Scheme{})
 	cryptothreshold.RegisterScheme(&FROSTScheme{})
 }
