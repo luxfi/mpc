@@ -43,6 +43,20 @@ type KeygenResult struct {
 	EVMAddress  string `json:"evm_address,omitempty"`
 	BtcAddress  string `json:"btc_address,omitempty"`
 	SolAddress  string `json:"sol_address,omitempty"`
+
+	// Threshold is the number of signers required to use this key, and
+	// Participants is the configured party set it was generated across.
+	//
+	// These are reported so a caller can VERIFY the security property it asked
+	// for instead of assuming it. Keygen takes no per-request threshold — the
+	// ring's own --threshold governs — so without these fields a client that
+	// requests 3-of-5 has no way to learn it actually got something else. That
+	// is not hypothetical: luxfi/kms pkg/keys/manager.go validated req.Threshold
+	// and then stored `Threshold: result.Threshold`, which was always 0 because
+	// mpcd never sent the field. Every validator key set on record reads 0-of-0.
+	// Clients must compare these against what they requested and fail closed.
+	Threshold    int      `json:"threshold,omitempty"`
+	Participants []string `json:"participants,omitempty"`
 }
 
 type SignResult struct {

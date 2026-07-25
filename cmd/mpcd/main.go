@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -1110,13 +1111,18 @@ func (b *ConsensusMPCBackend) TriggerKeygen(orgID, walletID string) (*mpcapi.Key
 		if len(result.EDDSAPubKey) == 32 {
 			solAddr = eddsaPubKeyToSolAddress(result.EDDSAPubKey)
 		}
+		// Report the security property this key actually has. Keygen accepts no
+		// per-request threshold — the ring's --threshold governs — so a caller
+		// can only verify what it asked for if we tell it what it got.
 		return &mpcapi.KeygenResult{
-			WalletID:    result.WalletID,
-			ECDSAPubKey: hex.EncodeToString(result.ECDSAPubKey),
-			EDDSAPubKey: hex.EncodeToString(result.EDDSAPubKey),
-			EVMAddress:  evmAddr,
-			BtcAddress:  btcAddr,
-			SolAddress:  solAddr,
+			WalletID:     result.WalletID,
+			ECDSAPubKey:  hex.EncodeToString(result.ECDSAPubKey),
+			EDDSAPubKey:  hex.EncodeToString(result.EDDSAPubKey),
+			EVMAddress:   evmAddr,
+			BtcAddress:   btcAddr,
+			SolAddress:   solAddr,
+			Threshold:    b.threshold,
+			Participants: b.peerRegistry.ConfiguredParticipants(),
 		}, nil
 	case <-time.After(120 * time.Second):
 		return nil, fmt.Errorf("keygen timed out after 120s")
@@ -1486,6 +1492,20 @@ func (r *ConsensusPeerRegistry) GetTotalPeersCount() int64 {
 
 func (r *ConsensusPeerRegistry) GetReadyPeersIncludeSelf() []string {
 	return r.registry.GetReadyPeersIncludeSelf()
+}
+
+// ConfiguredParticipants returns the party set this node is configured for
+// (peers + self), sorted so every node reports the same list for the same key.
+//
+// Deliberately NOT GetReadyPeersIncludeSelf: readiness fluctuates, so it answers
+// "who is up right now", whereas a key's participant set is a property of the
+// key itself and must not change because a pod restarted.
+func (r *ConsensusPeerRegistry) ConfiguredParticipants() []string {
+	out := make([]string, 0, len(r.peerIDs)+1)
+	out = append(out, r.peerIDs...)
+	out = append(out, r.nodeID)
+	sort.Strings(out)
+	return out
 }
 
 // ConsensusKeyInfoStore adapts transport.KeyInfoStore to keyinfo.Store
