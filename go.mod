@@ -38,7 +38,7 @@ require (
 	github.com/luxfi/lattice/v7 v7.1.4
 	github.com/luxfi/log v1.4.3
 	github.com/luxfi/metric v1.8.1
-	github.com/luxfi/threshold v1.12.4
+	github.com/luxfi/threshold v1.12.5
 	github.com/luxfi/zap v1.2.6
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/mr-tron/base58 v1.3.0
@@ -173,7 +173,7 @@ require (
 	github.com/luxfi/math v1.5.1 // indirect
 	github.com/luxfi/math/big v0.1.0 // indirect
 	github.com/luxfi/mdns v0.1.1 // indirect
-	github.com/luxfi/mlwe v0.2.1 // indirect
+	github.com/luxfi/mlwe v0.3.0 // indirect
 	github.com/luxfi/mock v0.1.1 // indirect
 	github.com/luxfi/pq v1.1.0 // indirect
 	github.com/luxfi/precompile v0.19.3 // indirect

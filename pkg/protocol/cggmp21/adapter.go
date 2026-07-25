@@ -425,11 +425,20 @@ func (s *signatureAdapter) GetS() *big.Int {
 	return nil
 }
 
+// Verify checks the threshold ECDSA signature against pubKey over message.
+//
+// message is the 32-byte digest that was signed, not a preimage — CGGMP21
+// signs a digest supplied by the caller, so hashing here would verify a
+// different message than the one the ring signed.
 func (s *signatureAdapter) Verify(pubKey *ecdsa.PublicKey, message []byte) bool {
-	// Verification would require converting ecdsa.PublicKey to curve.Point
-	// This is complex without the proper curve conversion
-	// For now, return false
-	return false
+	if s == nil || s.sig == nil {
+		return false
+	}
+	point := protocol.CurvePoint(pubKey)
+	if point == nil {
+		return false
+	}
+	return s.sig.Verify(point, message)
 }
 
 func (s *signatureAdapter) Serialize() ([]byte, error) {

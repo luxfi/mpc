@@ -895,6 +895,8 @@ github.com/luxfi/metric v1.8.1 h1:v58GgPFAOLPVxSa/JiNLwqJQNEFHdWbXZV28piMXX4s=
 github.com/luxfi/metric v1.8.1/go.mod h1:R1OPAIeW4UBW3osK7j2r3/XPmczfNRFTXg4bnlemTuE=
 github.com/luxfi/mlwe v0.2.1 h1:pRwTjNUUtzUxRIlMbUPpeh9DE2/NdqfS17hfdogazp4=
 github.com/luxfi/mlwe v0.2.1/go.mod h1:DD9EHTeiyh/y0KGGeqL+q9S4n8raeGiGdaG/BQPAvT0=
+github.com/luxfi/mlwe v0.3.0 h1:5mtXLbO2RxaE45r75sj43c6UdpjDKQ5nTQcOGuoRQT8=
+github.com/luxfi/mlwe v0.3.0/go.mod h1:DD9EHTeiyh/y0KGGeqL+q9S4n8raeGiGdaG/BQPAvT0=
 github.com/luxfi/mock v0.1.1 h1:0HEtIjg1J6CWz+IUyP6rsGqNWTcmxjFnSQIhaDuARwY=
 github.com/luxfi/mock v0.1.1/go.mod h1:jo35akl3Vtd8LbzDts8VJ0jmSVycrd1/eBi6g6t5hKU=
 github.com/luxfi/pq v1.0.3 h1:ksw1dmfTR0dqqNMRS7BjGcprCO2Fhc+3Iiq2/NMuONw=
@@ -914,6 +916,8 @@ github.com/luxfi/threshold v1.12.0 h1:JJ369xC/YyDvrqXj+xFoK98nP2rUM099qFs03hBvq/
 github.com/luxfi/threshold v1.12.0/go.mod h1:iuRQGDAy8ZKjQhZjkSKg7NtbP75/8Up9zj52y7IuyZo=
 github.com/luxfi/threshold v1.12.4 h1:vfS3wdjVlLSu76B27EeX/Y0nMkmoXYezyPVlqvz/61I=
 github.com/luxfi/threshold v1.12.4/go.mod h1:xQT8xzmh9pQ1CdBgpl7P3ezXQZcqTPv3tqpIytvuiTA=
+github.com/luxfi/threshold v1.12.5 h1:0ouhE6XY8grrmLjnVW3KZEx2mK1pBxezhvvQar8GsfQ=
+github.com/luxfi/threshold v1.12.5/go.mod h1:ddg3ipZ3WXozPn+TupPQPmNw/jGscmX13n9OtitmI6Q=
 github.com/luxfi/utils v1.2.0/go.mod h1:T2OCKT1xG9jtKR/gyJQoSkticzrE9WFQ8eohJHGu9Fg=
 github.com/luxfi/utils v1.3.1/go.mod h1:ROZrzpt6Kx8ttS1mo12oqsOzRB088GQ1h9jXEoDDpNA=
 github.com/luxfi/zap v1.0.1 h1:vlotZr4mMNdDGHxhPq+chRjVkjfv86SXF4FfN7v/bLQ=

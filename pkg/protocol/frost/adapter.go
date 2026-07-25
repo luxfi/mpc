@@ -429,10 +429,28 @@ func (s *frostSignatureAdapter) GetS() *big.Int {
 	return new(big.Int)
 }
 
+// Verify checks the FROST signature against pubKey over message.
+//
+// FROST produces Schnorr signatures, not ECDSA, so this does not run an ECDSA
+// verification — but the group key is still a secp256k1 point, and
+// *ecdsa.PublicKey is only how this package's interface carries one. The
+// point is recovered and handed to the FROST verifier.
+//
+// It previously returned false unconditionally. That is not a safe default
+// dressed up as one: a verifier that always fails is indistinguishable from a
+// verifier that works and was given a bad signature, so any caller using it
+// as a signing-path health check sees a permanent, unexplained failure, and
+// any caller that treats "unsupported" as skippable gets no verification at
+// all.
 func (s *frostSignatureAdapter) Verify(pubKey *ecdsa.PublicKey, message []byte) bool {
-	// This adapter doesn't support ECDSA verification
-	// FROST uses Schnorr signatures, not ECDSA
-	return false
+	if s == nil || s.sig == nil {
+		return false
+	}
+	point := protocol.CurvePoint(pubKey)
+	if point == nil {
+		return false
+	}
+	return s.sig.Verify(point, message)
 }
 
 func (s *frostSignatureAdapter) Serialize() ([]byte, error) {
