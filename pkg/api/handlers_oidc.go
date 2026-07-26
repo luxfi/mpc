@@ -24,7 +24,7 @@ type oidcUserInfo struct {
 }
 
 // handleOIDCExchange exchanges an external OIDC access token for a local MPC API JWT.
-// POST /api/v1/auth/oidc
+// POST /v1/auth/oidc
 // Body: {"access_token": "...", "provider_url": "https://lux.id"}
 func (s *Server) handleOIDCExchange(w http.ResponseWriter, r *http.Request) {
 	var req struct {

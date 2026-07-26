@@ -263,7 +263,7 @@ func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, o
 		w.Write([]byte(landingHTML))
 	})
 
-	// Health check (public, outside /api/v1, for K8s probes)
+	// Health check (public, outside /v1, for K8s probes)
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
@@ -566,7 +566,7 @@ func (s *Server) SetHSM(hsm HSMProvider) {
 }
 
 // SetTradeApproval configures the trade approval service for push notification
-// and biometric approval flow. When set, the /api/v1/trade endpoints are active.
+// and biometric approval flow. When set, the /v1/trade endpoints are active.
 func (s *Server) SetTradeApproval(notifier custody.PushNotifier) {
 	s.tradeApproval = custody.NewTradeApprovalService(s.db.ORM, notifier)
 }
