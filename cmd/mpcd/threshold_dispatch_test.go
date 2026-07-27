@@ -3,8 +3,16 @@
 
 // Verifies the embedded threshold dispatcher (luxfi/threshold/pkg/thresholdd)
 // is reachable from mpcd's process and answers a full keygen → sign → verify
-// round-trip over the ZAP wire with at least one production scheme (BLS —
+// round-trip over the ZAP wire with at least one production scheme (FROST —
 // fast keygen, no upstream flakiness).
+//
+// These tests used to drive "bls". thresholdd no longer serves that scheme —
+// trusted-dealer threshold-BLS custody was ripped for security (H-2) and
+// luxfi/threshold v1.12.x exposes only cggmp21, frost, pulsar, corona,
+// magnetar and doerner — so every call answered `unknown procedure
+// "bls.keygen"` instead of exercising the dispatcher. FROST is a live
+// production scheme on the same wire, so the assertions below are unchanged
+// and land on a surface that exists.
 //
 // This is the smallest possible test that proves the consolidation is
 // real: mpcd embeds the same package the standalone thresholdd CLI uses,
@@ -53,10 +61,10 @@ func startEmbeddedDispatcher(t *testing.T, authToken string) (string, func()) {
 	return fmt.Sprintf("127.0.0.1:%d", port), srv.Stop
 }
 
-// TestEmbeddedDispatcher_BLSRoundTrip verifies the dispatcher mpcd
-// embeds answers a real BLS keygen → sign → verify round-trip on the
+// TestEmbeddedDispatcher_FROSTRoundTrip verifies the dispatcher mpcd
+// embeds answers a real FROST keygen → sign → verify round-trip on the
 // same ZAP wire teleport's signers will speak.
-func TestEmbeddedDispatcher_BLSRoundTrip(t *testing.T) {
+func TestEmbeddedDispatcher_FROSTRoundTrip(t *testing.T) {
 	addr, stop := startEmbeddedDispatcher(t, "")
 	defer stop()
 
@@ -67,9 +75,9 @@ func TestEmbeddedDispatcher_BLSRoundTrip(t *testing.T) {
 	}
 	defer c.Close()
 
-	pubKey, shares, err := c.Keygen(ctx, "bls", 2, 3)
+	pubKey, shares, err := c.Keygen(ctx, "frost", 2, 3)
 	if err != nil {
-		t.Fatalf("bls.keygen: %v", err)
+		t.Fatalf("frost.keygen: %v", err)
 	}
 	if len(pubKey) == 0 {
 		t.Fatalf("empty publicKey")
@@ -79,17 +87,17 @@ func TestEmbeddedDispatcher_BLSRoundTrip(t *testing.T) {
 	}
 
 	msg := []byte("mpcd embedded dispatch smoke test")
-	sig, err := c.Sign(ctx, "bls", msg, pubKey)
+	sig, err := c.Sign(ctx, "frost", msg, pubKey)
 	if err != nil {
-		t.Fatalf("bls.sign: %v", err)
+		t.Fatalf("frost.sign: %v", err)
 	}
 	if len(sig) == 0 {
 		t.Fatalf("empty signature")
 	}
 
-	ok, err := c.Verify(ctx, "bls", msg, sig, pubKey)
+	ok, err := c.Verify(ctx, "frost", msg, sig, pubKey)
 	if err != nil {
-		t.Fatalf("bls.verify: %v", err)
+		t.Fatalf("frost.verify: %v", err)
 	}
 	if !ok {
 		t.Fatalf("verify: round-trip signature failed under embedded dispatcher")
@@ -97,9 +105,9 @@ func TestEmbeddedDispatcher_BLSRoundTrip(t *testing.T) {
 
 	// forgery rejection — different message under same signature must fail
 	wrong := []byte("forged")
-	bad, err := c.Verify(ctx, "bls", wrong, sig, pubKey)
+	bad, err := c.Verify(ctx, "frost", wrong, sig, pubKey)
 	if err != nil {
-		t.Fatalf("bls.verify(wrong): %v", err)
+		t.Fatalf("frost.verify(wrong): %v", err)
 	}
 	if bad {
 		t.Fatalf("verify: forgery accepted (different message)")
@@ -149,7 +157,7 @@ func TestEmbeddedDispatcher_AuthGate(t *testing.T) {
 		t.Fatalf("ConnectZap wrong-id: %v", err)
 	}
 	defer bad.Close()
-	_, _, err = bad.Keygen(ctx, "bls", 2, 3)
+	_, _, err = bad.Keygen(ctx, "frost", 2, 3)
 	if err == nil {
 		t.Fatalf("wrong-id: expected unauthorized, got success")
 	}
@@ -157,7 +165,7 @@ func TestEmbeddedDispatcher_AuthGate(t *testing.T) {
 		t.Fatalf("wrong-id: error %v does not name unauthorized", err)
 	}
 
-	// Valid NodeID → success (under -short skip the heavy BLS keygen)
+	// Valid NodeID → success (under -short skip the heavy FROST keygen)
 	if !testing.Short() {
 		good, err := thresholdd.ConnectZap(ctx, addr,
 			thresholdd.WithZapNodeID("cluster-token"),
@@ -166,7 +174,7 @@ func TestEmbeddedDispatcher_AuthGate(t *testing.T) {
 			t.Fatalf("ConnectZap cluster-token: %v", err)
 		}
 		defer good.Close()
-		pubKey, _, err := good.Keygen(ctx, "bls", 2, 3)
+		pubKey, _, err := good.Keygen(ctx, "frost", 2, 3)
 		if err != nil {
 			t.Fatalf("cluster-token Keygen: %v", err)
 		}
