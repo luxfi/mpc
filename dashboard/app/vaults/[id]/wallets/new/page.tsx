@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { Check } from '@luxfi/ui/icons'
 import { Nav } from '@/components/layout/nav'
 import { api } from '@/lib/api'
 import type { Wallet } from '@/lib/types'
@@ -209,9 +210,7 @@ export default function NewWalletPage() {
             <div className="space-y-4">
               <div className="flex items-center gap-2">
                 <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-400">
-                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                  </svg>
+                  <Check className="h-4 w-4" />
                 </div>
                 <h2 className="text-lg font-semibold">Wallet Created</h2>
               </div>
