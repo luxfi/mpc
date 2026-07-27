@@ -93,8 +93,15 @@ func (s *Server) handleOIDCExchange(w http.ResponseWriter, r *http.Request) {
 }
 
 // fetchUserInfo calls the OIDC provider's userinfo endpoint to validate the token.
+//
+// The path is /v1/iam/oauth/userinfo, not /oauth/userinfo. The latter is served
+// by the SPA shell, so it answers 200 with text/html and the JSON decode fails
+// on '<' — which surfaced as a 401 on a token that was in fact valid, and made
+// every custody write path unreachable in production. The allowlist keys on the
+// issuer origin (https://lux.id, https://hanzo.id), so the /v1/iam prefix cannot
+// be supplied by the caller and belongs here.
 func fetchUserInfo(providerURL, accessToken string) (*oidcUserInfo, error) {
-	userinfoURL := strings.TrimRight(providerURL, "/") + "/oauth/userinfo"
+	userinfoURL := strings.TrimRight(providerURL, "/") + "/v1/iam/oauth/userinfo"
 
 	client := &http.Client{Timeout: 10 * time.Second}
 	req, err := http.NewRequest("GET", userinfoURL, nil)

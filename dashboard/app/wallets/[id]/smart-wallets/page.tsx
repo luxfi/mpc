@@ -19,29 +19,13 @@ export interface SmartWallet {
 export default function SmartWalletsPage() {
   const params = useParams<{ id: string }>()
 
-  // TODO: fetch smart wallets from API
-  const [wallets] = useState<SmartWallet[]>([
-    {
-      id: 'sw-1',
-      type: 'safe',
-      chain: 'Ethereum',
-      chainId: 1,
-      contractAddress: '0x1234...abcd',
-      threshold: 2,
-      owners: ['0xaaa...111', '0xbbb...222', '0xccc...333'],
-      status: 'deployed',
-    },
-    {
-      id: 'sw-2',
-      type: 'erc4337',
-      chain: 'Lux C-Chain',
-      chainId: 96369,
-      contractAddress: '0x5678...efgh',
-      threshold: 1,
-      owners: ['0xaaa...111'],
-      status: 'deployed',
-    },
-  ])
+  // This list is empty until the API is read. It previously held two invented
+  // wallets — a "2-of-3" Safe at 0x1234...abcd and an ERC-4337 account at
+  // 0x5678...efgh — both marked deployed. They rendered for ANY key id, so a
+  // custody screen advertised a multisig that does not exist on any chain.
+  // An empty list is the honest state; placeholders on a custody surface are
+  // not a stand-in for data, they are a false claim about where funds are.
+  const [wallets] = useState<SmartWallet[]>([])
 
   return (
     <div className="mx-auto max-w-4xl space-y-8 px-4 py-8">
