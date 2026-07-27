@@ -193,7 +193,7 @@ export default function DashboardPage() {
                 <div className="space-y-3">
                   <div className="flex items-center justify-between rounded-md bg-muted/50 px-4 py-3">
                     <div className="flex items-center gap-3">
-                      <div className={`h-2 w-2 rounded-full ${cluster.ready ? 'bg-emerald-400' : 'bg-yellow-400'}`} />
+                      <div className={`h-2 w-2 rounded-full ${cluster.ready ? 'bg-emerald-400' : 'bg-[var(--color-status-warn)]'}`} />
                       <span className="text-sm font-medium font-mono">{cluster.node_id}</span>
                     </div>
                     <div className="flex items-center gap-4">

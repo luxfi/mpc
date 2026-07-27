@@ -1,62 +1,50 @@
 'use client'
 
-import { useCallback, useState, useEffect } from 'react'
-import { getBranding, type Branding } from '@/lib/branding'
+import { startLogin } from '@hanzo/iam/browser'
+import { useWhiteLabel } from '@luxfi/ui'
+import { useCallback } from 'react'
 
-const CALLBACK_PATH = '/auth/callback'
-
-function buildLoginUrl(branding: Branding): string {
-  const redirectUri = `${window.location.origin}${CALLBACK_PATH}`
-  const state = crypto.randomUUID()
-  sessionStorage.setItem('oidc_state', state)
-
-  const params = new URLSearchParams({
-    response_type: 'token',
-    client_id: branding.iamClientId,
-    redirect_uri: redirectUri,
-    scope: 'openid profile email',
-    state,
-  })
-
-  return `${branding.iamUrl}/oauth/authorize?${params.toString()}`
-}
-
+// One button, one flow. The authorize URL, the PKCE challenge, the state nonce
+// and the token exchange are all @hanzo/iam's — this page never reconstructs an
+// IdP URL. (It used to: an implicit-grant `response_type=token` request built by
+// hand against `${iamUrl}/oauth/authorize`, which is not even the issuer's
+// authorize path — the real one is `/v1/iam/oauth/authorize`.)
+//
+// Brand, issuer and client id come from the host via `useWhiteLabel()`.
 export default function LoginPage() {
-  const [branding, setBranding] = useState<Branding>(getBranding(''))
-  useEffect(() => { setBranding(getBranding(window.location.hostname)) }, [])
-
-  const handleLogin = useCallback(() => {
-    window.location.href = buildLoginUrl(branding)
-  }, [branding])
+  const wl = useWhiteLabel()
+  const signIn = useCallback(() => {
+    void startLogin({ redirect: '/dashboard' })
+  }, [])
 
   return (
     <div className="flex min-h-screen items-center justify-center px-4">
       <div className="w-full max-w-sm">
         <div className="rounded-lg border border-border bg-card p-8">
           <h1 className="mb-2 text-center text-xl font-semibold tracking-tight">
-            {branding.brand}
+            {wl.name} MPC
           </h1>
           <p className="mb-8 text-center text-sm text-muted-foreground">
-            {branding.description}
+            Multi-Party Computation wallet platform by {wl.name}
           </p>
 
           <button
             type="button"
-            onClick={handleLogin}
+            onClick={signIn}
             className="w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
           >
-            Continue with {branding.iamLabel}
+            Continue with {wl.iamDomain}
           </button>
 
           <p className="mt-4 text-center text-xs text-muted-foreground">
             Powered by{' '}
             <a
-              href={branding.iamUrl}
+              href={wl.issuer}
               target="_blank"
               rel="noreferrer"
               className="underline underline-offset-4 hover:text-foreground/80"
             >
-              {branding.iamLabel}
+              {wl.iamDomain}
             </a>
           </p>
         </div>

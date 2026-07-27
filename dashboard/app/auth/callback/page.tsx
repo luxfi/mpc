@@ -1,64 +1,54 @@
 'use client'
 
+import { handleCallback } from '@hanzo/iam/browser'
+import { useWhiteLabel } from '@luxfi/ui'
+import { useRouter } from 'next/navigation'
 import { Suspense, useEffect, useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
-import { setTokens, setUserEmail } from '@/lib/auth'
-import { getBranding } from '@/lib/branding'
+import { markSession, setTokens, setUserEmail } from '@/lib/auth'
 import { api } from '@/lib/api'
 
 function CallbackInner() {
   const router = useRouter()
-  const searchParams = useSearchParams()
+  const wl = useWhiteLabel()
   const [error, setError] = useState<string | null>(null)
   const [status, setStatus] = useState('Completing sign in…')
 
   useEffect(() => {
-    // Check for error in query params (OAuth error redirects)
-    const oauthError = searchParams.get('error')
-    const oauthErrorDesc = searchParams.get('error_description')
-    if (oauthError) {
-      setError(oauthErrorDesc ?? oauthError)
-      return
-    }
+    let live = true
+    void (async () => {
+      try {
+        // ONE exchange: state check + PKCE verifier + code→token, all inside
+        // the SDK. The IAM access token IS the session from here on, stored
+        // under the `hanzo_iam_*` keys the shared chrome reads.
+        const { token, redirect } = await handleCallback()
+        if (!live) return
+        // The middleware cannot see sessionStorage; raise its flag the moment
+        // the IAM login succeeds, so the gate follows the SESSION and not the
+        // downstream MPC exchange below.
+        markSession(true)
 
-    // Implicit flow: access_token may be in the hash fragment or query string
-    // (Hanzo IAM returns it in the query string, standard OAuth2 uses hash)
-    const hash = window.location.hash.substring(1)
-    const hashParams = new URLSearchParams(hash)
-    const accessToken = hashParams.get('access_token') ?? searchParams.get('access_token')
-    const state = hashParams.get('state') ?? searchParams.get('state')
-
-    if (!accessToken) {
-      setError('No access token received from identity provider')
-      return
-    }
-
-    // Validate state to prevent CSRF
-    const savedState = sessionStorage.getItem('oidc_state')
-    if (savedState && state !== savedState) {
-      setError('Invalid state parameter — possible CSRF attack')
-      return
-    }
-    sessionStorage.removeItem('oidc_state')
-
-    const branding = getBranding(window.location.hostname)
-
-    setStatus('Authenticating with MPC API…')
-
-    // Exchange the OIDC access token for a local MPC API JWT
-    api
-      .oidcExchange(accessToken, branding.iamUrl)
-      .then((mpcAuth) => {
-        setTokens(mpcAuth.access_token, mpcAuth.refresh_token)
-        if (mpcAuth.email) {
-          setUserEmail(mpcAuth.email)
+        // The MPC API keeps its OWN JWT, minted from the IAM token. That
+        // exchange is a DOWNSTREAM call: if the API is unreachable the user is
+        // still signed in and the chrome still works — MPC data is what fails,
+        // and it says so on the page that needs it. Failing the whole login for
+        // it used to strand a perfectly good session on this screen.
+        setStatus('Authenticating with the MPC API…')
+        try {
+          const mpc = await api.oidcExchange(token.accessToken, wl.issuer)
+          setTokens(mpc.access_token, mpc.refresh_token)
+          if (mpc.email) setUserEmail(mpc.email)
+        } catch {
+          // Signed in; MPC API unavailable.
         }
-        router.replace('/dashboard')
-      })
-      .catch((err: unknown) => {
-        setError(err instanceof Error ? err.message : 'Authentication failed')
-      })
-  }, [searchParams, router])
+        if (live) router.replace(redirect || '/dashboard')
+      } catch (err: unknown) {
+        if (live) setError(err instanceof Error ? err.message : 'Authentication failed')
+      }
+    })()
+    return () => {
+      live = false
+    }
+  }, [router, wl.issuer])
 
   if (error) {
     return (

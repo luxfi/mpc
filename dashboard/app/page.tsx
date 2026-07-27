@@ -1,26 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { startLogin } from '@hanzo/iam/browser'
+import { useIdentity, useWhiteLabel } from '@luxfi/ui'
 import Link from 'next/link'
-import { getBranding, type Branding } from '@/lib/branding'
-
-const CALLBACK_PATH = '/auth/callback'
-
-function buildLoginUrl(branding: Branding): string {
-  const redirectUri = `${window.location.origin}${CALLBACK_PATH}`
-  const state = crypto.randomUUID()
-  sessionStorage.setItem('oidc_state', state)
-
-  const params = new URLSearchParams({
-    response_type: 'token',
-    client_id: branding.iamClientId,
-    redirect_uri: redirectUri,
-    scope: 'openid profile email',
-    state,
-  })
-
-  return `${branding.iamUrl}/oauth/authorize?${params.toString()}`
-}
 
 const features = [
   {
@@ -46,20 +28,17 @@ const chains = [
 ]
 
 export default function LandingPage() {
-  const [branding, setBranding] = useState<Branding>(getBranding(''))
-  const [hasSession, setHasSession] = useState(false)
-
-  useEffect(() => {
-    setBranding(getBranding(window.location.hostname))
-    setHasSession(document.cookie.includes('lux_mpc_session'))
-  }, [])
+  const wl = useWhiteLabel()
+  // "Am I signed in?" is IAM's answer, read through the shared identity — not a
+  // cookie sniff that only ever reflected the MPC API's own exchange.
+  const { status } = useIdentity()
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center px-4 py-16">
       <div className="w-full max-w-3xl text-center">
         {/* Hero */}
         <h1 className="bg-gradient-to-r from-violet-500 to-blue-500 bg-clip-text text-5xl font-bold tracking-tight text-transparent sm:text-6xl">
-          {branding.brand}
+          {wl.name} MPC
         </h1>
         <p className="mt-3 text-lg text-muted-foreground">
           Threshold Signing Service &bull; 3-of-5 Consensus
@@ -67,7 +46,7 @@ export default function LandingPage() {
 
         {/* CTA */}
         <div className="mt-8 flex items-center justify-center gap-4">
-          {hasSession ? (
+          {status === 'ready' ? (
             <Link
               href="/dashboard"
               className="rounded-lg bg-primary px-6 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
@@ -77,10 +56,10 @@ export default function LandingPage() {
           ) : (
             <button
               type="button"
-              onClick={() => { window.location.href = buildLoginUrl(branding) }}
+              onClick={() => void startLogin({ redirect: '/dashboard' })}
               className="rounded-lg bg-primary px-6 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
             >
-              Sign in with {branding.iamLabel}
+              Sign in with {wl.iamDomain}
             </button>
           )}
           <Link

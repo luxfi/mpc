@@ -83,8 +83,8 @@ export default function ApiKeysPage() {
 
         {/* Created key banner */}
         {newKey && (
-          <div className="mb-6 rounded-lg border border-amber-500/20 bg-amber-500/5 p-4">
-            <p className="mb-2 text-sm font-medium text-amber-400">
+          <div className="mb-6 rounded-lg border border-[var(--border)] bg-[var(--muted)] p-4">
+            <p className="mb-2 text-sm font-medium text-[var(--color-status-warn)]">
               API key created. Copy it now -- it will not be shown again.
             </p>
             <div className="flex items-center gap-2">

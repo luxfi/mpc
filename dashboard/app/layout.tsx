@@ -2,15 +2,19 @@ import type { Metadata } from 'next'
 import { headers } from 'next/headers'
 import { GeistSans } from 'geist/font/sans'
 import { GeistMono } from 'geist/font/mono'
-import { getBranding } from '@/lib/branding'
+import { resolveWhiteLabel } from '@luxfi/ui/white-label'
 import { Providers } from './providers'
 import './globals.css'
 
+// Title from the Host header — the same resolution the client uses, so the tab
+// and the chrome can never disagree about which brand this is.
 export async function generateMetadata(): Promise<Metadata> {
   const h = await headers()
-  const host = h.get('host') ?? 'mpc.lux.network'
-  const b = getBranding(host)
-  return { title: b.brand, description: b.description }
+  const wl = resolveWhiteLabel(h.get('host'))
+  return {
+    title: `${wl.name} MPC`,
+    description: `Multi-Party Computation wallet platform by ${wl.name}`,
+  }
 }
 
 export default function RootLayout({
