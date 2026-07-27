@@ -1,3 +1,5 @@
+import { Check } from '@luxfi/ui/icons'
+
 interface DeployWizardProps {
   currentStep: 'type' | 'config' | 'advanced' | 'deploy'
 }
@@ -26,9 +28,7 @@ export function DeployWizard({ currentStep }: DeployWizardProps) {
             }`}
           >
             {i < currentIndex ? (
-              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-              </svg>
+              <Check className="h-3.5 w-3.5" />
             ) : (
               i + 1
             )}
