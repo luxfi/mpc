@@ -1,3 +1,6 @@
+// Chain badges are third-party identity, and lux/brand DESIGN.md §1.2 reserves
+// hue for exactly that ("state, market direction, and chain badges"). Bitcoin is
+// orange because Bitcoin is orange — this is not Lux chrome and stays as-is.
 const chainMeta: Record<string, { label: string; color: string }> = {
   ethereum: { label: 'Ethereum', color: 'text-blue-400' },
   bitcoin: { label: 'Bitcoin', color: 'text-amber-400' },

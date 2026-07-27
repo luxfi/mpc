@@ -1,3 +1,5 @@
+const { withLuxUi } = require('@luxfi/ui/next')
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'standalone',
@@ -14,11 +16,14 @@ const nextConfig = {
     if (process.env.NODE_ENV === 'production') return []
     return [
       {
-        source: '/api/v1/:path*',
-        destination: 'http://localhost:8081/api/v1/:path*',
+        source: '/v1/:path*',
+        destination: 'http://localhost:8081/v1/:path*',
       },
     ]
   },
 }
 
-module.exports = nextConfig
+// ONE incantation for the gui engine (transpile list, react-native-web alias,
+// platform defines) — see @luxfi/ui/next. Hand-rolling it per surface is how
+// two apps end up transpiling different halves of the same engine.
+module.exports = withLuxUi(nextConfig)

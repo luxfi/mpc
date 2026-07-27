@@ -24,7 +24,7 @@ const sections = [
   {
     title: 'API Reference',
     description: 'Complete REST API documentation — authentication, wallets, transactions, bridge, and webhooks.',
-    color: 'border-amber-500/30',
+    color: 'border-[var(--border)]',
   },
   {
     title: 'Security Model',

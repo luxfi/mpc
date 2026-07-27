@@ -1,56 +1,36 @@
 'use client'
 
-import Link from 'next/link'
+import { AppNav } from '@luxfi/ui'
 import { usePathname } from 'next/navigation'
-import { useEffect, useState } from 'react'
-import { getBranding } from '@/lib/branding'
-import { UserMenu } from './user-menu'
 
-const navLinks = [
-  { href: '/dashboard' as const, label: 'Dashboard' },
-  { href: '/vaults' as const, label: 'Vaults' },
-  { href: '/transactions' as const, label: 'Transactions' },
-  { href: '/intents' as const, label: 'Intents' },
-  { href: '/settlements' as const, label: 'Settlements' },
-  { href: '/policies' as const, label: 'Policies' },
-  { href: '/bridge' as const, label: 'Bridge' },
-  { href: '/team' as const, label: 'Team' },
-  { href: '/settings' as const, label: 'Settings' },
-]
+// The nav is the ONE nav — brand, org switcher, links, settings, user menu —
+// from @luxfi/ui. It used to be a bespoke header with a bespoke user menu and
+// `hidden md:flex` links that simply vanished on a phone with nothing to
+// replace them; the shared chrome collapses them into the same gui Sheet the
+// switchers use, so mobile is a real presentation rather than an omission.
+const LINKS = [
+  { href: '/dashboard', label: 'Dashboard' },
+  { href: '/vaults', label: 'Vaults' },
+  { href: '/transactions', label: 'Transactions' },
+  { href: '/intents', label: 'Intents' },
+  { href: '/settlements', label: 'Settlements' },
+  { href: '/policies', label: 'Policies' },
+  { href: '/bridge', label: 'Bridge' },
+  { href: '/team', label: 'Team' },
+] as const
 
 export function Nav() {
   const pathname = usePathname()
-  const [logoText, setLogoText] = useState('MPC')
-  useEffect(() => { setLogoText(getBranding(window.location.hostname).logoText) }, [])
-
   return (
-    <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center gap-8">
-          <Link href="/dashboard" className="flex items-center gap-2">
-            <span className="text-lg font-semibold tracking-tight">{logoText}</span>
-          </Link>
-          <nav className="hidden items-center gap-1 md:flex">
-            {navLinks.map((link) => {
-              const isActive = pathname.startsWith(link.href)
-              return (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                    isActive
-                      ? 'bg-accent text-accent-foreground'
-                      : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-                  }`}
-                >
-                  {link.label}
-                </Link>
-              )
-            })}
-          </nav>
-        </div>
-        <UserMenu />
-      </div>
-    </header>
+    <AppNav
+      home="/dashboard"
+      links={LINKS.map((l) => ({ ...l, active: pathname.startsWith(l.href) }))}
+      settings={[
+        { id: 'api-keys', label: 'API keys', href: '/settings/api-keys' },
+        { id: 'webhooks', label: 'Webhooks', href: '/settings/webhooks' },
+        { id: 'devices', label: 'Devices', href: '/settings/devices' },
+      ]}
+      userItems={[{ id: 'audit', label: 'Audit log', href: '/audit' }]}
+    />
   )
 }

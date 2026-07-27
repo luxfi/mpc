@@ -39,8 +39,8 @@ export default function BridgeContractsPage() {
           </p>
         </div>
 
-        <div className="mb-6 rounded-md border border-amber-500/30 bg-amber-500/5 p-4">
-          <p className="text-sm text-amber-500">
+        <div className="mb-6 rounded-md border border-[var(--border)] bg-[var(--muted)] p-4">
+          <p className="text-sm text-[var(--color-status-warn)]">
             The MPC bridge-signer wallet needs BRIDGE_ROLE granted on each token contract to mint bridged tokens.
             Call <code className="rounded bg-muted px-1">grantBridge(address)</code> on each ERC20B contract with the MPC wallet address.
           </p>
