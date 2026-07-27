@@ -150,7 +150,7 @@ test.describe('IAM OIDC Discovery', () => {
   })
 
   test('app-lux-mpc application is accessible', async ({ request }) => {
-    const response = await request.get('https://hanzo.id/api/get-application?id=admin/lux-mpc')
+    const response = await request.get('https://hanzo.id/v1/iam/get-application?id=admin/lux-mpc')
     expect(response.ok()).toBeTruthy()
 
     const body = await response.json()
