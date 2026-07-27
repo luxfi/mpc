@@ -11,7 +11,22 @@ import (
 	"github.com/luxfi/mpc/pkg/logger"
 
 	"github.com/hanzoai/dbx"
-	_ "modernc.org/sqlite"
+
+	// Canonical Hanzo SQLite driver. It is the ONE package that registers the
+	// "sqlite" database/sql driver name — pure-Go modernc under !cgo,
+	// hanzoai/csqlite+SQLCipher under cgo — so a binary that links this store
+	// alongside any other Hanzo store (base/core, orm/db, tasks' shard store)
+	// registers "sqlite" exactly once. Importing modernc.org/sqlite directly
+	// here made a second registration and panicked at init in any consumer that
+	// linked both ("sql: Register called twice for driver sqlite" —
+	// hanzoai/mpc's mpcd did exactly that).
+	//
+	// Imported NAMED for PragmaDSN: the two backends spell connection pragmas
+	// differently (`_busy_timeout=5000` vs `_pragma=busy_timeout(5000)`) and each
+	// silently drops the other's form. The hand-rolled mattn-form DSN this file
+	// used was therefore inert under the pure-Go backend — busy_timeout=0 and
+	// journal_mode=DELETE. PragmaDSN encodes them in the ACTIVE backend's syntax.
+	"github.com/hanzoai/sqlite"
 )
 
 // SQLiteMeta implements KV using SQLite (via hanzoai/dbx) for queryable metadata.
@@ -41,10 +56,8 @@ func NewSQLiteMeta(cfg SQLiteMetaConfig) (*SQLiteMeta, error) {
 	}
 
 	dsn := cfg.Path
-	if cfg.WAL && dsn != ":memory:" {
-		dsn += "?_journal_mode=WAL&_busy_timeout=5000&_synchronous=NORMAL&_foreign_keys=ON"
-	} else if dsn != ":memory:" {
-		dsn += "?_busy_timeout=5000&_foreign_keys=ON"
+	if dsn != ":memory:" {
+		dsn = sqlite.PragmaDSN(cfg.Path, metaPragmas(cfg.WAL))
 	}
 
 	db, err := dbx.MustOpen("sqlite", dsn)
@@ -61,6 +74,20 @@ func NewSQLiteMeta(cfg SQLiteMetaConfig) (*SQLiteMeta, error) {
 
 	logger.Info("SQLiteMeta opened", "path", cfg.Path, "wal", cfg.WAL)
 	return s, nil
+}
+
+// metaPragmas is this store's connection tuning. busy_timeout MUST lead:
+// a connection has to block on a busy database before journal_mode=WAL can be
+// set (WAL cannot be enabled while another connection holds the database).
+func metaPragmas(wal bool) []sqlite.Pragma {
+	p := []sqlite.Pragma{{Name: "busy_timeout", Value: "5000"}}
+	if wal {
+		p = append(p,
+			sqlite.Pragma{Name: "journal_mode", Value: "WAL"},
+			sqlite.Pragma{Name: "synchronous", Value: "NORMAL"},
+		)
+	}
+	return append(p, sqlite.Pragma{Name: "foreign_keys", Value: "ON"})
 }
 
 // migrate creates tables idempotently.
