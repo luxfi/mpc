@@ -1,8 +1,7 @@
 'use client'
 
-import { configureIam, logout, startLogin } from '@hanzo/iam/browser'
-import { AppProvider, IdentityProvider } from '@luxfi/ui'
-import { resolveWhiteLabel } from '@luxfi/ui/white-label'
+import { AppProvider } from '@luxfi/ui'
+import { AuthProvider } from '@luxfi/ui/auth'
 import { useEffect, useState, type ReactNode } from 'react'
 
 import { clearTokens } from '@/lib/auth'
@@ -15,9 +14,12 @@ import { clearTokens } from '@/lib/auth'
 // per-deployment branding table. It also owns the QueryClient, so there is one
 // query cache per surface instead of one per provider file.
 //
-// `IdentityProvider` reads the signed-in account and its org membership from
-// IAM. Credentials stay with @hanzo/iam — one PKCE flow, one token store; the
-// chrome borrows only the two verbs.
+// `AuthProvider` (@luxfi/ui/auth) is the identity read AND the PKCE login,
+// bound to that same host. This file used to hand-roll the credential half —
+// `configureIam` + `startLogin` + `logout` — and so did lux/market, while
+// lux/explore hand-built an authorize URL with no PKCE at all. One flow now
+// lives in the design system; a surface names only where a session lands and
+// what of its OWN it drops on the way out.
 //
 // NEXT_PUBLIC_HOST is the LOCAL-DEV seam and nothing else: `localhost` has no
 // brand to resolve, so a developer names the host the surface stands in for.
@@ -30,25 +32,14 @@ export function Providers({ children }: { children: ReactNode }) {
   useEffect(() => {
     const real = window.location.host
     const local = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(real)
-    const resolved = local && DEV_HOST ? DEV_HOST : real
-    setHost(resolved)
-    const wl = resolveWhiteLabel(resolved)
-    configureIam({ issuer: wl.issuer, clientId: wl.clientId })
+    setHost(local && DEV_HOST ? DEV_HOST : real)
   }, [])
 
   return (
     <AppProvider host={host}>
-      <IdentityProvider
-        auth={{
-          signIn: () => void startLogin({ redirect: '/dashboard' }),
-          signOut: () => {
-            clearTokens()
-            void logout()
-          },
-        }}
-      >
+      <AuthProvider redirect="/dashboard" onSignOut={clearTokens}>
         {children}
-      </IdentityProvider>
+      </AuthProvider>
     </AppProvider>
   )
 }
