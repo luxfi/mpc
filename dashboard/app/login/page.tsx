@@ -1,7 +1,7 @@
 'use client'
 
-import { startLogin } from '@hanzo/iam/browser'
 import { useWhiteLabel } from '@luxfi/ui'
+import { useAuth } from '@luxfi/ui/auth'
 import { useCallback } from 'react'
 
 // One button, one flow. The authorize URL, the PKCE challenge, the state nonce
@@ -13,9 +13,8 @@ import { useCallback } from 'react'
 // Brand, issuer and client id come from the host via `useWhiteLabel()`.
 export default function LoginPage() {
   const wl = useWhiteLabel()
-  const signIn = useCallback(() => {
-    void startLogin({ redirect: '/dashboard' })
-  }, [])
+  const { signIn } = useAuth('/dashboard')
+  const onSignIn = useCallback(() => signIn(), [signIn])
 
   return (
     <div className="flex min-h-screen items-center justify-center px-4">
@@ -30,7 +29,7 @@ export default function LoginPage() {
 
           <button
             type="button"
-            onClick={signIn}
+            onClick={onSignIn}
             className="w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
           >
             Continue with {wl.iamDomain}
