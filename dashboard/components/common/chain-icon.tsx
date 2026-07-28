@@ -2,12 +2,12 @@
 // hue for exactly that ("state, market direction, and chain badges"). Bitcoin is
 // orange because Bitcoin is orange — this is not Lux chrome and stays as-is.
 const chainMeta: Record<string, { label: string; color: string }> = {
-  ethereum: { label: 'Ethereum', color: 'text-blue-400' },
-  bitcoin: { label: 'Bitcoin', color: 'text-amber-400' },
-  solana: { label: 'Solana', color: 'text-purple-400' },
+  ethereum: { label: 'Ethereum', color: 'text-foreground' },
+  bitcoin: { label: 'Bitcoin', color: 'text-[var(--color-status-warn)]' },
+  solana: { label: 'Solana', color: 'text-foreground' },
   lux: { label: 'Lux', color: 'text-zinc-300' },
   xrpl: { label: 'XRPL', color: 'text-zinc-400' },
-  ton: { label: 'TON', color: 'text-cyan-400' },
+  ton: { label: 'TON', color: 'text-foreground' },
 }
 
 interface ChainIconProps {

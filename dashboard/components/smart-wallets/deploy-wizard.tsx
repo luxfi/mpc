@@ -23,7 +23,7 @@ export function DeployWizard({ currentStep }: DeployWizardProps) {
               step.key === currentStep
                 ? 'bg-primary text-primary-foreground'
                 : i < currentIndex
-                  ? 'bg-emerald-500/20 text-emerald-400'
+                  ? 'bg-[var(--color-status-good)]/20 text-[var(--color-status-good)]'
                   : 'bg-muted text-muted-foreground'
             }`}
           >
