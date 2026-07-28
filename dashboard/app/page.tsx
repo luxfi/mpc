@@ -1,3 +1,11 @@
+// Lux is MONOCHROME. This page used to be the loudest exception in the fleet:
+// a violet→blue gradient wordmark, three feature headings in violet / blue /
+// emerald, and ten chain chips on a violet wash — 1.05% of every rendered pixel
+// carrying hue #ece7f7, on a surface whose dashboard next door is achromatic.
+//
+// Distinction here is carried by the LABEL, which already said CGGMP21 / FROST /
+// Bridge. Every colour resolves through a token now, so white-label-by-hostname
+// retints it without a rebuild.
 'use client'
 
 import { startLogin } from '@hanzo/iam/browser'
@@ -8,17 +16,17 @@ const features = [
   {
     title: 'CGGMP21',
     description: '5-round threshold ECDSA (secp256k1) for Bitcoin, Ethereum, Lux, XRPL, and all EVM chains.',
-    color: 'text-violet-400',
+    color: 'text-foreground',
   },
   {
     title: 'FROST',
     description: '2-round threshold EdDSA (Ed25519) for Solana, TON. BIP-340 Schnorr for Bitcoin Taproot.',
-    color: 'text-blue-400',
+    color: 'text-foreground',
   },
   {
     title: 'Bridge',
     description: 'Cross-chain asset bridge with MPC-signed transactions. Multi-network, policy-driven approvals.',
-    color: 'text-emerald-400',
+    color: 'text-foreground',
   },
 ]
 
@@ -37,7 +45,7 @@ export default function LandingPage() {
     <div className="flex min-h-screen flex-col items-center justify-center px-4 py-16">
       <div className="w-full max-w-3xl text-center">
         {/* Hero */}
-        <h1 className="bg-gradient-to-r from-violet-500 to-blue-500 bg-clip-text text-5xl font-bold tracking-tight text-transparent sm:text-6xl">
+        <h1 className="text-5xl font-bold tracking-tight text-foreground sm:text-6xl">
           {wl.name} MPC
         </h1>
         <p className="mt-3 text-lg text-muted-foreground">
@@ -92,7 +100,7 @@ export default function LandingPage() {
           {chains.map((c) => (
             <span
               key={c}
-              className="rounded-full border border-violet-500/20 bg-violet-500/10 px-3 py-1 text-xs font-medium text-violet-300"
+              className="rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium text-muted-foreground"
             >
               {c}
             </span>

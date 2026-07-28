@@ -27,7 +27,7 @@ const statusColors: Record<string, string> = {
   pending: 'bg-[var(--muted)] text-[var(--color-status-warn)]',
   confirmed: 'bg-green-600/20 text-green-500',
   failed: 'bg-red-600/20 text-red-400',
-  awaiting_approval: 'bg-blue-600/20 text-blue-400',
+  awaiting_approval: 'bg-muted text-foreground',
 }
 
 export function TxDetail({ transaction: tx }: TxDetailProps) {

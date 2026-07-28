@@ -16,7 +16,7 @@ export interface PaymentRequestTableProps {
 }
 
 const statusColors: Record<string, string> = {
-  open: 'bg-blue-600/20 text-blue-400',
+  open: 'bg-muted text-foreground',
   paid: 'bg-green-600/20 text-green-500',
   expired: 'bg-zinc-600/20 text-zinc-400',
   cancelled: 'bg-red-600/20 text-red-400',

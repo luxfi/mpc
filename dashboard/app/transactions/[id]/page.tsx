@@ -209,7 +209,7 @@ export default function TransactionDetailPage() {
                       <span className="font-mono">{tx.confirmations ?? 0}</span>
                       <span className="text-muted-foreground"> / {tx.target_confirmations ?? 12}</span>
                       {(tx.confirmations ?? 0) >= (tx.target_confirmations ?? 12) && (
-                        <span className="ml-2 text-xs text-emerald-400">Finalized</span>
+                        <span className="ml-2 text-xs text-[var(--color-status-good)]">Finalized</span>
                       )}
                     </dd>
                   </div>
@@ -224,7 +224,7 @@ export default function TransactionDetailPage() {
                       <dt className="text-muted-foreground">Receipt Status</dt>
                       <dd className="mt-1">
                         {tx.receipt_status === 1 ? (
-                          <span className="text-emerald-400">Success</span>
+                          <span className="text-[var(--color-status-good)]">Success</span>
                         ) : (
                           <span className="text-red-400">Reverted</span>
                         )}
