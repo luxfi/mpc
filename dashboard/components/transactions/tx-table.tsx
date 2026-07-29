@@ -17,7 +17,7 @@ export interface TxTableProps {
 }
 
 const statusColors: Record<string, string> = {
-  pending: 'bg-[var(--muted)] text-[var(--color-status-warn)]',
+  pending: 'bg-[var(--muted)] text-warn',
   confirmed: 'bg-green-600/20 text-green-500',
   failed: 'bg-red-600/20 text-red-400',
   awaiting_approval: 'bg-muted text-foreground',

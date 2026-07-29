@@ -14,6 +14,10 @@ const config: Config = {
         mono: ['var(--font-geist-mono)'],
       },
       colors: {
+        // State: the only two hues Lux keeps, plus the achromatic warn.
+        good: 'var(--color-status-good)',
+        bad: 'var(--color-status-bad)',
+        warn: 'var(--color-status-warn)',
         background: 'var(--background)',
         foreground: 'var(--foreground)',
         muted: {

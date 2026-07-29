@@ -13,7 +13,7 @@ export interface PaymentHistoryProps {
 
 const statusColors: Record<string, string> = {
   confirmed: 'bg-green-600/20 text-green-500',
-  pending: 'bg-[var(--muted)] text-[var(--color-status-warn)]',
+  pending: 'bg-[var(--muted)] text-warn',
   failed: 'bg-red-600/20 text-red-400',
 }
 

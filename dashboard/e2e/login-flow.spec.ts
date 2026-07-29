@@ -42,14 +42,14 @@ test.describe('Lux ID Login Flow', () => {
 
     const url = new URL(page.url())
     expect(url.hostname).toBe('lux.id')
-    // /oauth/authorize redirects to /login with app context
+    // /v1/iam/oauth/authorize redirects to /login with app context
     expect(url.searchParams.get('client_id')).toBe('lux-mpc')
     expect(url.searchParams.get('scope')).toContain('openid')
   })
 
   test('Lux ID login page loads with email and password fields', async ({ page }) => {
-    const loginUrl = new URL(`${IAM_URL}/oauth/authorize`)
-    loginUrl.searchParams.set('response_type', 'token')
+    const loginUrl = new URL(`${IAM_URL}/v1/iam/oauth/authorize`)
+    loginUrl.searchParams.set('response_type', 'code')
     loginUrl.searchParams.set('client_id', 'lux-mpc')
     loginUrl.searchParams.set('redirect_uri', 'https://mpc.lux.network/auth/callback')
     loginUrl.searchParams.set('scope', 'openid profile email')
@@ -131,16 +131,18 @@ test.describe('IAM OIDC Discovery', () => {
 
     const config = await response.json()
     expect(config.issuer).toBeTruthy()
-    expect(config.authorization_endpoint).toContain('/oauth/authorize')
-    expect(config.token_endpoint).toContain('/oauth/token')
-    expect(config.userinfo_endpoint).toContain('/oauth/userinfo')
-    expect(config.jwks_uri).toContain('/.well-known/jwks')
-    expect(config.response_types_supported).toContain('token')
+    expect(config.authorization_endpoint).toBe('https://hanzo.id/v1/iam/oauth/authorize')
+    expect(config.token_endpoint).toBe('https://hanzo.id/v1/iam/oauth/token')
+    expect(config.userinfo_endpoint).toBe('https://hanzo.id/v1/iam/oauth/userinfo')
+    expect(config.jwks_uri).toBe('https://hanzo.id/v1/iam/.well-known/jwks')
+    expect(config.response_types_supported).toContain('code')
   })
 
   test('JWKS endpoint returns valid keys', async ({ request }) => {
-    // Use hanzo.id for JWKS since lux.id may proxy via login frontend
-    const response = await request.get('https://hanzo.id/.well-known/jwks')
+    // JWKS lives under /v1/iam. The bare /.well-known/jwks is the IdP SPA
+    // catch-all: 200 text/html, which passes response.ok() and then dies in
+    // .json(). Measured on hanzo.id 2026-07-27.
+    const response = await request.get('https://hanzo.id/v1/iam/.well-known/jwks')
     expect(response.ok()).toBeTruthy()
 
     const jwks = await response.json()

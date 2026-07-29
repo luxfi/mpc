@@ -72,7 +72,7 @@ export default function SettlementsPage() {
                   <td className="px-4 py-3">{s.hsm_signatures?.length || 0}</td>
                   <td className="px-4 py-3">
                     {s.transfer_agency_verified ? (
-                      <span className="text-[var(--color-status-good)]">Yes</span>
+                      <span className="text-good">Yes</span>
                     ) : (
                       <span className="text-muted-foreground">No</span>
                     )}

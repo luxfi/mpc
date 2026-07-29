@@ -11,7 +11,7 @@
   "dependencies": {
     "@hanzo/gui": "^7.3.0",
     "@hanzo/iam": "^0.13.8",
-    "@luxfi/ui": "7.4.9",
+    "@luxfi/ui": "7.4.10",
     "@tanstack/react-query": "^5.96.1",
     "geist": "^1.7.0",
     "next": "^15.5.14",
