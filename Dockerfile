@@ -33,7 +33,7 @@ RUN apk add --no-cache git ca-certificates gcc musl-dev sqlite-dev linux-headers
 #    modules the proxy has cached resolve there; a proxy miss falls back to
 #    direct git (public tag exists) — NOT forced direct (which broke on
 #    luxfi/geth, whose proxy-cached version has no live git tag).
-ENV GOPRIVATE=github.com/luxfi/hsm
+ENV GOPRIVATE=
 ENV GOSUMDB=off
 ENV GOFLAGS=-mod=mod
 
