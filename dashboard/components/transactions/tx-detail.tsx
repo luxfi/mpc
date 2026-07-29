@@ -24,7 +24,7 @@ export interface TxDetailProps {
 }
 
 const statusColors: Record<string, string> = {
-  pending: 'bg-[var(--muted)] text-[var(--color-status-warn)]',
+  pending: 'bg-[var(--muted)] text-warn',
   confirmed: 'bg-green-600/20 text-green-500',
   failed: 'bg-red-600/20 text-red-400',
   awaiting_approval: 'bg-muted text-foreground',
@@ -129,7 +129,7 @@ export function TxDetail({ transaction: tx }: TxDetailProps) {
                 className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-xs"
               >
                 <span className="truncate font-mono">{a.address}</span>
-                <span className={a.approved ? 'text-green-500' : 'text-[var(--color-status-warn)]'}>
+                <span className={a.approved ? 'text-green-500' : 'text-warn'}>
                   {a.approved ? 'Approved' : 'Pending'}
                 </span>
               </div>

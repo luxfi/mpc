@@ -91,7 +91,7 @@ export function SafeTxQueue({ transactions, walletId }: SafeTxQueueProps) {
           {/* Progress bar */}
           <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
             <div
-              className="h-full rounded-full bg-[var(--color-status-good)] transition-all"
+              className="h-full rounded-full bg-good transition-all"
               style={{ width: `${(tx.confirmations / tx.required) * 100}%` }}
             />
           </div>

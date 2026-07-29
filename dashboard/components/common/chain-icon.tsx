@@ -3,7 +3,7 @@
 // orange because Bitcoin is orange — this is not Lux chrome and stays as-is.
 const chainMeta: Record<string, { label: string; color: string }> = {
   ethereum: { label: 'Ethereum', color: 'text-foreground' },
-  bitcoin: { label: 'Bitcoin', color: 'text-[var(--color-status-warn)]' },
+  bitcoin: { label: 'Bitcoin', color: 'text-warn' },
   solana: { label: 'Solana', color: 'text-foreground' },
   lux: { label: 'Lux', color: 'text-zinc-300' },
   xrpl: { label: 'XRPL', color: 'text-zinc-400' },

@@ -6,9 +6,9 @@ import { api } from '@/lib/api'
 import type { User } from '@/lib/types'
 
 const roleBadgeColors: Record<string, string> = {
-  owner: 'bg-[var(--muted)] text-[var(--color-status-warn)] border-[var(--border)]',
+  owner: 'bg-[var(--muted)] text-warn border-[var(--border)]',
   admin: 'bg-muted text-foreground border-border',
-  signer: 'bg-[var(--color-status-good)]/10 text-[var(--color-status-good)] border-[var(--color-status-good)]/20',
+  signer: 'bg-good/10 text-good border-good/20',
   viewer: 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20',
 }
 

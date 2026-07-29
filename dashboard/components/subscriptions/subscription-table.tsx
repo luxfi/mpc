@@ -18,7 +18,7 @@ export interface SubscriptionTableProps {
 
 const statusColors: Record<string, string> = {
   active: 'bg-green-600/20 text-green-500',
-  paused: 'bg-[var(--muted)] text-[var(--color-status-warn)]',
+  paused: 'bg-[var(--muted)] text-warn',
   cancelled: 'bg-zinc-600/20 text-zinc-400',
 }
 

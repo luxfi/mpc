@@ -195,7 +195,7 @@ export default function WalletDetailPage() {
                               key={shard.index}
                               className={`rounded-md border px-2 py-1 text-xs font-medium capitalize ${
                                 shard.verified_at
-                                  ? 'border-[var(--color-status-good)]/20 bg-[var(--color-status-good)]/10 text-[var(--color-status-good)]'
+                                  ? 'border-good/20 bg-good/10 text-good'
                                   : 'border-border bg-muted/50 text-muted-foreground'
                               }`}
                             >

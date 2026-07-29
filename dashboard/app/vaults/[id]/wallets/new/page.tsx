@@ -70,7 +70,7 @@ export default function NewWalletPage() {
                     step === s
                       ? 'bg-primary text-primary-foreground'
                       : i < ['type', 'protocol', 'name', 'generate', 'result'].indexOf(step)
-                        ? 'bg-[var(--color-status-good)]/20 text-[var(--color-status-good)]'
+                        ? 'bg-good/20 text-good'
                         : 'bg-muted text-muted-foreground'
                   }`}
                 >
@@ -209,7 +209,7 @@ export default function NewWalletPage() {
           {step === 'result' && result && (
             <div className="space-y-4">
               <div className="flex items-center gap-2">
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--color-status-good)]/20 text-[var(--color-status-good)]">
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-good/20 text-good">
                   <Check className="h-4 w-4" />
                 </div>
                 <h2 className="text-lg font-semibold">Wallet Created</h2>

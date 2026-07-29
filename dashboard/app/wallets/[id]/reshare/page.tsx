@@ -121,8 +121,8 @@ export default function ResharePage() {
 
       {/* Warning */}
       <div className="rounded-lg border border-[var(--border)] bg-[var(--muted)] p-4 text-sm">
-        <p className="font-medium text-[var(--color-status-warn)]">Key Rotation Warning</p>
-        <p className="mt-1 text-[var(--color-status-warn)]/80">
+        <p className="font-medium text-warn">Key Rotation Warning</p>
+        <p className="mt-1 text-warn/80">
           Resharing invalidates all existing key shares. All participants must be
           online and reachable during the process. Ensure backups exist before
           proceeding.

@@ -3,10 +3,10 @@
 // paints itself amber. Tones resolve through @luxfi/ui/tokens.css, which means a
 // white-label host retints them without a rebuild.
 const TONE_CLASS = {
-  good: 'bg-[var(--muted)] text-[var(--color-status-good)] border-[var(--border)]',
-  bad: 'bg-[var(--muted)] text-[var(--color-status-bad)] border-[var(--border)]',
+  good: 'bg-[var(--muted)] text-good border-[var(--border)]',
+  bad: 'bg-[var(--muted)] text-bad border-[var(--border)]',
   // Waiting on someone. The loudest neutral — was amber-400 on amber-500/10.
-  pending: 'bg-[var(--muted)] text-[var(--color-status-warn)] border-[var(--border)]',
+  pending: 'bg-[var(--muted)] text-warn border-[var(--border)]',
   // Work in flight. Full-contrast neutral — was blue-400 on blue-500/10.
   active: 'bg-[var(--secondary)] text-[var(--foreground)] border-[var(--border)]',
   // Nothing is happening.

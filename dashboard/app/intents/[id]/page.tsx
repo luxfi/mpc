@@ -88,14 +88,14 @@ export default function IntentDetailPage() {
                   return (
                     <div key={step} className="flex items-center gap-1">
                       {i > 0 && (
-                        <div className={`h-0.5 w-6 ${isActive ? 'bg-[var(--color-status-good)]' : 'bg-border'}`} />
+                        <div className={`h-0.5 w-6 ${isActive ? 'bg-good' : 'bg-border'}`} />
                       )}
                       <div
                         className={`whitespace-nowrap rounded-md px-2.5 py-1.5 text-xs font-medium capitalize ${
                           isCurrent
                             ? 'bg-primary text-primary-foreground'
                             : isActive
-                            ? 'bg-[var(--color-status-good)]/10 text-[var(--color-status-good)]'
+                            ? 'bg-good/10 text-good'
                             : 'bg-muted text-muted-foreground'
                         }`}
                       >

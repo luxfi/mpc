@@ -15,8 +15,8 @@ importers:
         specifier: ^0.13.8
         version: 0.13.8(react@19.2.4)
       '@luxfi/ui':
-        specifier: 7.4.7
-        version: 7.4.7(bamwgx6x2zolohppbazcpjd6te)
+        specifier: 7.4.10
+        version: 7.4.10(bamwgx6x2zolohppbazcpjd6te)
       '@tanstack/react-query':
         specifier: ^5.96.1
         version: 5.96.1(react@19.2.4)
@@ -1546,8 +1546,8 @@ packages:
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
 
-  '@luxfi/ui@7.4.7':
-    resolution: {integrity: sha512-OyYCPtMr58wFTT6nWJ4lkT6Dr+aaG8/XC839arl6i300ofj+2gX50zfMoEK1iyjKTNULdERcrvzLm/5aHvdDRg==}
+  '@luxfi/ui@7.4.10':
+    resolution: {integrity: sha512-CkZt+fqAGaCE2n941S8uIaV/KfmOtAJ6qgMqhhsKzzCUnV4cMDzRXwB0awadO9RzzJ5O45gOwDxiRc8XAShF4A==}
     peerDependencies:
       '@hanzo/gui': ^7.3.0
       '@hanzo/iam': ^0.13.8
@@ -8394,7 +8394,7 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
-  '@luxfi/ui@7.4.7(bamwgx6x2zolohppbazcpjd6te)':
+  '@luxfi/ui@7.4.10(bamwgx6x2zolohppbazcpjd6te)':
     dependencies:
       '@hanzo/gui': 7.3.0(expo@57.0.8)(react-dom@19.2.4(react@19.2.4))(react-native-web@0.21.2(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(react-native@0.86.2(@babel/core@7.29.0)(@react-native/metro-config@0.86.2(@babel/core@7.29.0))(@types/react@19.2.14)(react@19.2.4))(react@19.2.4)(sf-symbols-typescript@2.2.0)
       '@hanzogui/config': 7.3.0(expo@57.0.8)(react-dom@19.2.4(react@19.2.4))(react-native-reanimated@4.5.3(react-native-worklets@0.11.3(@babel/core@7.29.0)(@react-native/metro-config@0.86.2(@babel/core@7.29.0))(react-native@0.86.2(@babel/core@7.29.0)(@react-native/metro-config@0.86.2(@babel/core@7.29.0))(@types/react@19.2.14)(react@19.2.4))(react@19.2.4))(react-native@0.86.2(@babel/core@7.29.0)(@react-native/metro-config@0.86.2(@babel/core@7.29.0))(@types/react@19.2.14)(react@19.2.4))(react@19.2.4))(react-native@0.86.2(@babel/core@7.29.0)(@react-native/metro-config@0.86.2(@babel/core@7.29.0))(@types/react@19.2.14)(react@19.2.4))(react@19.2.4)(sf-symbols-typescript@2.2.0)
