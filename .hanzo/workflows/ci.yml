@@ -1,0 +1,92 @@
+name: CI
+
+# Test, lint and build, on the native runners (git.hanzo.ai → git-runner).
+#
+# This replaces .github/workflows/ci.yml, whose every job named
+# `runs-on: lux-build-amd64`. No runner on this forge carries that label — the
+# pools are `lux-build-linux-<arch>` — and a job naming a label nothing carries
+# does not fail, it waits.
+#
+# It also triggered on `branches: ["*"]`, so every push to every branch queued
+# the whole file, CodeQL and SBOM included. It is scoped to main and pull
+# requests here.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer commit makes the older run irrelevant.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GOWORK: 'off'
+
+jobs:
+  test:
+    runs-on: [lux-build-linux-amd64]
+    timeout-minutes: 30
+    env:
+      GOEXPERIMENT: runtimesecret
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go mod download
+      - name: Unit tests
+        run: CGO_ENABLED=1 go test -v -race -coverprofile=coverage.out ./...
+
+  lint:
+    runs-on: [lux-build-linux-amd64]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: golangci/golangci-lint-action@v6
+        env:
+          CGO_ENABLED: '0'
+        with:
+          version: latest
+          install-mode: goinstall
+          args: --timeout=5m
+          skip-cache: true
+
+  govulncheck:
+    runs-on: [lux-build-linux-amd64]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      # Reports rather than gates, as it did before. Making it blocking is a
+      # policy decision, not part of moving where the job runs.
+      - run: govulncheck ./... || true
+
+  build:
+    needs: [test, lint]
+    runs-on: [lux-build-linux-amd64]
+    timeout-minutes: 20
+    env:
+      GOEXPERIMENT: runtimesecret
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go mod vendor
+      - run: CGO_ENABLED=0 go build -mod=vendor -v ./cmd/mpcd
+      - run: CGO_ENABLED=0 go build -mod=vendor -v ./cmd/mpc

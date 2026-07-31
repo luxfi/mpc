@@ -1,0 +1,192 @@
+name: Release
+
+# Builds ghcr.io/luxfi/mpc, cuts the GitHub release, and tells luxfi/universe
+# the image exists — on the native runners (git.hanzo.ai → git-runner).
+#
+# This replaces .github/workflows/docker.yml and .github/workflows/release.yml,
+# both of which fired on the same `v*` tag and both of whose jobs named
+# `runs-on: lux-build-amd64`. No runner on this forge carries that label — the
+# pools are `lux-build-linux-<arch>` — and a job naming a label nothing carries
+# does not fail, it waits. Two workflows racing on one tag with no shared
+# concurrency group is also how a release ends up half-published; they are one
+# workflow here, under one group that does not cancel.
+#
+# ghcr auth is GHCR_USER / GHCR_TOKEN, org Actions secrets sourced from KMS. The
+# old workflows logged in as `github.actor` with the instance GITHUB_TOKEN,
+# which on this forge is a Hanzo Git token with no rights at ghcr.io.
+#
+# arm64 is built under QEMU on the amd64 pool. That is acceptable for a docker
+# build and it is what the old workflow did; the Go binaries below cross-compile
+# natively.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+
+# A release is not made irrelevant by a newer one — let it finish.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  image:
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+    runs-on: [lux-build-linux-amd64]
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        if: matrix.arch == 'arm64'
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - uses: docker/setup-buildx-action@v3
+        with:
+          driver: docker-container
+          driver-opts: network=host
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ secrets.GHCR_USER }}
+          password: ${{ secrets.GHCR_TOKEN }}
+
+      - name: Write the private-module token for BuildKit
+        # Stripped of trailing whitespace on purpose. Dockerfile:50 interpolates
+        # this into a URL:
+        #   git config url."https://x-access-token:$(cat /run/secrets/gh_token)@github.com/"
+        # so a single trailing newline in the stored secret truncates the URL at
+        # it and git resolves the credential prefix as the HOST:
+        #   Could not resolve host: x-access-token
+        # luxfi/node hit exactly this. The secret's bytes are not ours to
+        # control, so the trim happens here.
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s' '${{ secrets.UNIVERSE_PAT }}' | tr -d '\r\n' > "${RUNNER_TEMP}/gh_token"
+          if [ ! -s "${RUNNER_TEMP}/gh_token" ]; then
+            echo "::error::UNIVERSE_PAT is empty — the luxfi/hsm module fetch will fail"
+            exit 1
+          fi
+
+      - name: Build and push (${{ matrix.arch }})
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/${{ matrix.arch }}
+          secrets: |
+            gh_token=${{ runner.temp }}/gh_token
+          provenance: false
+          push: true
+          tags: ghcr.io/luxfi/mpc:${{ github.ref_name }}-${{ matrix.arch }}
+
+  manifest:
+    needs: image
+    runs-on: [lux-build-linux-amd64]
+    timeout-minutes: 20
+    steps:
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ secrets.GHCR_USER }}
+          password: ${{ secrets.GHCR_TOKEN }}
+      - name: Compose the multi-arch tag
+        # imagetools, not `docker manifest create`: `docker buildx build --push`
+        # emits a per-arch OCI index, and `docker manifest create` rejects those
+        # ("X is a manifest list"). imagetools handles them.
+        run: |
+          set -euo pipefail
+          IMG=ghcr.io/luxfi/mpc
+          TAG='${{ github.ref_name }}'
+          docker buildx imagetools create -t "$IMG:$TAG" \
+            "$IMG:${TAG}-amd64" \
+            "$IMG:${TAG}-arm64"
+
+      - name: Verify the pushed manifest resolves
+        # A tag that names nothing pullable is how a deployment ends up pinned
+        # to a phantom: the pin applies, the pod never starts, and the tag looks
+        # like a release. Prove it before the job is green.
+        run: |
+          set -euo pipefail
+          img="ghcr.io/luxfi/mpc:${{ github.ref_name }}"
+          for i in 1 2 3 4 5 6; do
+            if docker manifest inspect "$img" >/dev/null 2>&1; then
+              echo "$img is resolvable"; exit 0
+            fi
+            echo "manifest not visible yet (attempt ${i}/6) — retrying"; sleep 5
+          done
+          echo "::error::$img not pullable after push"; exit 1
+
+  binaries:
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+    # arm64 cross-compiles via GOARCH; CGO_ENABLED=0 keeps it pure Go, so one
+    # amd64 runner covers both and no cross-compiler is needed.
+    runs-on: [lux-build-linux-amd64]
+    timeout-minutes: 30
+    # luxfi/* are PUBLIC modules, fetched and checksum-verified through the
+    # default immutable proxy.golang.org + sum.golang.org. No GOPRIVATE /
+    # GONOSUMDB / GOPROXY=direct bypass — those route around the checksum db.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Build (cross-compile via GOARCH)
+        run: |
+          GOWORK=off CGO_ENABLED=0 GOOS=linux GOARCH=${{ matrix.arch }} \
+            go build -trimpath -ldflags="-s -w" -o mpcd ./cmd/mpcd/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mpcd-linux-${{ matrix.arch }}
+          path: mpcd
+
+  release:
+    needs: binaries
+    runs-on: [lux-build-linux-amd64]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist/
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/**/*
+
+  notify:
+    needs: [manifest, release]
+    runs-on: [lux-build-linux-amd64]
+    timeout-minutes: 10
+    steps:
+      - name: Tell luxfi/universe the image is published
+        # Called against api.github.com explicitly. The old workflow used
+        # peter-evans/repository-dispatch, which resolves GITHUB_API_URL — here
+        # that is this forge's API, where a github.com PAT does not authenticate
+        # and luxfi/universe's dispatch endpoint does not live.
+        run: |
+          set -euo pipefail
+          curl -fsSL -X POST https://api.github.com/repos/luxfi/universe/dispatches \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'Authorization: Bearer ${{ secrets.UNIVERSE_PAT }}' \
+            -d '{
+                  "event_type": "image-published",
+                  "client_payload": {
+                    "service": "mpc",
+                    "image": "ghcr.io/luxfi/mpc:${{ github.ref_name }}",
+                    "tag": "${{ github.ref_name }}"
+                  }
+                }'
