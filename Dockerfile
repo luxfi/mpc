@@ -17,7 +17,8 @@ RUN pnpm build
 # MPC — single image ships both daemon (mpcd) + CLI (mpc).
 # Default entrypoint: mpcd. Override ENTRYPOINT / CMD with `mpc <cmd>` for CLI.
 
-FROM --platform=$BUILDPLATFORM golang:1.26.4-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26.5-alpine AS builder
+ENV GOTOOLCHAIN=auto
 # CGO toolchain — required by go-sqlite3 (mattn) so the wallet HTTP API
 # can open SQLite. Previously CGO=0 left the driver unregistered and
 # /v1/mpc/wallets returned 503; the workaround was seeding wallets into
