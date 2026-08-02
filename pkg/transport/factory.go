@@ -136,11 +136,11 @@ func NewFactory(config FactoryConfig) (*Factory, error) {
 
 	// Create transport config
 	transportConfig := &Config{
-		NodeID:       config.NodeID,
-		ListenAddr:   config.ListenAddr,
-		Peers:        config.Peers,
-		PrivateKey:   config.PrivateKey,
-		PublicKey:    config.PublicKey,
+		NodeID:         config.NodeID,
+		ListenAddr:     config.ListenAddr,
+		Peers:          config.Peers,
+		PrivateKey:     config.PrivateKey,
+		PublicKey:      config.PublicKey,
 		ReadTimeout:    DefaultConfig().ReadTimeout,
 		WriteTimeout:   DefaultConfig().WriteTimeout,
 		BufferSize:     DefaultConfig().BufferSize,

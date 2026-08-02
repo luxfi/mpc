@@ -36,14 +36,14 @@ import (
 type GPUArch uint8
 
 const (
-	GPUArchUnknown    GPUArch = 0
-	GPUArchAmpere     GPUArch = 1 // A100, A40, A30, A10
-	GPUArchHopper     GPUArch = 2 // H100, H200 -- first NVIDIA CC TEE
-	GPUArchBlackwell  GPUArch = 3 // B100, B200, GB200 -- second-gen CC + TEE-IO
-	GPUArchAdaLovelace GPUArch = 4 // L40, L40S, RTX Ada
+	GPUArchUnknown      GPUArch = 0
+	GPUArchAmpere       GPUArch = 1 // A100, A40, A30, A10
+	GPUArchHopper       GPUArch = 2 // H100, H200 -- first NVIDIA CC TEE
+	GPUArchBlackwell    GPUArch = 3 // B100, B200, GB200 -- second-gen CC + TEE-IO
+	GPUArchAdaLovelace  GPUArch = 4 // L40, L40S, RTX Ada
 	GPUArchAppleSilicon GPUArch = 5 // Apple M-series (Metal/MPS)
-	GPUArchAMDCDNA    GPUArch = 6 // MI250X, MI300X (ROCm)
-	GPUArchIntelXeHPC GPUArch = 7 // Ponte Vecchio (oneAPI)
+	GPUArchAMDCDNA      GPUArch = 6 // MI250X, MI300X (ROCm)
+	GPUArchIntelXeHPC   GPUArch = 7 // Ponte Vecchio (oneAPI)
 )
 
 // String returns a stable, human-readable name for the GPU arch.

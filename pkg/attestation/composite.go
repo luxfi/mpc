@@ -45,8 +45,8 @@ import (
 	"time"
 
 	"github.com/fxamacker/cbor/v2"
-	lattice "github.com/luxfi/lattice/v7/types"
 	"github.com/luxfi/cc/attest"
+	lattice "github.com/luxfi/lattice/v7/types"
 )
 
 // EnvelopeVersion is the schema version of the CompositeAttestation

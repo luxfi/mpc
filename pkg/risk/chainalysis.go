@@ -46,10 +46,10 @@ func NewChainalysisProvider(endpoint, apiKey string) *ChainalysisProvider {
 // Chainalysis KYT v2 response. We avoid binding to the full schema so
 // the struct stays small and forward-compatible.
 type chainalysisResponse struct {
-	RiskScore string `json:"risk"`           // "Low", "Medium", "High", "Severe"
-	Category  string `json:"riskCategory"`   // category label
-	Asset     string `json:"asset"`
-	Address   string `json:"address"`
+	RiskScore   string  `json:"risk"`         // "Low", "Medium", "High", "Severe"
+	Category    string  `json:"riskCategory"` // category label
+	Asset       string  `json:"asset"`
+	Address     string  `json:"address"`
 	ExposureUsd float64 `json:"exposureUsd"`
 }
 
