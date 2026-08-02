@@ -7,9 +7,10 @@ import (
 
 	"github.com/hanzoai/orm"
 
+	"github.com/luxfi/zap"
+
 	"github.com/luxfi/mpc/pkg/db"
 	"github.com/luxfi/mpc/pkg/logger"
-	"github.com/luxfi/zap"
 )
 
 // ZAP opcodes for MPC API operations (0x0060-0x006F range).

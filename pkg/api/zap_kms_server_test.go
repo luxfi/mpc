@@ -13,8 +13,9 @@ import (
 	"testing"
 	"time"
 
-	kmszap "github.com/luxfi/mpc/pkg/zap"
 	"github.com/luxfi/zap"
+
+	kmszap "github.com/luxfi/mpc/pkg/zap"
 )
 
 // stubBackend implements MPCBackend with deterministic results so tests can
