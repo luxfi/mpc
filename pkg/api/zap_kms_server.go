@@ -22,8 +22,9 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/luxfi/mpc/pkg/logger"
 	"github.com/luxfi/zap"
+
+	"github.com/luxfi/mpc/pkg/logger"
 
 	kmszap "github.com/luxfi/mpc/pkg/zap"
 )
