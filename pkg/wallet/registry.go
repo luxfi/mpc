@@ -29,7 +29,7 @@ type NodeBinding struct {
 	CloudProvider string `json:"cloudProvider"` // aws | gcp | azure | colo | onprem
 	Account       string `json:"account"`       // AWS account id, GCP project, etc.
 	Region        string `json:"region"`
-	HSMProvider   string `json:"hsmProvider"`   // aws-cloudhsm | gcp-cloud-hsm | azure-dedicated-hsm | thales-luna | yubihsm | zymbit | none
+	HSMProvider   string `json:"hsmProvider"` // aws-cloudhsm | gcp-cloud-hsm | azure-dedicated-hsm | thales-luna | yubihsm | zymbit | none
 	HSMKeyID      string `json:"hsmKeyId,omitempty"`
 }
 
@@ -38,7 +38,7 @@ type Wallet struct {
 	ID          string            `json:"id"`
 	OrgID       string            `json:"orgId"`
 	Tier        Tier              `json:"tier"`
-	Chain       string            `json:"chain"`       // CAIP-2: "eip155:1", "bip122:000000000019d6689c085ae165831e93", "solana:mainnet"
+	Chain       string            `json:"chain"` // CAIP-2: "eip155:1", "bip122:000000000019d6689c085ae165831e93", "solana:mainnet"
 	Address     string            `json:"address"`
 	GroupPubKey []byte            `json:"groupPubKey"`
 	Threshold   ThresholdSpec     `json:"threshold"`
@@ -58,19 +58,19 @@ type Registry interface {
 
 // Validation errors. Stable strings — clients match on these.
 var (
-	ErrInvalidTier         = errors.New("invalid wallet tier")
-	ErrThresholdMismatch   = errors.New("wallet threshold does not match tier policy")
-	ErrInsufficientNodes   = errors.New("not enough nodes for tier threshold")
-	ErrNodeFieldMissing    = errors.New("node binding has empty cloud/account/region/hsm")
-	ErrDomainCollision     = errors.New("nodes share cloud+account or HSM provider")
-	ErrInsufficientCloud   = errors.New("nodes do not span enough cloud providers for tier")
-	ErrInsufficientHSM     = errors.New("nodes do not span enough HSM providers for tier")
-	ErrWalletExists        = errors.New("wallet already exists")
-	ErrWalletNotFound      = errors.New("wallet not found")
-	ErrEmptyID             = errors.New("wallet id is required")
-	ErrEmptyOrgID          = errors.New("wallet orgId is required")
-	ErrEmptyAddress        = errors.New("wallet address is required")
-	ErrEmptyChain          = errors.New("wallet chain is required")
+	ErrInvalidTier       = errors.New("invalid wallet tier")
+	ErrThresholdMismatch = errors.New("wallet threshold does not match tier policy")
+	ErrInsufficientNodes = errors.New("not enough nodes for tier threshold")
+	ErrNodeFieldMissing  = errors.New("node binding has empty cloud/account/region/hsm")
+	ErrDomainCollision   = errors.New("nodes share cloud+account or HSM provider")
+	ErrInsufficientCloud = errors.New("nodes do not span enough cloud providers for tier")
+	ErrInsufficientHSM   = errors.New("nodes do not span enough HSM providers for tier")
+	ErrWalletExists      = errors.New("wallet already exists")
+	ErrWalletNotFound    = errors.New("wallet not found")
+	ErrEmptyID           = errors.New("wallet id is required")
+	ErrEmptyOrgID        = errors.New("wallet orgId is required")
+	ErrEmptyAddress      = errors.New("wallet address is required")
+	ErrEmptyChain        = errors.New("wallet chain is required")
 )
 
 // minDistinctCloudProviders is the spread requirement per tier. Cold and DR

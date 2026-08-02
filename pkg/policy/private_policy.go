@@ -59,13 +59,13 @@ type PrivatePolicyEngine struct {
 
 // PrivateRule is a policy rule that operates on encrypted data.
 type PrivateRule struct {
-	ID          string                `json:"id"`
-	Name        string                `json:"name"`
-	Description string                `json:"description"`
-	Priority    int                   `json:"priority"`
-	Conditions  []PrivateCondition    `json:"conditions"`
-	Action      RuleAction            `json:"action"`
-	Enabled     bool                  `json:"enabled"`
+	ID          string             `json:"id"`
+	Name        string             `json:"name"`
+	Description string             `json:"description"`
+	Priority    int                `json:"priority"`
+	Conditions  []PrivateCondition `json:"conditions"`
+	Action      RuleAction         `json:"action"`
+	Enabled     bool               `json:"enabled"`
 }
 
 // PrivateCondition is a condition that can be evaluated on encrypted data.
@@ -101,11 +101,11 @@ type EncryptedTransaction struct {
 	ID              string         `json:"id"`
 	WalletID        string         `json:"wallet_id"`
 	InitiatorID     string         `json:"initiator_id"`
-	Chain           string         `json:"chain"`              // Clear (non-sensitive)
-	Asset           string         `json:"asset"`              // Clear (non-sensitive)
-	EncryptedAmount EncryptedValue `json:"-"`                  // FHE encrypted
-	EncryptedDest   EncryptedValue `json:"-"`                  // FHE encrypted
-	EncryptedSource EncryptedValue `json:"-"`                  // FHE encrypted
+	Chain           string         `json:"chain"` // Clear (non-sensitive)
+	Asset           string         `json:"asset"` // Clear (non-sensitive)
+	EncryptedAmount EncryptedValue `json:"-"`     // FHE encrypted
+	EncryptedDest   EncryptedValue `json:"-"`     // FHE encrypted
+	EncryptedSource EncryptedValue `json:"-"`     // FHE encrypted
 	// Serialized forms for persistence
 	SerializedAmount []byte `json:"encrypted_amount"`
 	SerializedDest   []byte `json:"encrypted_dest"`
@@ -115,8 +115,8 @@ type EncryptedTransaction struct {
 // EncryptedPolicyResult is the result of private policy evaluation.
 type EncryptedPolicyResult struct {
 	// EncryptedAllowed is an encrypted boolean (1 = allowed, 0 = denied)
-	EncryptedAllowed EncryptedValue `json:"-"`
-	SerializedAllowed []byte        `json:"encrypted_allowed"`
+	EncryptedAllowed  EncryptedValue `json:"-"`
+	SerializedAllowed []byte         `json:"encrypted_allowed"`
 	// MatchedRules are the rules that were evaluated (clear, for audit)
 	MatchedRules []string `json:"matched_rules"`
 	// DecryptedResult is populated after threshold decryption

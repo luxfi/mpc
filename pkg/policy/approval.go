@@ -37,21 +37,21 @@ type ApprovalNotifier interface {
 
 // ApprovalRequest represents a pending approval.
 type ApprovalRequest struct {
-	ID               string               `json:"id"`
-	TransactionID    string               `json:"transaction_id"`
-	WalletID         string               `json:"wallet_id"`
-	Transaction      *TransactionRequest  `json:"transaction"`
-	PolicyResult     *PolicyResult        `json:"policy_result"`
-	Status           ApprovalStatus       `json:"status"`
-	RequiredCount    int                  `json:"required_count"`
-	CurrentCount     int                  `json:"current_count"`
-	EligibleSigners  []string             `json:"eligible_signers"`
-	Approvals        []Approval           `json:"approvals"`
-	Rejections       []Rejection          `json:"rejections"`
-	CreatedAt        time.Time            `json:"created_at"`
-	UpdatedAt        time.Time            `json:"updated_at"`
-	ExpiresAt        time.Time            `json:"expires_at"`
-	CompletedAt      *time.Time           `json:"completed_at,omitempty"`
+	ID              string              `json:"id"`
+	TransactionID   string              `json:"transaction_id"`
+	WalletID        string              `json:"wallet_id"`
+	Transaction     *TransactionRequest `json:"transaction"`
+	PolicyResult    *PolicyResult       `json:"policy_result"`
+	Status          ApprovalStatus      `json:"status"`
+	RequiredCount   int                 `json:"required_count"`
+	CurrentCount    int                 `json:"current_count"`
+	EligibleSigners []string            `json:"eligible_signers"`
+	Approvals       []Approval          `json:"approvals"`
+	Rejections      []Rejection         `json:"rejections"`
+	CreatedAt       time.Time           `json:"created_at"`
+	UpdatedAt       time.Time           `json:"updated_at"`
+	ExpiresAt       time.Time           `json:"expires_at"`
+	CompletedAt     *time.Time          `json:"completed_at,omitempty"`
 }
 
 // ApprovalStatus is the status of an approval request.
@@ -403,18 +403,18 @@ type AuditLog struct {
 
 // AuditEntry is a single audit log entry.
 type AuditEntry struct {
-	ID          string                 `json:"id"`
-	Timestamp   time.Time              `json:"timestamp"`
-	Type        AuditEventType         `json:"type"`
-	ActorID     string                 `json:"actor_id"`
-	ActorName   string                 `json:"actor_name"`
-	ActorIP     string                 `json:"actor_ip,omitempty"`
-	Resource    string                 `json:"resource"`      // wallet_id, signer_id, etc.
-	ResourceType string                `json:"resource_type"` // wallet, signer, transaction, etc.
-	Action      string                 `json:"action"`
-	Details     map[string]interface{} `json:"details"`
-	Result      string                 `json:"result"` // success, failure
-	Error       string                 `json:"error,omitempty"`
+	ID           string                 `json:"id"`
+	Timestamp    time.Time              `json:"timestamp"`
+	Type         AuditEventType         `json:"type"`
+	ActorID      string                 `json:"actor_id"`
+	ActorName    string                 `json:"actor_name"`
+	ActorIP      string                 `json:"actor_ip,omitempty"`
+	Resource     string                 `json:"resource"`      // wallet_id, signer_id, etc.
+	ResourceType string                 `json:"resource_type"` // wallet, signer, transaction, etc.
+	Action       string                 `json:"action"`
+	Details      map[string]interface{} `json:"details"`
+	Result       string                 `json:"result"` // success, failure
+	Error        string                 `json:"error,omitempty"`
 }
 
 // AuditEventType is the type of audit event.

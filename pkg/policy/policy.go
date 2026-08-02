@@ -41,9 +41,9 @@ type Signer struct {
 	ID          string            `json:"id"`
 	Name        string            `json:"name"`
 	Email       string            `json:"email"`
-	PublicKey   string            `json:"public_key"`   // Ed25519 public key for verification
+	PublicKey   string            `json:"public_key"` // Ed25519 public key for verification
 	Role        SignerRole        `json:"role"`
-	Groups      []string          `json:"groups"`       // Group memberships
+	Groups      []string          `json:"groups"` // Group memberships
 	Permissions []Permission      `json:"permissions"`
 	SpendLimits map[string]*Limit `json:"spend_limits"` // Per-asset limits
 	CreatedAt   time.Time         `json:"created_at"`
@@ -55,11 +55,11 @@ type Signer struct {
 type SignerRole string
 
 const (
-	RoleOwner     SignerRole = "owner"      // Full control, can add/remove signers
-	RoleAdmin     SignerRole = "admin"      // Can manage wallets and approve
-	RoleApprover  SignerRole = "approver"   // Can approve transactions
-	RoleInitiator SignerRole = "initiator"  // Can create but not approve
-	RoleViewer    SignerRole = "viewer"     // Read-only access
+	RoleOwner     SignerRole = "owner"     // Full control, can add/remove signers
+	RoleAdmin     SignerRole = "admin"     // Can manage wallets and approve
+	RoleApprover  SignerRole = "approver"  // Can approve transactions
+	RoleInitiator SignerRole = "initiator" // Can create but not approve
+	RoleViewer    SignerRole = "viewer"    // Read-only access
 )
 
 // SignerStatus is the status of a signer.
@@ -67,7 +67,7 @@ type SignerStatus string
 
 const (
 	StatusActive    SignerStatus = "active"
-	StatusPending   SignerStatus = "pending"   // Awaiting approval
+	StatusPending   SignerStatus = "pending" // Awaiting approval
 	StatusSuspended SignerStatus = "suspended"
 	StatusRevoked   SignerStatus = "revoked"
 )
@@ -76,7 +76,7 @@ const (
 type Permission string
 
 const (
-	PermCreateTransaction Permission = "create_transaction"
+	PermCreateTransaction  Permission = "create_transaction"
 	PermApproveTransaction Permission = "approve_transaction"
 	PermRejectTransaction  Permission = "reject_transaction"
 	PermViewTransaction    Permission = "view_transaction"
@@ -132,16 +132,16 @@ type PolicyDefaults struct {
 
 // Rule defines a policy rule.
 type Rule struct {
-	ID          string        `json:"id"`
-	Name        string        `json:"name"`
-	Description string        `json:"description"`
-	Priority    int           `json:"priority"` // Lower = higher priority
-	Conditions  []Condition   `json:"conditions"`
-	Action      RuleAction    `json:"action"`
-	Signers     SignerConfig  `json:"signers"`      // Who must approve if action is REQUIRE_APPROVAL
-	TimeWindow  *TimeWindow   `json:"time_window"`  // Optional time restrictions
-	RateLimits  []RateLimit   `json:"rate_limits"`  // Optional rate limiting
-	Enabled     bool          `json:"enabled"`
+	ID          string       `json:"id"`
+	Name        string       `json:"name"`
+	Description string       `json:"description"`
+	Priority    int          `json:"priority"` // Lower = higher priority
+	Conditions  []Condition  `json:"conditions"`
+	Action      RuleAction   `json:"action"`
+	Signers     SignerConfig `json:"signers"`     // Who must approve if action is REQUIRE_APPROVAL
+	TimeWindow  *TimeWindow  `json:"time_window"` // Optional time restrictions
+	RateLimits  []RateLimit  `json:"rate_limits"` // Optional rate limiting
+	Enabled     bool         `json:"enabled"`
 }
 
 // RuleAction is the action to take when a rule matches.
@@ -157,12 +157,12 @@ const (
 
 // SignerConfig specifies who must approve.
 type SignerConfig struct {
-	RequiredCount int      `json:"required_count"` // Number of approvals needed
-	FromGroups    []string `json:"from_groups"`    // Must be from these groups
-	FromSigners   []string `json:"from_signers"`   // Must be from these signers
-	ExcludeSigners []string `json:"exclude_signers"` // Cannot be from these signers
-	Weighted      bool     `json:"weighted"`       // Use weight-based threshold
-	WeightThreshold int    `json:"weight_threshold"` // Required weight if weighted
+	RequiredCount   int      `json:"required_count"`   // Number of approvals needed
+	FromGroups      []string `json:"from_groups"`      // Must be from these groups
+	FromSigners     []string `json:"from_signers"`     // Must be from these signers
+	ExcludeSigners  []string `json:"exclude_signers"`  // Cannot be from these signers
+	Weighted        bool     `json:"weighted"`         // Use weight-based threshold
+	WeightThreshold int      `json:"weight_threshold"` // Required weight if weighted
 }
 
 // Condition is a single condition in a rule.
@@ -198,26 +198,26 @@ const (
 type Operator string
 
 const (
-	OpEquals           Operator = "eq"
-	OpNotEquals        Operator = "ne"
-	OpGreaterThan      Operator = "gt"
-	OpLessThan         Operator = "lt"
-	OpGreaterOrEqual   Operator = "gte"
-	OpLessOrEqual      Operator = "lte"
-	OpIn               Operator = "in"
-	OpNotIn            Operator = "not_in"
-	OpContains         Operator = "contains"
-	OpStartsWith       Operator = "starts_with"
-	OpEndsWith         Operator = "ends_with"
-	OpMatches          Operator = "matches" // Regex
-	OpBetween          Operator = "between"
+	OpEquals         Operator = "eq"
+	OpNotEquals      Operator = "ne"
+	OpGreaterThan    Operator = "gt"
+	OpLessThan       Operator = "lt"
+	OpGreaterOrEqual Operator = "gte"
+	OpLessOrEqual    Operator = "lte"
+	OpIn             Operator = "in"
+	OpNotIn          Operator = "not_in"
+	OpContains       Operator = "contains"
+	OpStartsWith     Operator = "starts_with"
+	OpEndsWith       Operator = "ends_with"
+	OpMatches        Operator = "matches" // Regex
+	OpBetween        Operator = "between"
 )
 
 // TimeWindow restricts when transactions can be executed.
 type TimeWindow struct {
-	Timezone   string   `json:"timezone"`    // IANA timezone
-	StartHour  int      `json:"start_hour"`  // 0-23
-	EndHour    int      `json:"end_hour"`    // 0-23
+	Timezone    string   `json:"timezone"`     // IANA timezone
+	StartHour   int      `json:"start_hour"`   // 0-23
+	EndHour     int      `json:"end_hour"`     // 0-23
 	AllowedDays []string `json:"allowed_days"` // ["monday", "tuesday", ...]
 }
 
@@ -252,14 +252,14 @@ type TransactionRequest struct {
 
 // PolicyResult is the result of policy evaluation.
 type PolicyResult struct {
-	Allowed        bool           `json:"allowed"`
-	Action         RuleAction     `json:"action"`
-	MatchedRules   []string       `json:"matched_rules"`
-	RequiredSigners []string      `json:"required_signers,omitempty"`
-	RequiredCount  int            `json:"required_count,omitempty"`
-	DenyReason     string         `json:"deny_reason,omitempty"`
-	Warnings       []string       `json:"warnings,omitempty"`
-	DelayUntil     *time.Time     `json:"delay_until,omitempty"`
+	Allowed         bool       `json:"allowed"`
+	Action          RuleAction `json:"action"`
+	MatchedRules    []string   `json:"matched_rules"`
+	RequiredSigners []string   `json:"required_signers,omitempty"`
+	RequiredCount   int        `json:"required_count,omitempty"`
+	DenyReason      string     `json:"deny_reason,omitempty"`
+	Warnings        []string   `json:"warnings,omitempty"`
+	DelayUntil      *time.Time `json:"delay_until,omitempty"`
 }
 
 // ============================================================
@@ -722,9 +722,9 @@ func contains[T comparable](slice []T, item T) bool {
 // MarshalJSON marshals the policy engine state.
 func (e *PolicyEngine) MarshalJSON() ([]byte, error) {
 	state := struct {
-		Rules          []Rule                    `json:"rules"`
-		Signers        map[string]*Signer        `json:"signers"`
-		WalletPolicies map[string]*WalletPolicy  `json:"wallet_policies"`
+		Rules          []Rule                   `json:"rules"`
+		Signers        map[string]*Signer       `json:"signers"`
+		WalletPolicies map[string]*WalletPolicy `json:"wallet_policies"`
 	}{
 		Rules:          e.rules,
 		Signers:        e.signers,
@@ -736,9 +736,9 @@ func (e *PolicyEngine) MarshalJSON() ([]byte, error) {
 // UnmarshalJSON unmarshals the policy engine state.
 func (e *PolicyEngine) UnmarshalJSON(data []byte) error {
 	var state struct {
-		Rules          []Rule                    `json:"rules"`
-		Signers        map[string]*Signer        `json:"signers"`
-		WalletPolicies map[string]*WalletPolicy  `json:"wallet_policies"`
+		Rules          []Rule                   `json:"rules"`
+		Signers        map[string]*Signer       `json:"signers"`
+		WalletPolicies map[string]*WalletPolicy `json:"wallet_policies"`
 	}
 	if err := json.Unmarshal(data, &state); err != nil {
 		return err

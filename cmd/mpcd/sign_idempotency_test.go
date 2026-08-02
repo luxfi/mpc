@@ -167,8 +167,8 @@ func TestSignIdempotency_ConcurrentSingleFlight(t *testing.T) {
 			results[i], errs[i] = c.Do("idem-hot", f, []byte{0x07}, signer)
 		}(i)
 	}
-	close(start)            // fire all goroutines
-	close(release)          // let the in-flight signer return
+	close(start)   // fire all goroutines
+	close(release) // let the in-flight signer return
 	wg.Wait()
 
 	if calls.Load() != 1 {

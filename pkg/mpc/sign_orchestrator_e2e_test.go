@@ -29,7 +29,9 @@ type nodeCtxE2E struct {
 	pubKey  ed25519.PublicKey
 	privKey ed25519.PrivateKey
 	gate    *mpc.SignGate
-	sink    interface{ All() []intent.NodeAttestation }
+	sink    interface {
+		All() []intent.NodeAttestation
+	}
 }
 
 type signerKeyE2E struct {

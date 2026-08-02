@@ -211,18 +211,18 @@ func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, o
 	}
 
 	s := &Server{
-		db:                   database,
-		mpc:                  mpcBackend,
-		txTracker:            tracker,
-		jwtSecret:            []byte(jwtSecret),
-		oidcIssuers:          oidcIssuers,
-		webauthnRPID:         rpID,
-		webauthnOrigins:      webauthnOrigins,
+		db:                  database,
+		mpc:                 mpcBackend,
+		txTracker:           tracker,
+		jwtSecret:           []byte(jwtSecret),
+		oidcIssuers:         oidcIssuers,
+		webauthnRPID:        rpID,
+		webauthnOrigins:     webauthnOrigins,
 		livenessVerifier:    livenessVerifier,
 		livenessProviderID:  livenessProviderID,
 		livenessBindingMode: bindingMode,
-		replayGuard:          newReplayGuard(),
-		Events:               NewEventBus(),
+		replayGuard:         newReplayGuard(),
+		Events:              NewEventBus(),
 	}
 
 	// CORS origins — Lux infrastructure only. Tenants add via MPC_CORS_ORIGINS env.

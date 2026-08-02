@@ -50,10 +50,10 @@ func parseLimit(s string) (limit, error) {
 
 // Errors stable for client matching.
 var (
-	ErrPerTxLimitExceeded   = errors.New("per-transaction limit exceeded")
-	ErrDailyLimitExceeded   = errors.New("daily limit exceeded")
-	ErrVelocityExceeded     = errors.New("velocity limit exceeded")
-	ErrUsageWalletUnknown   = errors.New("usage record not found")
+	ErrPerTxLimitExceeded = errors.New("per-transaction limit exceeded")
+	ErrDailyLimitExceeded = errors.New("daily limit exceeded")
+	ErrVelocityExceeded   = errors.New("velocity limit exceeded")
+	ErrUsageWalletUnknown = errors.New("usage record not found")
 )
 
 // velocityHit is one previous successful charge in the velocity window.
@@ -86,16 +86,16 @@ func newCounters() *counters {
 
 // UsageView is the snapshot returned to the API.
 type UsageView struct {
-	WalletID         string   `json:"walletId"`
-	DailyDate        string   `json:"dailyDate"`
-	DailyUsedWei     string   `json:"dailyUsedWei"`
-	DailyLimitWei    string   `json:"dailyLimitWei"`
-	DailyRemaining   string   `json:"dailyRemainingWei"`
-	VelocityWindow   string   `json:"velocityWindow"`
-	VelocityUsedWei  string   `json:"velocityUsedWei"`
-	VelocityLimitWei string   `json:"velocityLimitWei"`
-	PerTxLimitWei    string   `json:"perTxLimitWei"`
-	HitsInWindow     int      `json:"hitsInWindow"`
+	WalletID         string `json:"walletId"`
+	DailyDate        string `json:"dailyDate"`
+	DailyUsedWei     string `json:"dailyUsedWei"`
+	DailyLimitWei    string `json:"dailyLimitWei"`
+	DailyRemaining   string `json:"dailyRemainingWei"`
+	VelocityWindow   string `json:"velocityWindow"`
+	VelocityUsedWei  string `json:"velocityUsedWei"`
+	VelocityLimitWei string `json:"velocityLimitWei"`
+	PerTxLimitWei    string `json:"perTxLimitWei"`
+	HitsInWindow     int    `json:"hitsInWindow"`
 }
 
 // UsageStore is the per-process velocity accounting layer.

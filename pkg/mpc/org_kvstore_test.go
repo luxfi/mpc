@@ -35,7 +35,7 @@ func (m *mockKVStore) Delete(key string) error {
 	return nil
 }
 
-func (m *mockKVStore) Close() error { return nil }
+func (m *mockKVStore) Close() error  { return nil }
 func (m *mockKVStore) Backup() error { return nil }
 
 func TestOrgScopedKey(t *testing.T) {

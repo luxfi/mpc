@@ -68,21 +68,21 @@ type ThresholdSpec struct {
 // declared up-front — no defaults, no "zero means unlimited". A policy with
 // DailyLimitWei="0" means no operations allowed; "" is invalid.
 type TierPolicy struct {
-	Tier                       Tier          `json:"tier"`
-	MPCThreshold               ThresholdSpec `json:"mpcThreshold"`
-	HumanApprovalsMin          int           `json:"humanApprovalsMin"`
-	HumanApprovalsLargeAmount  string        `json:"humanApprovalsLargeAmount"` // base-10 wei threshold; "" = no large-amount escalation
-	HumanApprovalsLarge        int           `json:"humanApprovalsLarge"`       // count when value >= HumanApprovalsLargeAmount
-	AllowlistRequired          bool          `json:"allowlistRequired"`
-	DailyLimitWei              string        `json:"dailyLimitWei"`             // base-10 wei; "0" = none, "inf" = unbounded
-	PerTxLimitWei              string        `json:"perTxLimitWei"`
-	VelocityWindow             time.Duration `json:"velocityWindow"`
-	VelocityLimitWei           string        `json:"velocityLimitWei"`
-	TimelockDuration           time.Duration `json:"timelockDuration"`
-	AirgappedRequired          bool          `json:"airgappedRequired"`
-	NodeDomainSeparation       bool          `json:"nodeDomainSeparation"`
-	KYTRequired                bool          `json:"kytRequired"`
-	AllowAutoApproval          bool          `json:"allowAutoApproval"`
+	Tier                      Tier          `json:"tier"`
+	MPCThreshold              ThresholdSpec `json:"mpcThreshold"`
+	HumanApprovalsMin         int           `json:"humanApprovalsMin"`
+	HumanApprovalsLargeAmount string        `json:"humanApprovalsLargeAmount"` // base-10 wei threshold; "" = no large-amount escalation
+	HumanApprovalsLarge       int           `json:"humanApprovalsLarge"`       // count when value >= HumanApprovalsLargeAmount
+	AllowlistRequired         bool          `json:"allowlistRequired"`
+	DailyLimitWei             string        `json:"dailyLimitWei"` // base-10 wei; "0" = none, "inf" = unbounded
+	PerTxLimitWei             string        `json:"perTxLimitWei"`
+	VelocityWindow            time.Duration `json:"velocityWindow"`
+	VelocityLimitWei          string        `json:"velocityLimitWei"`
+	TimelockDuration          time.Duration `json:"timelockDuration"`
+	AirgappedRequired         bool          `json:"airgappedRequired"`
+	NodeDomainSeparation      bool          `json:"nodeDomainSeparation"`
+	KYTRequired               bool          `json:"kytRequired"`
+	AllowAutoApproval         bool          `json:"allowAutoApproval"`
 }
 
 // standardPolicies is the immutable canonical map. Built once at init().
@@ -99,10 +99,10 @@ func init() {
 			HumanApprovalsLargeAmount: "1000000000000000000", // 1 ETH
 			HumanApprovalsLarge:       1,
 			AllowlistRequired:         true,
-			DailyLimitWei:             "100000000000000000000",  // 100 ETH
-			PerTxLimitWei:             "10000000000000000000",   // 10 ETH
+			DailyLimitWei:             "100000000000000000000", // 100 ETH
+			PerTxLimitWei:             "10000000000000000000",  // 10 ETH
 			VelocityWindow:            time.Hour,
-			VelocityLimitWei:          "20000000000000000000",   // 20 ETH/hr
+			VelocityLimitWei:          "20000000000000000000", // 20 ETH/hr
 			TimelockDuration:          0,
 			AirgappedRequired:         false,
 			NodeDomainSeparation:      true,
@@ -119,7 +119,7 @@ func init() {
 			DailyLimitWei:             "1000000000000000000000", // 1000 ETH
 			PerTxLimitWei:             "100000000000000000000",  // 100 ETH
 			VelocityWindow:            time.Hour,
-			VelocityLimitWei:          "200000000000000000000",  // 200 ETH/hr
+			VelocityLimitWei:          "200000000000000000000", // 200 ETH/hr
 			TimelockDuration:          0,
 			AirgappedRequired:         false,
 			NodeDomainSeparation:      true,
@@ -150,10 +150,10 @@ func init() {
 			HumanApprovalsLargeAmount: "100000000000000000", // 0.1 ETH — anything bigger than gas is suspect
 			HumanApprovalsLarge:       1,
 			AllowlistRequired:         true,
-			DailyLimitWei:             "1000000000000000000",  // 1 ETH/day
-			PerTxLimitWei:             "100000000000000000",   // 0.1 ETH/tx
+			DailyLimitWei:             "1000000000000000000", // 1 ETH/day
+			PerTxLimitWei:             "100000000000000000",  // 0.1 ETH/tx
 			VelocityWindow:            time.Hour,
-			VelocityLimitWei:          "200000000000000000",   // 0.2 ETH/hr
+			VelocityLimitWei:          "200000000000000000", // 0.2 ETH/hr
 			TimelockDuration:          0,
 			AirgappedRequired:         false,
 			NodeDomainSeparation:      false,
@@ -167,10 +167,10 @@ func init() {
 			HumanApprovalsLargeAmount: "10000000000000000000", // 10 ETH per bridge route
 			HumanApprovalsLarge:       2,
 			AllowlistRequired:         true,
-			DailyLimitWei:             "500000000000000000000",  // 500 ETH
-			PerTxLimitWei:             "50000000000000000000",   // 50 ETH
+			DailyLimitWei:             "500000000000000000000", // 500 ETH
+			PerTxLimitWei:             "50000000000000000000",  // 50 ETH
 			VelocityWindow:            time.Hour,
-			VelocityLimitWei:          "100000000000000000000",  // 100 ETH/hr
+			VelocityLimitWei:          "100000000000000000000", // 100 ETH/hr
 			TimelockDuration:          0,
 			AirgappedRequired:         false,
 			NodeDomainSeparation:      true,

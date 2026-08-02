@@ -33,9 +33,9 @@ type DrainRequest struct {
 // the failed gate.
 //
 // Algorithm:
-//   1. Resolve the WorkloadPolicy.
-//   2. Filter Workers by Eligible(p) AND ID != NodeID.
-//   3. If len(remaining) < Threshold → reject.
+//  1. Resolve the WorkloadPolicy.
+//  2. Filter Workers by Eligible(p) AND ID != NodeID.
+//  3. If len(remaining) < Threshold → reject.
 //
 // Workers that are already ineligible BEFORE the drain are not counted —
 // the drain cannot improve their state, but it must not also remove a
