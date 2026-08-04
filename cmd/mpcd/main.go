@@ -321,6 +321,38 @@ func keygenDegreeForThreshold(threshold int) int {
 	return threshold - 1
 }
 
+// isSelfAddr reports whether a --peer address names THIS node.
+//
+// Two forms count, and neither is a guess:
+//   - the address equals the node's own --listen (identical spelling), or
+//   - its host's FIRST DNS LABEL equals the node id. That is the k8s
+//     StatefulSet shape and the only one this fleet uses:
+//     `mpc-node-0.mpc-node-headless.hanzo-mpc.svc.cluster.local:9999` on the
+//     pod whose id is `mpc-node-0`. The label is compared whole, so
+//     `mpc-node-10` never matches `mpc-node-1`.
+//
+// Anything else is a peer. A false negative merely restores the old
+// double-count; a false positive would drop a real peer, so the match is
+// deliberately exact rather than a prefix test.
+func isSelfAddr(addr, nodeID, listenAddr string) bool {
+	addr = strings.TrimSpace(addr)
+	if addr == "" || nodeID == "" {
+		return false
+	}
+	if addr == listenAddr {
+		return true
+	}
+	host := addr
+	if h, _, err := net.SplitHostPort(addr); err == nil {
+		host = h
+	}
+	label := host
+	if i := strings.IndexByte(host, '.'); i >= 0 {
+		label = host[:i]
+	}
+	return label == nodeID
+}
+
 func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 	nodeID := c.String("node-id")
 	listenAddr := c.String("listen")
@@ -383,17 +415,41 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 	// Create consensus identity store for verifying messages
 	consensusIdentity := NewConsensusIdentityStore(nodeID, privKey, pubKey)
 
-	// Build peer map
+	// Build peer map. Self is in it deliberately (the transport's address book
+	// needs its own address), keyed by the REAL node id — every other entry is a
+	// peer.
+	//
+	// A --peer that IS this node is dropped, and that is what makes the ordinary
+	// k8s deployment correct: a StatefulSet renders ONE command for every
+	// replica, so the natural spelling passes the whole ensemble to each node
+	// (`--peer=mpc-node-0… --peer=mpc-node-1… --peer=mpc-node-2…`) and each one
+	// receives itself. Without this drop, self is counted TWICE — once as
+	// `nodeID`, once as a synthetic `peer-N` — so a 3-node fleet reports 4
+	// expected members and can never satisfy the all-ready equality that gates
+	// KEYGEN. Measured on hanzo-mpc: `ready=5 expected=4`, forever, with
+	// `signing_quorum: true` beside it (signing uses >=, so only keygen was
+	// dead) — every crypto deposit-address request answered 503 "peers not
+	// ready" while the fleet looked healthy.
+	//
+	// Self is recognised by ADDRESS, because that is the only form the flag
+	// carries here: an unprefixed --peer gets a positional `peer-N` id that
+	// cannot match a real node id by construction.
 	peerMap := make(map[string]string)
 	peerMap[nodeID] = listenAddr
 	for i, peer := range peers {
 		// Parse peer address - format: "nodeID@host:port" or just "host:port"
 		parts := strings.SplitN(peer, "@", 2)
 		if len(parts) == 2 {
+			if parts[0] == nodeID || isSelfAddr(parts[1], nodeID, listenAddr) {
+				continue
+			}
 			peerMap[parts[0]] = parts[1]
-		} else {
-			peerMap[fmt.Sprintf("peer-%d", i)] = peer
+			continue
 		}
+		if isSelfAddr(peer, nodeID, listenAddr) {
+			continue
+		}
+		peerMap[fmt.Sprintf("peer-%d", i)] = peer
 	}
 
 	// Get ZapDB password via HSM provider (supports AWS KMS, GCP Cloud KMS, Azure Key Vault, env, file)
