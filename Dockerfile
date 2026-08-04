@@ -41,6 +41,20 @@ ENV GOFLAGS=-mod=mod
 WORKDIR /app
 COPY . .
 COPY --from=ui /ui/dist ./ui/dist/
+
+# go.work names ../threshold — a SIBLING CHECKOUT. That is right for a developer
+# (the comment above it says so) and impossible in a container: the build context
+# is this repo alone, so `../threshold` resolves to /threshold, which does not
+# exist, and `go mod download all` dies before a single package compiles. Every
+# containerized build has failed that way since the entry landed — v1.17.16 and
+# v1.17.17 are tags with no image, and the fleet still runs v1.17.15.
+#
+# GOWORK=off is the fix, not deleting the entry: the workspace is a local
+# convenience, while the BUILD must resolve the published module graph — go.mod
+# already pins github.com/luxfi/threshold v1.12.5, so the proxy has it. Set for
+# every stage below (download and both builds) so a workspace file can never
+# again decide what a release contains.
+ENV GOWORK=off
 # Regenerate go.sum from the actual fetch sources (proxy for public modules,
 # authed git for private luxfi/hsm). Several first-party modules were re-tagged
 # or freshly published, so the proxy vs git content hashes drift and the
