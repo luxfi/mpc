@@ -147,7 +147,14 @@ func (r *Registry) checkPeerConnections() {
 	}
 
 	// Update overall ready status
-	allReady := len(connectedPeers) == len(r.peerNodeIDs)
+	// >=, never ==. Equality reads an OVERSHOOT as not-ready, and an overshoot
+	// is not a failure — it is a node that appears twice (self passed in its own
+	// --peer list) or one that rejoined under a second identity. On hanzo-mpc
+	// that arithmetic wedged KEYGEN permanently at `ready=5 expected=4` while
+	// signing (which already used >=) kept working, so the fleet read healthy
+	// and every new custody address was refused. A readiness gate must fail
+	// closed on TOO FEW, never on too many.
+	allReady := len(connectedPeers) >= len(r.peerNodeIDs)
 	wasReady := r.ready.Load()
 
 	if allReady && !wasReady {
@@ -188,7 +195,8 @@ func (r *Registry) handleReadySignal(msg *Message) {
 	}
 
 	// Update overall ready status
-	allReady := atomic.LoadInt64(&r.readyCount) == int64(len(r.peerNodeIDs)+1)
+	// >= for the same reason as above: too many ready peers is not too few.
+	allReady := atomic.LoadInt64(&r.readyCount) >= int64(len(r.peerNodeIDs)+1)
 	if allReady && !r.ready.Load() {
 		r.ready.Store(true)
 		logger.Info("ALL PEERS ARE READY! Starting to accept MPC requests")
