@@ -1,6 +1,6 @@
 module github.com/luxfi/mpc
 
-go 1.26.4
+go 1.26.5
 
 require (
 	cloud.google.com/go/kms v1.27.0
@@ -109,6 +109,7 @@ require (
 	github.com/go-ozzo/ozzo-validation/v4 v4.3.0 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
+	github.com/golang-jwt/jwt/v4 v4.5.2 // indirect
 	github.com/golang/mock v1.6.0 // indirect
 	github.com/google/flatbuffers v25.12.19+incompatible // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
@@ -123,6 +124,7 @@ require (
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.3 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.28.0 // indirect
 	github.com/gtank/merlin v0.1.1 // indirect
+	github.com/hanzoai/iamsdk/v2 v2.2.2
 	github.com/hanzoai/kv-go/v9 v9.18.0 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect

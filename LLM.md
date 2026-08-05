@@ -2,15 +2,36 @@
 
 This document provides comprehensive guidance for AI assistants working with the MPC (Multi-Party Computation) codebase.
 
-## v1.14.0 — pkg/zapauth (LP-103)
+## KMS-facing ZAP port — how a peer earns a signature
 
-Bearer-token gate on the KMS-facing ZAP server. JWKS-validated JWT
-presented in `OpAuthHello` (0x00EF) BEFORE the X25519+ML-KEM-768
-handshake. Configured via `ZAP_JWKS_URL`, `ZAP_EXPECTED_ISS`,
-`ZAP_EXPECTED_AUDIENCES`, `ZAP_AUTH_REQUIRED`. See `docs/zap-auth.md`.
-Backwards compatible: defaults to `auth=off`; flips to `auth=required`
-once every KMS deploys with bearer minting (luxfi/kms v1.9.0
-`pkg/iamclient`).
+`pkg/api/zap_kms_server.go` serves threshold operations to KMS. A peer is
+served only after BOTH:
+
+1. the X25519+ML-KEM-768 handshake (`pkg/zap`, 0x00F0/0x00F1) — hybrid is
+   required, a peer that clears the ML-KEM bit is refused; and
+2. `OpAuth` (0x00F2) — a native Hanzo IAM access token, sealed under the
+   session key that handshake produced, verified with `hanzoai/iamsdk`
+   against IAM's JWKS.
+
+Config: `IAM_ENDPOINT` (issuer + JWKS source) and `MPC_IAM_OWNER` (the org
+this node serves). `--kms-zap-listen` with IAM unconfigured is fatal —
+this port hands out signatures, so it must not run unable to identify
+callers.
+
+The credential goes AFTER the handshake, never before: sent ahead of key
+agreement it would ride in the clear and be replayable. Sealing binds it
+to the session, since only the party that completed the KEM holds the key.
+
+zap's `from` is self-asserted (`zapclient/iface.go`: "NodeID is a hint,
+not a trust anchor"), so it is a map key and nothing more — the AEAD open
+is what authenticates each frame. Do not add an authorization decision
+that reads `from`.
+
+The predecessor, `pkg/zapauth` (LP-103), was removed in e8854f0. It had
+shipped default-OFF twice over (`ZAP_JWKS_URL` unset ⇒ no verifier;
+`ZAP_AUTH_REQUIRED` unset ⇒ advisory), keyed claims to the spoofable
+`from`, and no client ever minted its `OpAuthHello` bearer — so it never
+refused anything in production.
 
 ## 🏭 Production Deployment State (2026-03-02)
 

@@ -1,17 +1,37 @@
 // Package api — KMS-facing ZAP server.
 //
-// This file implements a luxfi/zap node that exposes MPC threshold operations
-// to the KMS control plane. KMS dials this node, runs the ML-KEM-768 hybrid
-// handshake (kms/pkg/zap), then issues opcode-prefixed JSON requests for
-// keygen / sign / reshare / status / wallet lookup. The wire contract is the
-// one defined by kms/pkg/mpc/zap_client.go — opcodes 0x0001-0x0031.
+// This file implements a luxfi/zap node that exposes MPC threshold
+// operations to the KMS control plane. The port hands out threshold
+// signatures over vault keys, so reachability must not equal authority.
 //
-// The existing pkg/api zap server (zap_server.go, opcodes 0x0060+) is for
-// MPC's own dashboard event bus and uses a different wire format. The two
-// servers serve different consumers and run on different ports.
+// # How a peer earns the right to be served
 //
-// Wire format per request: opcode(2 LE) || JSON payload.
-// Response: opcode(2 LE) || JSON body. Errors set top-level "error" string.
+//  1. ClientHello / ServerHello (0x00F0 / 0x00F1) — X25519 + ML-KEM-768,
+//     yielding a 32-byte AES-256-GCM session key. Required, and required
+//     to be hybrid: a peer that clears the ML-KEM bit is refused rather
+//     than silently downgraded.
+//  2. OpAuth (0x00F2) — the peer's native Hanzo IAM access token, sealed
+//     under that key, verified against IAM's published keys.
+//  3. Every KMS opcode after that: the frame must open under the session
+//     key AND the session must carry an unexpired verified identity.
+//
+// Any step missing means refuse. There is no unauthenticated path and no
+// setting that creates one — StartKMSZAP will not build a server without a
+// verifier, so "serve anonymously" is not a reachable state.
+//
+// # Why the peer ID is not the identity
+//
+// luxfi/zap's `from` is a string the peer wrote into its own first frame;
+// zap discards the decode error and never binds it to a key. It is a
+// lookup hint, nothing more. The bind that matters is the AEAD: only the
+// party that completed the KEM holds the session key, so only that party
+// can produce a frame that opens. A peer spoofing another's `from` reaches
+// a session it cannot decrypt, and is refused.
+//
+// Wire format per request: opcode(2 LE) || sealed(JSON payload).
+// Response: opcode(2 LE) || sealed(JSON body). Errors set top-level
+// "error". Handshake frames are the one exception — they predate the key
+// and ride in the clear.
 package api
 
 import (
@@ -21,6 +41,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/luxfi/mpc/pkg/logger"
 	"github.com/luxfi/zap"
@@ -38,35 +59,73 @@ const (
 	OpKMSWallet  uint16 = 0x0020
 )
 
-// KMSZapServer wires MPCBackend onto a luxfi/zap.Node and frames responses in
-// KMS's opcode-prefixed JSON dialect.
+// Identity is the verified IAM principal behind a connection.
+type Identity struct {
+	Subject string    // IAM `sub` — the auditable principal
+	Owner   string    // IAM `owner` — the org this credential acts in
+	Expires time.Time // token expiry; the session dies with it
+}
+
+// IdentityVerifier turns an IAM access token into a verified principal, or
+// an error. Production wires the native Hanzo IAM verifier (zap_kms_iam.go);
+// tests supply one backed by a local JWKS.
+//
+// An implementation MUST verify the signature against IAM's published keys
+// and MUST reject anything it cannot fully check. Returning a nil error
+// grants threshold-signing authority.
+type IdentityVerifier interface {
+	Verify(ctx context.Context, token string) (*Identity, error)
+}
+
+// peer is the post-handshake state for one connection: the AEAD session,
+// and — once OpAuth succeeds — who the peer proved itself to be. A peer
+// with a nil identity has completed the handshake but not authenticated,
+// and may call nothing but OpAuth.
+type peer struct {
+	sess     *kmszap.Session
+	identity *Identity
+}
+
+// authorized returns nil when this peer may run KMS opcodes. Every refusal
+// reason lands here, so there is one answer to "may I serve this frame".
+func (p *peer) authorized() error {
+	if p.identity == nil {
+		return fmt.Errorf("authentication required")
+	}
+	if time.Now().After(p.identity.Expires) {
+		return fmt.Errorf("credential expired")
+	}
+	return nil
+}
+
+// KMSZapServer wires MPCBackend onto a luxfi/zap.Node and frames responses
+// in KMS's opcode-prefixed JSON dialect.
 type KMSZapServer struct {
-	backend MPCBackend
+	backend  MPCBackend
+	verifier IdentityVerifier
 
-	// sessions holds per-peer hybrid handshake state. Once a peer runs the
-	// ML-KEM-768 handshake (opcode 0x00F0), every subsequent request is
-	// AEAD-sealed under the derived session key. A peer with no entry can
-	// still talk in the clear — forward-only fallback so older KMS builds
-	// that pre-date the handshake (#55) keep working until they upgrade.
-	sessions   map[string]*kmszap.Session
-	sessionsMu sync.RWMutex
-
-	// localCaps controls what the server advertises in ServerHello. ML-KEM
-	// is on by default; we never opt out unilaterally.
-	localCaps uint16
+	// peers holds per-connection handshake and identity state, keyed by the
+	// self-asserted `from`. The key is a hint; the AEAD is the bind — see
+	// the package comment.
+	peers   map[string]*peer
+	peersMu sync.RWMutex
 
 	node *zap.Node
 }
 
-// StartKMSZAP creates a luxfi/zap.Node bound to listenAddr and registers KMS
-// opcode handlers. Returns the server (so callers can stop it on shutdown).
+// StartKMSZAP creates a luxfi/zap.Node bound to listenAddr and registers
+// KMS opcode handlers.
 //
-// nodeID is the ZAP advertised identity — KMS uses it as the auditable
-// principal for sign/keygen requests. Every MPC StatefulSet pod gets a unique
-// ID (mpc-kms-zap-<pod>) so KMS audit rows can pin a request to a node.
+// nodeID is the ZAP advertised identity. It labels logs only — the
+// auditable principal is the IAM subject the peer proves, not this string.
 //
-// Trust is enforced at the network boundary (NetworkPolicy + ZAP wire).
-func StartKMSZAP(backend MPCBackend, nodeID, listenAddr string) (*KMSZapServer, error) {
+// verifier is required. Without one the server could not tell a KMS pod
+// from anyone else who can open a socket, so a nil verifier is a startup
+// error rather than a permissive default.
+func StartKMSZAP(backend MPCBackend, nodeID, listenAddr string, verifier IdentityVerifier) (*KMSZapServer, error) {
+	if verifier == nil {
+		return nil, fmt.Errorf("zap: identity verifier is required; this port serves threshold signatures")
+	}
 	port, err := parsePort(listenAddr)
 	if err != nil {
 		return nil, fmt.Errorf("zap: parse listen %q: %w", listenAddr, err)
@@ -80,34 +139,29 @@ func StartKMSZAP(backend MPCBackend, nodeID, listenAddr string) (*KMSZapServer, 
 	})
 
 	s := &KMSZapServer{
-		backend:   backend,
-		sessions:  make(map[string]*kmszap.Session),
-		localCaps: kmszap.CapMLKEM768,
-		node:      node,
+		backend:  backend,
+		verifier: verifier,
+		peers:    make(map[string]*peer),
+		node:     node,
 	}
 
-	// Application-layer hybrid handshake. Distinct opcode so a client can
-	// negotiate before sending any threshold-op payload.
-	node.Handle(kmszap.OpClientHello, s.handleHandshake)
-
-	// KMS opcodes — the public surface.
-	node.Handle(OpKMSStatus, s.handle(s.handleStatus))
-	node.Handle(OpKMSKeygen, s.handle(s.handleKeygen))
-	node.Handle(OpKMSSign, s.handle(s.handleSign))
-	node.Handle(OpKMSReshare, s.handle(s.handleReshare))
-	node.Handle(OpKMSWallet, s.handle(s.handleWallet))
-
-	// Universal type=0 mux: clients that don't set the per-message type
-	// field (zap.Builder default) reach handlers via the opcode embedded in
-	// the body bytes. Mirrors kms/pkg/zapserver Register().
-	node.Handle(0, s.muxByOpcode)
+	// Every opcode — handshake, auth, and the KMS surface — funnels into
+	// the same dispatch. Registering them with separate wrappers is what
+	// let an earlier version enforce a rule on one route and not the other.
+	for _, op := range []uint16{
+		kmszap.OpClientHello, kmszap.OpAuth,
+		OpKMSStatus, OpKMSKeygen, OpKMSSign, OpKMSReshare, OpKMSWallet,
+		0, // type-0 mux: clients that don't set the ZAP message type field
+	} {
+		node.Handle(op, s.serve)
+	}
 
 	if err := node.Start(); err != nil {
 		return nil, fmt.Errorf("zap: start node: %w", err)
 	}
 	logger.Info("KMS ZAP server started",
 		"addr", listenAddr, "nodeID", nodeID,
-		"caps", "X25519+ML-KEM-768")
+		"caps", "X25519+ML-KEM-768", "auth", "hanzo-iam")
 	return s, nil
 }
 
@@ -118,49 +172,51 @@ func (s *KMSZapServer) Stop() {
 	}
 }
 
-// handlerFn is the shape of an op handler before opcode framing.
-type handlerFn func(ctx context.Context, from string, payload []byte) ([]byte, error)
+// handlerFn is the shape of an op handler after the payload is opened and
+// the caller's identity is known.
+type handlerFn func(ctx context.Context, from string, id *Identity, payload []byte) ([]byte, error)
 
-// handle wraps an opcode handler with payload extraction, optional session
-// AEAD, and opcode-prefixed JSON response framing. The opcode comes from
-// the first 2 LE bytes of the body — the same prefix the client wrote.
-func (s *KMSZapServer) handle(op handlerFn) zap.Handler {
-	return func(ctx context.Context, from string, msg *zap.Message) (*zap.Message, error) {
-		raw := extractPayload(msg)
-		if len(raw) < 2 {
-			return s.respond(from, 0, errBody("empty payload")), nil
-		}
-		opcode := binary.LittleEndian.Uint16(raw[:2])
-		payload := raw[2:]
-		// Session-sealed payloads are AEAD-opened before dispatch.
-		if sess := s.session(from); sess != nil {
-			pt, err := sess.Open(kmszap.DirClientToServer, payload)
-			if err != nil {
-				logger.Warn("kms-zap session open failed", "from", from, "op", opcode, "err", err)
-				return s.respond(from, opcode, errBody("session decrypt failed")), nil
-			}
-			payload = pt
-		}
-		body, err := op(ctx, from, payload)
-		if err != nil {
-			logger.Warn("kms-zap handler error", "from", from, "op", opcode, "err", err)
-			return s.respond(from, opcode, errBody(err.Error())), nil
-		}
-		return s.respond(from, opcode, body), nil
-	}
-}
-
-// muxByOpcode dispatches type-0 messages by reading the opcode from the body.
-// Clients that don't set the ZAP message type field land here.
-func (s *KMSZapServer) muxByOpcode(ctx context.Context, from string, msg *zap.Message) (*zap.Message, error) {
+// serve is the ONE path every inbound frame takes. The opcode is read from
+// the body, not the ZAP message type, so a client that leaves the type at
+// zero lands in exactly the same place with exactly the same checks.
+func (s *KMSZapServer) serve(ctx context.Context, from string, msg *zap.Message) (*zap.Message, error) {
 	raw := extractPayload(msg)
 	if len(raw) < 2 {
-		return s.respond(from, 0, errBody("empty payload")), nil
+		return frame(0, errBody("empty payload")), nil
 	}
 	op := binary.LittleEndian.Uint16(raw[:2])
+	body := raw[2:]
+
+	// The handshake predates the session key and so rides in the clear.
 	if op == kmszap.OpClientHello {
-		return s.respondHandshake(from, raw[2:]), nil
+		return s.respondHandshake(from, body), nil
 	}
+
+	// No handshake means no session key, no identity, and nothing to serve.
+	p := s.peer(from)
+	if p == nil {
+		logger.Warn("kms-zap refused: no handshake", "from", from, "op", op)
+		return frame(op, errBody("handshake required")), nil
+	}
+
+	// Opening under the session key is what actually authenticates the
+	// frame's origin. A peer that spoofed `from` to reach this session does
+	// not hold the key and fails here.
+	payload, err := p.sess.Open(kmszap.DirClientToServer, body)
+	if err != nil {
+		logger.Warn("kms-zap refused: session open failed", "from", from, "op", op, "err", err)
+		return frame(op, errBody("session decrypt failed")), nil
+	}
+
+	if op == kmszap.OpAuth {
+		return s.respondAuth(ctx, from, p, payload), nil
+	}
+
+	if err := p.authorized(); err != nil {
+		logger.Warn("kms-zap refused", "from", from, "op", op, "reason", err)
+		return s.respond(p, op, errBody(err.Error())), nil
+	}
+
 	dispatch := map[uint16]handlerFn{
 		OpKMSStatus:  s.handleStatus,
 		OpKMSKeygen:  s.handleKeygen,
@@ -170,23 +226,15 @@ func (s *KMSZapServer) muxByOpcode(ctx context.Context, from string, msg *zap.Me
 	}
 	h, ok := dispatch[op]
 	if !ok {
-		return s.respond(from, op, errBody(fmt.Sprintf("unknown opcode 0x%04x", op))), nil
+		return s.respond(p, op, errBody(fmt.Sprintf("unknown opcode 0x%04x", op))), nil
 	}
-	payload := raw[2:]
-	if sess := s.session(from); sess != nil {
-		pt, err := sess.Open(kmszap.DirClientToServer, payload)
-		if err != nil {
-			logger.Warn("kms-zap mux session open failed", "from", from, "op", op, "err", err)
-			return s.respond(from, op, errBody("session decrypt failed")), nil
-		}
-		payload = pt
-	}
-	body, err := h(ctx, from, payload)
+	out, err := h(ctx, from, p.identity, payload)
 	if err != nil {
-		logger.Warn("kms-zap mux handler error", "from", from, "op", op, "err", err)
-		return s.respond(from, op, errBody(err.Error())), nil
+		logger.Warn("kms-zap handler error", "from", from, "op", op,
+			"sub", p.identity.Subject, "err", err)
+		return s.respond(p, op, errBody(err.Error())), nil
 	}
-	return s.respond(from, op, body), nil
+	return s.respond(p, op, out), nil
 }
 
 // extractPayload pulls the application bytes out of a ZAP message,
@@ -203,18 +251,21 @@ func extractPayload(msg *zap.Message) []byte {
 	return nil
 }
 
-// respond frames opcode(2 LE) || body and seals under the peer's session
-// key when one exists. Output matches what kms/pkg/mpc/zap_client.go expects.
-func (s *KMSZapServer) respond(peerID string, opcode uint16, body []byte) *zap.Message {
-	if sess := s.session(peerID); sess != nil {
-		sealed, err := sess.Seal(kmszap.DirServerToClient, body)
-		if err != nil {
-			logger.Error("kms-zap seal failed", err, "from", peerID)
-			body = errBody("session seal failed")
-		} else {
-			body = sealed
-		}
+// respond frames opcode(2 LE) || sealed(body) for a peer holding a session
+// key.
+func (s *KMSZapServer) respond(p *peer, opcode uint16, body []byte) *zap.Message {
+	sealed, err := p.sess.Seal(kmszap.DirServerToClient, body)
+	if err != nil {
+		logger.Error("kms-zap seal failed", err)
+		// Refusing beats leaking: emit a clear error rather than an
+		// unsealed body the peer would try to decrypt.
+		return frame(opcode, errBody("session seal failed"))
 	}
+	return frame(opcode, sealed)
+}
+
+// frame builds the ZAP message: opcode(2 LE) || body.
+func frame(opcode uint16, body []byte) *zap.Message {
 	out := make([]byte, 2+len(body))
 	binary.LittleEndian.PutUint16(out[0:2], opcode)
 	copy(out[2:], body)
@@ -223,7 +274,7 @@ func (s *KMSZapServer) respond(peerID string, opcode uint16, body []byte) *zap.M
 	m, err := zap.Parse(b.Finish())
 	if err != nil {
 		// Builder output is always parseable — invariant violation.
-		logger.Error("kms-zap respond build failed", err)
+		logger.Error("kms-zap frame build failed", err)
 		return nil
 	}
 	return m
@@ -234,68 +285,73 @@ func errBody(msg string) []byte {
 	return b
 }
 
-// session returns the active hybrid session for a peer, or nil when the
-// peer hasn't run OpClientHello.
-func (s *KMSZapServer) session(peerID string) *kmszap.Session {
-	s.sessionsMu.RLock()
-	defer s.sessionsMu.RUnlock()
-	return s.sessions[peerID]
+// peer returns the connection state for a peer, or nil when it hasn't
+// completed the handshake.
+func (s *KMSZapServer) peer(peerID string) *peer {
+	s.peersMu.RLock()
+	defer s.peersMu.RUnlock()
+	return s.peers[peerID]
 }
 
-// setSession stores a freshly negotiated session, replacing any prior entry.
-func (s *KMSZapServer) setSession(peerID string, sess *kmszap.Session) {
-	s.sessionsMu.Lock()
-	s.sessions[peerID] = sess
-	s.sessionsMu.Unlock()
-}
-
-// handleHandshake is the per-opcode handler for OpClientHello.
-func (s *KMSZapServer) handleHandshake(_ context.Context, from string, msg *zap.Message) (*zap.Message, error) {
-	// Trust is at the network boundary (NetworkPolicy + ZAP wire), not an
-	// application-layer auth gate — see 7600a13 "rip zapauth gate".
-	raw := extractPayload(msg)
-	if len(raw) < 2 {
-		return s.respond(from, kmszap.OpServerHello, errBody("empty handshake payload")), nil
-	}
-	// Strip 2-byte opcode prefix; client mux puts opcode in body.
-	return s.respondHandshake(from, raw[2:]), nil
-}
-
-// respondHandshake runs the server side of the hybrid PQ handshake, installs
-// the session, and returns ServerHello as the response payload (opcode 0x00F1).
+// respondHandshake runs the server side of the hybrid PQ handshake and
+// installs the session. The peer is NOT yet authorized — it holds a key
+// and may call OpAuth, nothing else.
 //
-// ServerHello rides un-AEAD'd because the key only exists after this exchange
-// completes. Subsequent opcodes get sealed automatically.
+// ServerHello rides unsealed because the key only exists once this
+// exchange completes.
 func (s *KMSZapServer) respondHandshake(from string, helloBytes []byte) *zap.Message {
-	replyWire, result, err := kmszap.ServerRespond(s.localCaps, helloBytes)
+	replyWire, result, err := kmszap.ServerRespond(kmszap.CapMLKEM768, helloBytes)
 	if err != nil {
 		logger.Warn("kms-zap handshake failed", "from", from, "err", err)
-		return s.respond(from, kmszap.OpServerHello, errBody(err.Error()))
+		return frame(kmszap.OpServerHello, errBody(err.Error()))
+	}
+	// A peer that clears the ML-KEM bit gets classical-only key agreement.
+	// Both ends of this wire are ours and both advertise it, so the only
+	// party asking for the weaker mode is one that wants it weaker.
+	if !result.Hybrid {
+		logger.Warn("kms-zap refused: peer cleared ML-KEM-768",
+			"from", from, "peerCaps", result.PeerCaps)
+		return frame(kmszap.OpServerHello, errBody("ML-KEM-768 required"))
 	}
 	sess, err := kmszap.NewSession(result.SessionKey, result.Hybrid)
 	if err != nil {
 		logger.Error("kms-zap session init failed", err, "from", from)
-		return s.respond(from, kmszap.OpServerHello, errBody(err.Error()))
+		return frame(kmszap.OpServerHello, errBody(err.Error()))
 	}
-	s.setSession(from, sess)
-	if !result.Hybrid {
-		logger.Warn("kms-zap handshake classical-only — peer cleared ML-KEM-768",
-			"from", from, "peerCaps", result.PeerCaps)
-	} else {
-		logger.Info("kms-zap handshake hybrid", "from", from, "alg", "X25519+ML-KEM-768")
+	s.peersMu.Lock()
+	s.peers[from] = &peer{sess: sess}
+	s.peersMu.Unlock()
+	logger.Info("kms-zap handshake hybrid", "from", from, "alg", "X25519+ML-KEM-768")
+
+	return frame(kmszap.OpServerHello, replyWire)
+}
+
+// authRequest is the OpAuth payload: the peer's IAM access token.
+type authRequest struct {
+	Token string `json:"token"`
+}
+
+// respondAuth verifies the peer's IAM credential and, on success, attaches
+// the verified identity to the session.
+func (s *KMSZapServer) respondAuth(ctx context.Context, from string, p *peer, payload []byte) *zap.Message {
+	var req authRequest
+	if err := json.Unmarshal(payload, &req); err != nil {
+		return s.respond(p, kmszap.OpAuth, errBody("decode auth"))
 	}
-	// Frame the server hello: opcode(0x00F1) || helloBytes (no AEAD).
-	out := make([]byte, 2+len(replyWire))
-	binary.LittleEndian.PutUint16(out[0:2], kmszap.OpServerHello)
-	copy(out[2:], replyWire)
-	b := zap.NewBuilder(len(out) + 64)
-	b.WriteBytes(out)
-	m, err := zap.Parse(b.Finish())
+	id, err := s.verifier.Verify(ctx, req.Token)
 	if err != nil {
-		logger.Error("kms-zap handshake reply build failed", err)
-		return nil
+		// The reason stays in our logs. The peer learns only that it
+		// failed — a verification oracle helps nobody but an attacker.
+		logger.Warn("kms-zap auth rejected", "from", from, "err", err)
+		return s.respond(p, kmszap.OpAuth, errBody("authentication failed"))
 	}
-	return m
+	s.peersMu.Lock()
+	p.identity = id
+	s.peersMu.Unlock()
+	logger.Info("kms-zap authenticated", "from", from,
+		"sub", id.Subject, "owner", id.Owner, "exp", id.Expires)
+	body, _ := json.Marshal(map[string]string{"subject": id.Subject, "owner": id.Owner})
+	return s.respond(p, kmszap.OpAuth, body)
 }
 
 // ---- KMS opcode handlers ----
@@ -311,7 +367,7 @@ type kmsZapStatusResponse struct {
 	Version        string `json:"version"`
 }
 
-func (s *KMSZapServer) handleStatus(_ context.Context, _ string, _ []byte) ([]byte, error) {
+func (s *KMSZapServer) handleStatus(_ context.Context, _ string, _ *Identity, _ []byte) ([]byte, error) {
 	st := s.backend.GetClusterStatus()
 	resp := kmsZapStatusResponse{
 		NodeID:         st.NodeID,
@@ -334,7 +390,7 @@ type kmsZapKeygenRequest struct {
 	} `json:"request"`
 }
 
-func (s *KMSZapServer) handleKeygen(_ context.Context, from string, payload []byte) ([]byte, error) {
+func (s *KMSZapServer) handleKeygen(_ context.Context, from string, id *Identity, payload []byte) ([]byte, error) {
 	var req kmsZapKeygenRequest
 	if err := json.Unmarshal(payload, &req); err != nil {
 		return nil, fmt.Errorf("decode keygen: %w", err)
@@ -342,7 +398,8 @@ func (s *KMSZapServer) handleKeygen(_ context.Context, from string, payload []by
 	if req.VaultID == "" {
 		return nil, fmt.Errorf("vault_id required")
 	}
-	logger.Info("kms-zap keygen", "from", from, "vault", req.VaultID, "wallet", req.Request.WalletID)
+	logger.Info("kms-zap keygen", "from", from, "sub", id.Subject, "owner", id.Owner,
+		"vault", req.VaultID, "wallet", req.Request.WalletID)
 	result, err := s.backend.TriggerKeygen(req.VaultID, req.Request.WalletID)
 	if err != nil {
 		return nil, err
@@ -357,7 +414,7 @@ type kmsZapSignRequest struct {
 	Payload  []byte `json:"payload"`
 }
 
-func (s *KMSZapServer) handleSign(_ context.Context, from string, payload []byte) ([]byte, error) {
+func (s *KMSZapServer) handleSign(_ context.Context, from string, id *Identity, payload []byte) ([]byte, error) {
 	var req kmsZapSignRequest
 	if err := json.Unmarshal(payload, &req); err != nil {
 		return nil, fmt.Errorf("decode sign: %w", err)
@@ -368,7 +425,9 @@ func (s *KMSZapServer) handleSign(_ context.Context, from string, payload []byte
 	if len(req.Payload) == 0 {
 		return nil, fmt.Errorf("payload required")
 	}
-	logger.Info("kms-zap sign", "from", from, "vault", req.VaultID, "wallet", req.WalletID, "payloadHex", hex.EncodeToString(req.Payload[:min(8, len(req.Payload))]))
+	logger.Info("kms-zap sign", "from", from, "sub", id.Subject, "owner", id.Owner,
+		"vault", req.VaultID, "wallet", req.WalletID,
+		"payloadHex", hex.EncodeToString(req.Payload[:min(8, len(req.Payload))]))
 	result, err := s.backend.TriggerSign(req.VaultID, req.WalletID, req.Payload)
 	if err != nil {
 		return nil, err
@@ -386,7 +445,7 @@ type kmsZapReshareRequest struct {
 	} `json:"request"`
 }
 
-func (s *KMSZapServer) handleReshare(_ context.Context, from string, payload []byte) ([]byte, error) {
+func (s *KMSZapServer) handleReshare(_ context.Context, from string, id *Identity, payload []byte) ([]byte, error) {
 	var req kmsZapReshareRequest
 	if err := json.Unmarshal(payload, &req); err != nil {
 		return nil, fmt.Errorf("decode reshare: %w", err)
@@ -394,7 +453,8 @@ func (s *KMSZapServer) handleReshare(_ context.Context, from string, payload []b
 	if req.WalletID == "" || req.Request.VaultID == "" {
 		return nil, fmt.Errorf("wallet_id and request.vault_id required")
 	}
-	logger.Info("kms-zap reshare", "from", from, "wallet", req.WalletID, "newT", req.Request.NewThreshold)
+	logger.Info("kms-zap reshare", "from", from, "sub", id.Subject, "owner", id.Owner,
+		"wallet", req.WalletID, "newT", req.Request.NewThreshold)
 	if err := s.backend.TriggerReshare(req.Request.VaultID, req.WalletID, req.Request.NewThreshold, req.Request.NewParticipants); err != nil {
 		return nil, err
 	}
@@ -402,11 +462,10 @@ func (s *KMSZapServer) handleReshare(_ context.Context, from string, payload []b
 }
 
 // handleWallet is a metadata read — mirrors GET /v1/wallets/{id}. We don't
-// have a generic wallet-by-id lookup on MPCBackend; return cluster status as
-// a placeholder so KMS Status() works and reshape later when MPCBackend grows
-// a Wallet() method. Until then a Wallet() call returns a 503-shaped error
-// the KMS client passes through.
-func (s *KMSZapServer) handleWallet(_ context.Context, _ string, _ []byte) ([]byte, error) {
+// have a generic wallet-by-id lookup on MPCBackend; a Wallet() call returns
+// a 503-shaped error the KMS client passes through until MPCBackend grows
+// one.
+func (s *KMSZapServer) handleWallet(_ context.Context, _ string, _ *Identity, _ []byte) ([]byte, error) {
 	return nil, fmt.Errorf("wallet lookup not yet exposed on MPCBackend; use /v1/wallets HTTP")
 }
 
