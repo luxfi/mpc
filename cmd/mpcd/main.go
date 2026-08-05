@@ -121,6 +121,18 @@ func main() {
 						Value:   ":9653",
 					},
 					&cli.StringFlag{
+						Name:    "iam-endpoint",
+						Usage:   "Hanzo IAM issuer. Peers on the KMS-facing ZAP port present an IAM token; this is where its signing keys come from and the `iss` value required of it.",
+						Sources: cli.EnvVars("IAM_ENDPOINT"),
+						Value:   "https://hanzo.id",
+					},
+					&cli.StringFlag{
+						Name:    "iam-org",
+						Usage:   "Org whose IAM credentials this node serves. A token for any other org verifies and is still refused.",
+						Sources: cli.EnvVars("MPC_IAM_OWNER"),
+						Value:   "lux",
+					},
+					&cli.StringFlag{
 						Name:    "threshold-listen",
 						Usage:   "Embedded threshold ZAP dispatcher listen address (luxfi/threshold/pkg/thresholdd surface: cggmp21/frost/pulsar/corona/magnetar/doerner). Empty disables. Default 127.0.0.1:7301 — process-local IPC; production fronts this via the cluster ingress + KMS.",
 						Sources: cli.EnvVars("MPC_THRESHOLD_LISTEN"),
@@ -844,20 +856,29 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 	}
 
 	// Start KMS-facing ZAP server. KMS dials this for threshold-signing
-	// requests after running the ML-KEM-768 hybrid handshake. Empty
-	// --kms-zap-listen disables it (e.g., for legacy compose stacks that
-	// Default :9653 matches the the operator's zapPort so no
-	// LiquidMPC CR change is needed. Trust at the network boundary
-	// (NetworkPolicy + ZAP wire).
+	// requests, and must prove a native Hanzo IAM identity to be served —
+	// see pkg/api/zap_kms_server.go. Empty --kms-zap-listen disables the
+	// port. Default :9653 matches the operator's zapPort so no LiquidMPC CR
+	// change is needed.
+	//
+	// A misconfigured IAM is fatal rather than a warning: this port hands
+	// out threshold signatures, so "running but unable to say who you are"
+	// must not be a state it can reach. NetworkPolicy stays as the outer
+	// layer; it is no longer the only one.
 	kmsZapAddr := c.String("kms-zap-listen")
 	if kmsZapAddr != "" {
-		kmsZap, kmsZapErr := mpcapi.StartKMSZAP(mpcBackend, fmt.Sprintf("mpcd-kms-zap-%s", nodeID), kmsZapAddr)
-		if kmsZapErr != nil {
-			logger.Error("Failed to start KMS ZAP server", kmsZapErr, "addr", kmsZapAddr)
-		} else {
-			defer kmsZap.Stop()
-			logger.Info("KMS ZAP server ready", "addr", kmsZapAddr, "nodeID", nodeID)
+		verifier, err := mpcapi.NewIAMVerifier(
+			c.String("iam-endpoint"), c.String("iam-endpoint"), c.String("iam-org"))
+		if err != nil {
+			return fmt.Errorf("KMS ZAP server needs IAM (--iam-endpoint/--iam-org): %w", err)
 		}
+		kmsZap, err := mpcapi.StartKMSZAP(mpcBackend, fmt.Sprintf("mpcd-kms-zap-%s", nodeID), kmsZapAddr, verifier)
+		if err != nil {
+			return fmt.Errorf("start KMS ZAP server on %s: %w", kmsZapAddr, err)
+		}
+		defer kmsZap.Stop()
+		logger.Info("KMS ZAP server ready", "addr", kmsZapAddr, "nodeID", nodeID,
+			"iam", c.String("iam-endpoint"), "org", c.String("iam-org"))
 	}
 
 	// Start embedded threshold ZAP dispatcher
