@@ -353,6 +353,41 @@ func isSelfAddr(addr, nodeID, listenAddr string) bool {
 	return label == nodeID
 }
 
+// peerIDFromAddr derives a peer's node id from its ADDRESS, which is the only
+// form an unprefixed `--peer` carries.
+//
+// Every party must agree on the NAME of every other party, because the keygen
+// handler admits a message only from an id in its own party set. A positional
+// `peer-N` cannot match a real node id by construction, so a fleet whose flags
+// are unprefixed builds THREE DIFFERENT party sets — mpc-node-1 called node-2
+// "peer-2" while node-2 called itself "mpc-node-2" — and every round-2 message
+// was refused by every node. Measured on hanzo-mpc: partyIDs
+// ["mpc-node-0:keygen:1","mpc-node-1:keygen:1","peer-2:keygen:1"], zero messages
+// accepted, keygen timing out at 300s, and each crypto deposit answering 503
+// "the custody service is not accepting new addresses".
+//
+// The first DNS label IS the node id under StatefulSet naming
+// (mpc-node-2.mpc-node-headless.ns.svc.cluster.local -> mpc-node-2), which is
+// exactly the rule isSelfAddr already uses to recognise self. Deriving both
+// sides the same way is what makes the sets agree.
+//
+// A bare IP has no label to read, so it keeps the positional id: the caller
+// must then use the `nodeID@host:port` form, which states the name outright.
+func peerIDFromAddr(addr string, index int) string {
+	host := strings.TrimSpace(addr)
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	label := host
+	if i := strings.IndexByte(host, '.'); i >= 0 {
+		label = host[:i]
+	}
+	if label == "" || net.ParseIP(host) != nil {
+		return fmt.Sprintf("peer-%d", index)
+	}
+	return label
+}
+
 func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 	nodeID := c.String("node-id")
 	listenAddr := c.String("listen")
@@ -449,7 +484,7 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 		if isSelfAddr(peer, nodeID, listenAddr) {
 			continue
 		}
-		peerMap[fmt.Sprintf("peer-%d", i)] = peer
+		peerMap[peerIDFromAddr(peer, i)] = peer
 	}
 
 	// Get ZapDB password via HSM provider (supports AWS KMS, GCP Cloud KMS, Azure Key Vault, env, file)

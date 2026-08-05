@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // The k8s deployment shape: ONE StatefulSet command for every replica, so each
 // node is handed the WHOLE ensemble — including itself. Self must be dropped
@@ -49,6 +52,60 @@ func TestIsSelfAddrEmptyNodeIDMatchesNothing(t *testing.T) {
 	} {
 		if isSelfAddr(addr, "", "") {
 			t.Fatalf("isSelfAddr(%q, \"\", \"\") = true, want false", addr)
+		}
+	}
+}
+
+// TestPeerIDFromAddr — every party must agree on the NAME of every other party,
+// because the keygen handler admits a message only from an id in its own party
+// set. A positional id cannot match a real node id, so unprefixed --peer flags
+// built three disagreeing sets and every round-2 message was refused.
+func TestPeerIDFromAddr(t *testing.T) {
+	for _, tc := range []struct {
+		name, addr, want string
+		index            int
+	}{
+		{"statefulset fqdn", "mpc-node-2.mpc-node-headless.hanzo-mpc.svc.cluster.local:9999", "mpc-node-2", 2},
+		{"short host", "mpc-node-0:9999", "mpc-node-0", 0},
+		{"no port", "mpc-node-1.mpc-node-headless.hanzo-mpc.svc.cluster.local", "mpc-node-1", 1},
+		// A bare IP carries no name, so the positional id remains and the caller
+		// must use nodeID@host:port to say who it is.
+		{"bare ipv4 keeps positional", "10.0.0.5:9999", "peer-3", 3},
+		{"bare ipv6 keeps positional", "[fd00::1]:9999", "peer-4", 4},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := peerIDFromAddr(tc.addr, tc.index); got != tc.want {
+				t.Fatalf("peerIDFromAddr(%q, %d) = %q, want %q", tc.addr, tc.index, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestPeerIDMatchesSelfRecognition is the invariant that was violated in
+// production: the id a node derives for a peer must equal the id that peer uses
+// for ITSELF. isSelfAddr reads the first DNS label to recognise self, so
+// peerIDFromAddr must read it the same way or the two disagree.
+func TestPeerIDMatchesSelfRecognition(t *testing.T) {
+	fleet := []string{
+		"mpc-node-0.mpc-node-headless.hanzo-mpc.svc.cluster.local:9999",
+		"mpc-node-1.mpc-node-headless.hanzo-mpc.svc.cluster.local:9999",
+		"mpc-node-2.mpc-node-headless.hanzo-mpc.svc.cluster.local:9999",
+	}
+	for _, self := range []string{"mpc-node-0", "mpc-node-1", "mpc-node-2"} {
+		for i, addr := range fleet {
+			id := peerIDFromAddr(addr, i)
+			if isSelfAddr(addr, self, ":9999") {
+				if id != self {
+					t.Fatalf("%s: recognises %q as self but would name it %q", self, addr, id)
+				}
+				continue
+			}
+			if id == self {
+				t.Fatalf("%s: named a PEER with its own id (%q)", self, id)
+			}
+			if strings.HasPrefix(id, "peer-") {
+				t.Fatalf("%s: peer %q got positional id %q — no other node answers to that name", self, addr, id)
+			}
 		}
 	}
 }
