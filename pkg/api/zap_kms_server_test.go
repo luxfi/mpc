@@ -15,6 +15,7 @@ import (
 
 	"github.com/luxfi/zap"
 
+	"github.com/luxfi/mpc/pkg/types"
 	kmszap "github.com/luxfi/mpc/pkg/zap"
 )
 
@@ -23,6 +24,7 @@ import (
 type stubBackend struct {
 	keygenCalls int
 	signCalls   int
+	signNetwork types.NetworkCode
 	mu          sync.Mutex
 }
 
@@ -37,9 +39,10 @@ func (s *stubBackend) TriggerKeygen(orgID, walletID string) (*KeygenResult, erro
 		EVMAddress:  "0x0000000000000000000000000000000000000001",
 	}, nil
 }
-func (s *stubBackend) TriggerSign(orgID, walletID string, payload []byte) (*SignResult, error) {
+func (s *stubBackend) TriggerSign(orgID, walletID string, network types.NetworkCode, payload []byte) (*SignResult, error) {
 	s.mu.Lock()
 	s.signCalls++
+	s.signNetwork = network
 	s.mu.Unlock()
 	return &SignResult{R: "aa", S: "bb", Signature: "ccdd"}, nil
 }
@@ -193,9 +196,19 @@ func TestKMSZAP_SignRoundTrip(t *testing.T) {
 	stub := srv.backend.(*stubBackend)
 	stub.mu.Lock()
 	calls := stub.signCalls
+	network := stub.signNetwork
 	stub.mu.Unlock()
 	if calls != 1 {
 		t.Errorf("backend sign calls: want 1 got %d", calls)
+	}
+	// The KMS surface signs Lux validator key sets, so it must name that
+	// network and therefore select secp256k1. A signing request with no
+	// network would be refused by the backend, silently breaking KMS.
+	if network != types.NetworkLUX {
+		t.Errorf("KMS sign routed with network %q, want %q", network, types.NetworkLUX)
+	}
+	if kt, err := types.KeyTypeForNetwork(network); err != nil || kt != types.KeyTypeSecp256k1 {
+		t.Errorf("KMS sign resolves to curve %q (err %v), want secp256k1", kt, err)
 	}
 }
 

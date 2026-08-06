@@ -128,7 +128,7 @@ func (ec *eventConsumer) Run() {
 // handleKeyGenEvent mints a wallet's key set and publishes it.
 //
 // A wallet is not one key. Chains disagree about curves, and
-// types.GetNetworkKeyType is the single table recording which chain wants which,
+// types.KeyTypeForNetwork is the single table recording which chain wants which,
 // so a wallet needs one key per curve its networks use and a single keygen
 // request mints them all. This function is the only place that decides which
 // ceremonies run, which is what keeps every site downstream from having to know

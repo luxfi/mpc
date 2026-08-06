@@ -15,6 +15,7 @@ import (
 	"github.com/hanzoai/orm"
 
 	"github.com/luxfi/mpc/pkg/db"
+	"github.com/luxfi/mpc/pkg/types"
 )
 
 // handleTradeSubmit accepts a trade from the ATS and creates a pending approval.
@@ -218,7 +219,9 @@ func (s *Server) handleTradeApprove(w http.ResponseWriter, r *http.Request) {
 	// sign_failed so the settlement retry cron can pick it up.
 	go func() {
 		ctx := context.Background()
-		result, signErr := s.mpc.TriggerSign(orgID, trade.WalletID, []byte(trade.MessageHash))
+		// Trades settle on Lux — the intent this signature backs is recorded
+		// with chain "lux" a few lines below — so the network is fixed here.
+		result, signErr := s.mpc.TriggerSign(orgID, trade.WalletID, types.NetworkLUX, []byte(trade.MessageHash))
 		if signErr != nil {
 			s.tradeApproval.MarkSignFailed(ctx, trade.Id(), signErr.Error())
 			s.fireWebhook(ctx, orgID, "trade.sign_failed", map[string]string{

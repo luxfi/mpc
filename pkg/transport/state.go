@@ -10,6 +10,7 @@ import (
 
 	"github.com/luxfi/mpc/pkg/kvstore"
 	"github.com/luxfi/mpc/pkg/logger"
+	"github.com/luxfi/mpc/pkg/types"
 )
 
 // StateStore wraps kvstore.KVStore with consensus-based replication
@@ -33,7 +34,11 @@ type StateUpdate struct {
 	NodeID    string `json:"node_id"`
 }
 
-// NewStateStore creates a consensus-aware state store
+// NewStateStore creates a consensus-aware state store.
+//
+// transport may be nil, which yields a store that is purely local: no
+// subscription, no replication. That is the single-node shape, and it is what
+// lets the metadata store be exercised without standing up a consensus ring.
 func NewStateStore(local kvstore.KVStore, transport *Transport, nodeID string) *StateStore {
 	ss := &StateStore{
 		local:     local,
@@ -43,9 +48,29 @@ func NewStateStore(local kvstore.KVStore, transport *Transport, nodeID string) *
 	}
 
 	// Subscribe to state updates from other nodes
-	transport.Subscribe("mpc:state", ss.handleStateUpdate)
+	if transport != nil {
+		transport.Subscribe("mpc:state", ss.handleStateUpdate)
+	}
 
 	return ss
+}
+
+// replicate broadcasts a state update to peers, fire-and-forget. A nil
+// transport is a local-only store and has nobody to tell.
+func (s *StateStore) replicate(update StateUpdate) error {
+	if s.transport == nil {
+		return nil
+	}
+	payload, err := json.Marshal(update)
+	if err != nil {
+		return err
+	}
+	go func() {
+		if err := s.transport.Publish("mpc:state", payload); err != nil {
+			logger.Warn("Failed to replicate state update", "key", update.Key, "err", err)
+		}
+	}()
+	return nil
 }
 
 // Put stores a key-value pair and replicates to peers
@@ -55,27 +80,13 @@ func (s *StateStore) Put(key string, value []byte) error {
 		return err
 	}
 
-	// Replicate to peers via consensus transport
-	update := StateUpdate{
+	// Replicate to peers via consensus transport (eventual consistency)
+	return s.replicate(StateUpdate{
 		Key:     key,
 		Value:   value,
 		NodeID:  s.nodeID,
 		Deleted: false,
-	}
-
-	payload, err := json.Marshal(update)
-	if err != nil {
-		return err
-	}
-
-	// Broadcast update (fire-and-forget, eventual consistency)
-	go func() {
-		if err := s.transport.Publish("mpc:state", payload); err != nil {
-			logger.Warn("Failed to replicate state update", "key", key, "err", err)
-		}
-	}()
-
-	return nil
+	})
 }
 
 // Get retrieves a value from local store
@@ -98,24 +109,11 @@ func (s *StateStore) Delete(key string) error {
 		return err
 	}
 
-	update := StateUpdate{
+	return s.replicate(StateUpdate{
 		Key:     key,
 		NodeID:  s.nodeID,
 		Deleted: true,
-	}
-
-	payload, err := json.Marshal(update)
-	if err != nil {
-		return err
-	}
-
-	go func() {
-		if err := s.transport.Publish("mpc:state", payload); err != nil {
-			logger.Warn("Failed to replicate delete", "key", key, "err", err)
-		}
-	}()
-
-	return nil
+	})
 }
 
 // Close closes the state store
@@ -200,28 +198,86 @@ func NewKeyInfoStore(state *StateStore, nodeID string) *KeyInfoStore {
 	}
 }
 
-// KeyInfo represents metadata about a generated key
+// KeyInfo is the metadata recorded for a wallet's key set.
+//
+// There is deliberately no field naming "the" curve of a wallet. A single
+// keygen ceremony mints a secp256k1 key (EVM, Bitcoin, Lux, XRPL) AND an
+// Ed25519 key (Solana, TON), so "what curve is this wallet" has no single
+// answer and any scalar answer is a lie that the signer would then act on.
+// Each curve gets its own field; an empty field means that curve was never
+// minted for this wallet.
 type KeyInfo struct {
-	WalletID  string `json:"wallet_id"`
-	KeyType   string `json:"key_type"`
-	Threshold int    `json:"threshold"`
-	PublicKey string `json:"public_key"` // Hex encoded
-	EdDSAKey  string `json:"eddsa_key"`  // EdDSA public key (hex)
-	KeyData   []byte `json:"key_data"`   // Additional data
-	CreatedAt int64  `json:"created_at"`
-	NodeID    string `json:"node_id"` // Node that initiated keygen
+	WalletID    string `json:"wallet_id"`
+	Threshold   int    `json:"threshold"`
+	ECDSAPubKey string `json:"public_key"` // secp256k1 (CGGMP21), hex
+	EdDSAPubKey string `json:"eddsa_key"`  // ed25519 (FROST), hex
+	KeyData     []byte `json:"key_data"`   // Additional data
+	CreatedAt   int64  `json:"created_at"`
+	NodeID      string `json:"node_id"` // Node that initiated keygen
 }
 
-// RegisterKey stores key metadata
-func (s *KeyInfoStore) RegisterKey(walletID, keyType string, threshold int, pubKey string, eddsaKey string, keyData []byte) error {
-	info := KeyInfo{
-		WalletID:  walletID,
-		KeyType:   keyType,
-		Threshold: threshold,
-		PublicKey: pubKey,
-		EdDSAKey:  eddsaKey,
-		KeyData:   keyData,
-		NodeID:    s.nodeID,
+// RecordsCurves reports whether this record names any curve at all.
+//
+// Records written before a wallet's key set was recorded carry no public keys.
+// Such a record makes NO claim about which curves the wallet has, and must not
+// be read as denying one — reading "no keys listed" as "no keys exist" would
+// refuse every wallet minted before this field was populated. Callers gate the
+// per-curve check on this, and let the missing share be the thing that fails
+// closed for records that say nothing.
+func (k KeyInfo) RecordsCurves() bool {
+	return k.ECDSAPubKey != "" || k.EdDSAPubKey != ""
+}
+
+// PublicKeyFor returns the wallet's public key on the named curve, and whether
+// a key on that curve exists at all.
+//
+// This is the only place curve identity is turned into a field, so a caller
+// asking "can this wallet sign for Solana" never has to know which field
+// answers it. Meaningful only when RecordsCurves is true.
+func (k KeyInfo) PublicKeyFor(keyType types.KeyType) (string, bool) {
+	switch keyType {
+	case types.KeyTypeSecp256k1:
+		return k.ECDSAPubKey, k.ECDSAPubKey != ""
+	case types.KeyTypeEd25519:
+		return k.EdDSAPubKey, k.EdDSAPubKey != ""
+	default:
+		// sr25519 and anything else: no keygen leg mints it, so no field
+		// records it. Reporting "absent" is the truth, and fails closed.
+		return "", false
+	}
+}
+
+// RegisterKey upserts a wallet's key metadata.
+//
+// It merges rather than overwrites, because the record is written from two
+// different moments of one keygen: the CGGMP21 ceremony knows the threshold
+// but no public keys, and the keygen result knows the public keys but arrives
+// later. Neither knows the other's fields, so a plain overwrite would have
+// whichever ran last erase the other's contribution. Zero-valued arguments
+// therefore mean "leave as recorded"; keys are only ever added to a wallet,
+// never removed, so there is nothing a caller needs to clear.
+//
+// There is no keyType parameter. A wallet holds one key per curve, so there is
+// nothing for a caller to name — and nothing for a caller to hardcode.
+func (s *KeyInfoStore) RegisterKey(walletID string, threshold int, ecdsaKey, eddsaKey string, keyData []byte) error {
+	info := KeyInfo{WalletID: walletID, NodeID: s.nodeID}
+	if existing, err := s.Get(walletID); err == nil && existing != nil {
+		info = *existing
+		info.WalletID = walletID
+		info.NodeID = s.nodeID
+	}
+
+	if threshold != 0 {
+		info.Threshold = threshold
+	}
+	if ecdsaKey != "" {
+		info.ECDSAPubKey = ecdsaKey
+	}
+	if eddsaKey != "" {
+		info.EdDSAPubKey = eddsaKey
+	}
+	if len(keyData) != 0 {
+		info.KeyData = keyData
 	}
 
 	data, err := json.Marshal(info)

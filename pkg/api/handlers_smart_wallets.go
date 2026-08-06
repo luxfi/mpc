@@ -9,6 +9,7 @@ import (
 
 	"github.com/luxfi/mpc/pkg/db"
 	"github.com/luxfi/mpc/pkg/smart"
+	"github.com/luxfi/mpc/pkg/types"
 )
 
 func (s *Server) handleDeploySmartWallet(w http.ResponseWriter, r *http.Request) {
@@ -220,7 +221,9 @@ func (s *Server) handleProposeSafeTx(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to load MPC wallet")
 		return
 	}
-	signResult, err := s.mpc.TriggerSign(orgID, mpcWallet.WalletID, txHash)
+	// An EIP-712 Safe transaction hash is meaningful only to an EVM chain, so
+	// the curve is fixed by what this endpoint signs, not by the request.
+	signResult, err := s.mpc.TriggerSign(orgID, mpcWallet.WalletID, types.NetworkEVM, txHash)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "MPC signing failed: "+err.Error())
 		return

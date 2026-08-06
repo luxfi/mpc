@@ -10,6 +10,7 @@ import (
 	"golang.org/x/crypto/sha3"
 
 	"github.com/luxfi/mpc/pkg/db"
+	"github.com/luxfi/mpc/pkg/types"
 )
 
 // Bridge signing request — matches the bridge server's expected format.
@@ -113,8 +114,10 @@ func (s *Server) handleBridgeSign(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Trigger MPC signing
-	result, err := s.mpc.TriggerSign(orgID, mpcWalletID, msgHash)
+	// Trigger MPC signing. The bridge signs a keccak256 digest that only an
+	// EVM contract verifies, so the network is a property of this endpoint
+	// rather than of the request — no non-EVM payload can arrive here.
+	result, err := s.mpc.TriggerSign(orgID, mpcWalletID, types.NetworkEVM, msgHash)
 	if err != nil {
 		json.NewEncoder(w).Encode(bridgeSignResponse{Status: false, Msg: "MPC signing failed: " + err.Error()})
 		return

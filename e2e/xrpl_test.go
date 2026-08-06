@@ -335,17 +335,23 @@ func validateXRPLSigningResult(t *testing.T, walletID string, result *event.Sign
 func TestXRPLNetworkCodeValidation(t *testing.T) {
 	t.Run("XRPLMainnet", func(t *testing.T) {
 		assert.True(t, types.IsNetworkSupported(string(types.NetworkXRPL)), "XRPL mainnet should be supported")
-		assert.Equal(t, types.KeyTypeSecp256k1, types.GetNetworkKeyType(types.NetworkXRPL), "XRPL should use secp256k1")
+		kt, err := types.KeyTypeForNetwork(types.NetworkXRPL)
+		assert.NoError(t, err)
+		assert.Equal(t, types.KeyTypeSecp256k1, kt, "XRPL should use secp256k1")
 	})
 
 	t.Run("XRPLTestnet", func(t *testing.T) {
 		assert.True(t, types.IsNetworkSupported(string(types.NetworkXRPLTestnet)), "XRPL testnet should be supported")
-		assert.Equal(t, types.KeyTypeSecp256k1, types.GetNetworkKeyType(types.NetworkXRPLTestnet), "XRPL testnet should use secp256k1")
+		kt, err := types.KeyTypeForNetwork(types.NetworkXRPLTestnet)
+		assert.NoError(t, err)
+		assert.Equal(t, types.KeyTypeSecp256k1, kt, "XRPL testnet should use secp256k1")
 	})
 
 	t.Run("XRPLDevnet", func(t *testing.T) {
 		assert.True(t, types.IsNetworkSupported(string(types.NetworkXRPLDevnet)), "XRPL devnet should be supported")
-		assert.Equal(t, types.KeyTypeSecp256k1, types.GetNetworkKeyType(types.NetworkXRPLDevnet), "XRPL devnet should use secp256k1")
+		kt, err := types.KeyTypeForNetwork(types.NetworkXRPLDevnet)
+		assert.NoError(t, err)
+		assert.Equal(t, types.KeyTypeSecp256k1, kt, "XRPL devnet should use secp256k1")
 	})
 }
 
@@ -353,12 +359,16 @@ func TestXRPLNetworkCodeValidation(t *testing.T) {
 func TestLUXNetworkCodeValidation(t *testing.T) {
 	t.Run("LUXMainnet", func(t *testing.T) {
 		assert.True(t, types.IsNetworkSupported(string(types.NetworkLUX)), "LUX mainnet should be supported")
-		assert.Equal(t, types.KeyTypeSecp256k1, types.GetNetworkKeyType(types.NetworkLUX), "LUX should use secp256k1")
+		kt, err := types.KeyTypeForNetwork(types.NetworkLUX)
+		assert.NoError(t, err)
+		assert.Equal(t, types.KeyTypeSecp256k1, kt, "LUX should use secp256k1")
 	})
 
 	t.Run("LUXTestnet", func(t *testing.T) {
 		assert.True(t, types.IsNetworkSupported(string(types.NetworkLUXTestnet)), "LUX testnet should be supported")
-		assert.Equal(t, types.KeyTypeSecp256k1, types.GetNetworkKeyType(types.NetworkLUXTestnet), "LUX testnet should use secp256k1")
+		kt, err := types.KeyTypeForNetwork(types.NetworkLUXTestnet)
+		assert.NoError(t, err)
+		assert.Equal(t, types.KeyTypeSecp256k1, kt, "LUX testnet should use secp256k1")
 	})
 }
 
@@ -390,7 +400,9 @@ func TestAllSupportedNetworks(t *testing.T) {
 		t.Run(fmt.Sprintf("Network_%s", tc.name), func(t *testing.T) {
 			assert.True(t, types.IsNetworkSupported(string(tc.code)),
 				"%s should be supported", tc.name)
-			assert.Equal(t, tc.keyType, types.GetNetworkKeyType(tc.code),
+			kt, err := types.KeyTypeForNetwork(tc.code)
+			assert.NoError(t, err, "%s should have a recorded curve", tc.name)
+			assert.Equal(t, tc.keyType, kt,
 				"%s should use %s", tc.name, tc.keyType)
 		})
 	}

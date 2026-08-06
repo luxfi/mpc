@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/luxfi/mpc/pkg/types"
 )
 
 // ValidatorKeySet holds the MPC wallet reference for a validator's custodied
@@ -209,7 +210,9 @@ func (s *Server) handleKMSSign(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := s.mpc.TriggerSign(orgID, walletID, req.Message)
+	// A validator key set signs for the Lux network and nothing else; the
+	// key_type gate above already restricts this endpoint to one key kind.
+	result, err := s.mpc.TriggerSign(orgID, walletID, types.NetworkLUX, req.Message)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

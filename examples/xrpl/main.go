@@ -121,11 +121,11 @@ func verifyXRPLSupport() {
 
 	fmt.Println("=== XRPL Network Support ===")
 	for _, network := range networks {
-		if types.IsNetworkSupported(network) {
-			keyType := types.GetNetworkKeyType(types.NetworkCode(network))
-			fmt.Printf("✅ %s is supported (uses %s)\n", network, keyType)
-		} else {
-			fmt.Printf("❌ %s is not supported\n", network)
+		keyType, err := types.KeyTypeForNetwork(types.NetworkCode(network))
+		if err != nil {
+			fmt.Printf("%s is not supported: %v\n", network, err)
+			continue
 		}
+		fmt.Printf("%s is supported (uses %s)\n", network, keyType)
 	}
 }

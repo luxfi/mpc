@@ -16,15 +16,22 @@ import (
 	"github.com/luxfi/mpc/pkg/custody"
 	"github.com/luxfi/mpc/pkg/db"
 	"github.com/luxfi/mpc/pkg/txtracker"
+	"github.com/luxfi/mpc/pkg/types"
 	"github.com/luxfi/mpc/pkg/wallet"
 	"github.com/luxfi/mpc/pkg/webauthn"
 )
 
 // MPCBackend is the interface the API layer uses to trigger MPC operations.
 // All mutation methods require orgID for tenant-scoped key storage.
+//
+// TriggerSign takes the network the signature is for. It is not optional and
+// there is no curve parameter: a wallet holds a secp256k1 key and an Ed25519
+// key at once, so the curve is a property of the request, and the backend
+// derives it from the network through the one table in pkg/types. Callers name
+// what they are signing for; they never name a curve.
 type MPCBackend interface {
 	TriggerKeygen(orgID, walletID string) (*KeygenResult, error)
-	TriggerSign(orgID, walletID string, payload []byte) (*SignResult, error)
+	TriggerSign(orgID, walletID string, network types.NetworkCode, payload []byte) (*SignResult, error)
 	TriggerReshare(orgID, walletID string, newThreshold int, newParticipants []string) error
 	ExportKeyShare(orgID, walletID string) ([]byte, error) // Returns serialized key share for backup encryption
 	GetClusterStatus() *ClusterStatus

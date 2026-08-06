@@ -27,10 +27,13 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"strconv"
+	"strings"
 	"sync"
 
 	mpcapi "github.com/luxfi/mpc/pkg/api"
+	"github.com/luxfi/mpc/pkg/types"
 )
 
 // Boundary errors surfaced by the cache / request validation. The HTTP handler
@@ -46,10 +49,15 @@ var (
 // binds the signature, EXCLUDING idempotency_key (which keys the cache, not the
 // content). The canonical hash over these fields is what a reused idempotency
 // key is checked against to detect a conflicting replay.
+//
+// Network is part of the content because it selects the curve: the same bytes
+// under the same key, requested for SOL and then for ETH, are two different
+// signatures from two different keys. Reusing one idempotency key across them
+// must conflict, not return the first one's result.
 type signFields struct {
 	OrgID       string
 	WalletID    string
-	KeyType     string
+	Network     string
 	ChainID     int
 	PayloadHash string // hex, as received on the wire
 }
@@ -69,10 +77,44 @@ func (f signFields) canonicalHash() string {
 	}
 	write(f.OrgID)
 	write(f.WalletID)
-	write(f.KeyType)
+	write(f.Network)
 	write(strconv.Itoa(f.ChainID))
 	write(f.PayloadHash)
 	return hex.EncodeToString(h.Sum(nil))
+}
+
+// decodeSignPayload decodes the hex bytes to sign and enforces the length rule
+// for the network's curve.
+//
+// The rule belongs to the scheme, not to the endpoint:
+//
+//   - secp256k1 signs a 32-byte DIGEST. Anything else is a caller bug, caught
+//     here rather than inside the signer.
+//   - Ed25519 is PureEdDSA: the message is hashed inside the challenge, so what
+//     gets signed is the message itself, at whatever length the chain uses — a
+//     serialized Solana transaction message is hundreds of bytes; a TON cell
+//     hash is 32. Demanding 32 bytes here is what made every Solana signing
+//     request impossible to express, and pre-hashing to satisfy it would sign a
+//     digest of a digest, which the chain rejects.
+//
+// An empty payload is refused for both: signing nothing is never intended, and
+// for Ed25519 it is otherwise a legal length.
+func decodeSignPayload(network types.NetworkCode, hexPayload string) ([]byte, error) {
+	keyType, err := types.KeyTypeForNetwork(network)
+	if err != nil {
+		return nil, err
+	}
+	payload, err := hex.DecodeString(strings.TrimPrefix(hexPayload, "0x"))
+	if err != nil {
+		return nil, errors.New("payload_hash must be hex")
+	}
+	if len(payload) == 0 {
+		return nil, errors.New("payload_hash must not be empty")
+	}
+	if keyType == types.KeyTypeSecp256k1 && len(payload) != 32 {
+		return nil, fmt.Errorf("payload_hash must be a 32-byte digest for %s (got %d bytes)", keyType, len(payload))
+	}
+	return payload, nil
 }
 
 // validateSignRequest enforces the boundary preconditions before any signing
@@ -98,8 +140,9 @@ type cachedSign struct {
 
 // signFunc is the injectable signer the cache drives. The HTTP handler wires
 // ConsensusMPCBackend.TriggerSign here; tests inject a counting mock. It
-// receives the org/wallet plus the decoded payload bytes (the 32-byte hash).
-type signFunc func(orgID, walletID string, payload []byte) (*mpcapi.SignResult, error)
+// receives the org/wallet, the network that selects the curve, and the decoded
+// bytes to sign.
+type signFunc func(orgID, walletID string, network types.NetworkCode, payload []byte) (*mpcapi.SignResult, error)
 
 // signEntry is one in-flight-or-completed idempotency slot. done is closed when
 // the single in-flight signer call returns; until then, duplicate callers block
@@ -136,10 +179,11 @@ func newSignIdempotencyCache() *signIdempotencyCache {
 //   - Signer error: the entry is removed so a future retry may re-attempt; the
 //     failure is never cached and never wakes a "successful" waiter.
 //
-// payload is the decoded bytes to sign (the 32-byte hash); it is passed through
-// to signer untouched and is NOT part of the cache key (the canonical hash of
-// f.PayloadHash already binds it).
-func (c *signIdempotencyCache) Do(idempotencyKey string, f signFields, payload []byte, signer signFunc) (*cachedSign, error) {
+// payload is the decoded bytes to sign; it is passed through to signer
+// untouched and is NOT part of the cache key (the canonical hash of
+// f.PayloadHash already binds it). network is likewise already bound, via
+// f.Network.
+func (c *signIdempotencyCache) Do(idempotencyKey string, f signFields, network types.NetworkCode, payload []byte, signer signFunc) (*cachedSign, error) {
 	canon := f.canonicalHash()
 
 	c.mu.Lock()
@@ -162,7 +206,7 @@ func (c *signIdempotencyCache) Do(idempotencyKey string, f signFields, payload [
 	c.entries[idempotencyKey] = e
 	c.mu.Unlock()
 
-	res, err := signer(f.OrgID, f.WalletID, payload)
+	res, err := signer(f.OrgID, f.WalletID, network, payload)
 	if err != nil {
 		// Do not cache failures: drop the entry so a retry can re-attempt.
 		c.mu.Lock()

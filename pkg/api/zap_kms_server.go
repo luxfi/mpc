@@ -25,6 +25,7 @@ import (
 	"github.com/luxfi/zap"
 
 	"github.com/luxfi/mpc/pkg/logger"
+	"github.com/luxfi/mpc/pkg/types"
 
 	kmszap "github.com/luxfi/mpc/pkg/zap"
 )
@@ -370,7 +371,10 @@ func (s *KMSZapServer) handleSign(_ context.Context, from string, payload []byte
 		return nil, fmt.Errorf("payload required")
 	}
 	logger.Info("kms-zap sign", "from", from, "vault", req.VaultID, "wallet", req.WalletID, "payloadHex", hex.EncodeToString(req.Payload[:min(8, len(req.Payload))]))
-	result, err := s.backend.TriggerSign(req.VaultID, req.WalletID, req.Payload)
+	// The KMS ZAP surface signs Lux validator key sets. It carries no network
+	// on the wire because it has no second network to name; if that ever
+	// changes the field is added there, not defaulted here.
+	result, err := s.backend.TriggerSign(req.VaultID, req.WalletID, types.NetworkLUX, req.Payload)
 	if err != nil {
 		return nil, err
 	}
