@@ -71,13 +71,16 @@ ENV GOWORK=off
 # is the point: a URL is the wrong container for a value whose bytes are not
 # ours to control. luxfi/node hit this same failure.
 #
-# http.extraheader passes the credential as a HEADER instead, so nothing about
-# the token can change how the address is read. The value is base64 of
-# "x-access-token:<token>", which is exactly what actions/checkout does.
+# A CREDENTIAL HELPER hands git the username and password directly, so the token
+# is never parsed as part of an address and never has to be encoded. The two
+# shapes that failed here are exactly the two this avoids: a URL (whose grammar
+# the token can end early) and an Authorization header built with base64 (which
+# yields an EMPTY credential, and therefore 'could not read Username', if the
+# builder image has no base64). The helper needs neither.
 RUN --mount=type=secret,id=gh_token \
     sh -c 'if [ -s /run/secrets/gh_token ]; then \
-             AUTH=$(printf "x-access-token:%s" "$(cat /run/secrets/gh_token)" | base64 | tr -d "\n"); \
-             git config --global http.https://github.com/.extraheader "AUTHORIZATION: basic ${AUTH}"; \
+             git config --global credential."https://github.com".helper \
+               "!f() { echo username=x-access-token; echo \"password=$(cat /run/secrets/gh_token)\"; }; f"; \
            fi; \
            rm -f go.sum; \
            go mod download all'
