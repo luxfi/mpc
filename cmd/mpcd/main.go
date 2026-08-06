@@ -27,6 +27,8 @@ import (
 
 	"github.com/mr-tron/base58"
 
+	"github.com/luxfi/mpc/pkg/address"
+
 	"github.com/nats-io/nats.go"
 	"github.com/spf13/viper"
 	"github.com/urfave/cli/v3"
@@ -825,8 +827,8 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 						resp["evm_address"] = pubKeyToEVMAddress(result.ECDSAPubKey)
 						resp["btc_address"] = pubKeyToBtcAddress(result.ECDSAPubKey)
 					}
-					if len(result.EDDSAPubKey) == 32 {
-						resp["sol_address"] = eddsaPubKeyToSolAddress(result.EDDSAPubKey)
+					if solAddr := eddsaPubKeyToSolAddress(result.EDDSAPubKey); solAddr != "" {
+						resp["sol_address"] = solAddr
 					}
 				} else {
 					resp["error"] = result.ErrorReason
@@ -1199,9 +1201,7 @@ func (b *ConsensusMPCBackend) TriggerKeygen(orgID, walletID string) (*mpcapi.Key
 			evmAddr = pubKeyToEVMAddress(result.ECDSAPubKey)
 			btcAddr = pubKeyToBtcAddress(result.ECDSAPubKey)
 		}
-		if len(result.EDDSAPubKey) == 32 {
-			solAddr = eddsaPubKeyToSolAddress(result.EDDSAPubKey)
-		}
+		solAddr = eddsaPubKeyToSolAddress(result.EDDSAPubKey)
 		// Report the security property this key actually has. Keygen accepts no
 		// per-request threshold — the ring's --threshold governs — so a caller
 		// can only verify what it asked for if we tell it what it got.
@@ -1794,13 +1794,31 @@ func base58CheckEncode(version byte, payload []byte) string {
 	return base58.Encode(full)
 }
 
-// eddsaPubKeyToSolAddress derives a Solana address from an Ed25519 public key.
-// The address is simply the base58 encoding of the 32-byte public key.
+// eddsaPubKeyToSolAddress derives a Solana address from an Ed25519 public key,
+// or returns "" when the bytes are not one.
+//
+// The check is delegated to pkg/address, which validates the curve rather than
+// the length. Length alone cannot do this job: a BIP-340 x-only secp256k1 key is
+// also 32 bytes and base58-encodes into an address that accepts deposits and can
+// never be spent from. "" means the caller must omit sol_address entirely.
 func eddsaPubKeyToSolAddress(pubKey []byte) string {
-	if len(pubKey) != 32 {
+	if len(pubKey) == 0 {
+		// No Ed25519 leg for this wallet. Ordinary and expected, so it is not
+		// worth a warning on every response.
 		return ""
 	}
-	return base58.Encode(pubKey)
+	addr, err := address.Solana(pubKey)
+	if err != nil {
+		// A key that is present but not an Ed25519 key is a different matter:
+		// something upstream produced the wrong curve, and that is worth
+		// shouting about even though it has been refused here.
+		logger.Warn("Refusing to derive a Solana address from a non-Ed25519 key",
+			"error", err.Error(),
+			"consequence", "sol_address omitted from the response",
+		)
+		return ""
+	}
+	return addr
 }
 
 // isThresholdLoopback reports whether `--threshold-listen` resolves to

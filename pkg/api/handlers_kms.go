@@ -114,6 +114,17 @@ func (s *Server) handleKMSGenerate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// An empty EdDSA key is now a normal keygen outcome, not an impossibility:
+	// the Ed25519 leg is deliberately non-fatal, so a wallet can come back with
+	// no key at all. Storing that as an "active" key set would register a
+	// validator whose key is the empty string — recorded as usable, usable by
+	// nobody. Refuse it here rather than persist it.
+	if len(coronaResult.EDDSAPubKey) == 0 {
+		writeError(w, http.StatusInternalServerError,
+			"keygen returned no EdDSA public key; refusing to register a key set without one")
+		return
+	}
+
 	now := time.Now().UTC()
 	ks := &ValidatorKeySet{
 		ValidatorID:     req.ValidatorID,

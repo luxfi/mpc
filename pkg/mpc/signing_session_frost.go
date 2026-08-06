@@ -2,7 +2,6 @@ package mpc
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"sync"
@@ -13,7 +12,6 @@ import (
 	"github.com/luxfi/threshold/pkg/party"
 	"github.com/luxfi/threshold/pkg/pool"
 	"github.com/luxfi/threshold/pkg/protocol"
-	"github.com/luxfi/threshold/pkg/taproot"
 	"github.com/luxfi/threshold/protocols/frost"
 	"github.com/rs/zerolog"
 
@@ -27,24 +25,42 @@ import (
 	"github.com/luxfi/mpc/pkg/utils"
 )
 
-// curve import used for extracting signature components
+// ed25519SignStart names the signing primitive for the Ed25519 route, once, so
+// the daemon and the tests cannot drift onto different ones.
+//
+// It must be SignEd25519 and never the generic Sign. Over this same config, Sign
+// emits 64 bytes in exactly the same shape, but its challenge is BLAKE3 and its S
+// is big-endian, so it looks like an Ed25519 signature and no verifier on earth
+// accepts it.
+//
+// message is the message, not a digest: PureEdDSA hashes it inside the challenge.
+func ed25519SignStart(config *frost.Config, signers []party.ID, message []byte) protocol.StartFunc {
+	return frost.SignEd25519(config, signers, message)
+}
 
-// FROSTSignSession is the interface for EdDSA signing sessions
+// FROSTSignSession is the interface for Ed25519 signing sessions.
 type FROSTSignSession interface {
 	Session
 }
 
 type frostSigningSession struct {
 	session
-	handler        *protocol.Handler
-	pool           *pool.Pool
-	config         *frost.TaprootConfig
-	signature      taproot.Signature // 64-byte BIP-340 signature (R_x || s)
+	handler *protocol.Handler
+	pool    *pool.Pool
+	config  *frost.Config
+	// signature is the RFC 8032 encoding, R ‖ S with S little-endian, exactly
+	// what crypto/ed25519.Verify accepts.
+	signature []byte
+	// message is the message itself, NOT a digest of it. PureEdDSA hashes the
+	// message inside the challenge, so anything hashed here would be signed as
+	// a digest of a digest and rejected on chain. Solana signs the serialized
+	// transaction message; TON signs the 32 bytes of the cell hash — in both
+	// cases these are the bytes the caller handed us, unchanged.
+	message        []byte
 	messagesCh     chan *protocol.Message
 	resultMutex    sync.Mutex
 	done           bool
 	resultErr      error
-	messageHash    []byte
 	signerIDs      []party.ID
 	useBroadcast   bool
 	protocolLogger log.Logger
@@ -53,7 +69,7 @@ type frostSigningSession struct {
 func newFROSTSigningSession(
 	sessionID string,
 	walletID string,
-	messageHash []byte,
+	message []byte,
 	pubSub messaging.PubSub,
 	selfPartyID party.ID,
 	signerIDs []party.ID,
@@ -66,13 +82,13 @@ func newFROSTSigningSession(
 ) (*frostSigningSession, error) {
 	// Load and unmarshal key share inside withSecretErasure so that raw
 	// share bytes on the stack are zeroed after parsing completes.
-	frostKey := fmt.Sprintf("frost:%s", walletID)
-	var config *frost.TaprootConfig
+	shareKey := Ed25519ShareKey(walletID)
+	var config *frost.Config
 	var loadErr error
 	withSecretErasure(func() {
-		shareBytes, err := GetKeyShareWithFallback(kvstore, orgID, frostKey)
+		shareBytes, err := GetKeyShareWithFallback(kvstore, orgID, shareKey)
 		if err != nil {
-			loadErr = fmt.Errorf("failed to get FROST key share: %w", err)
+			loadErr = fmt.Errorf("failed to get Ed25519 key share: %w", err)
 			return
 		}
 		defer func() {
@@ -80,24 +96,15 @@ func newFROSTSigningSession(
 				shareBytes[i] = 0
 			}
 		}()
-		// TaprootConfig is stored as CBOR (to properly preserve crypto types)
-		config, err = UnmarshalFROSTConfig(shareBytes)
+		// CBOR, and every point is decoded through curve.Ed25519, so a share
+		// belonging to another curve cannot load at all.
+		config, err = UnmarshalEd25519Config(shareBytes)
 		if err != nil {
-			loadErr = fmt.Errorf("failed to unmarshal FROST key share: %w", err)
+			loadErr = fmt.Errorf("failed to unmarshal Ed25519 key share: %w", err)
 		}
 	})
 	if loadErr != nil {
 		return nil, loadErr
-	}
-
-	// BIP-340/Taproot requires 32-byte message hash
-	// If message is not already 32 bytes, hash it with SHA-256
-	var hashedMessage []byte
-	if len(messageHash) == 32 {
-		hashedMessage = messageHash
-	} else {
-		hash := sha256.Sum256(messageHash)
-		hashedMessage = hash[:]
 	}
 
 	// Create thread pool
@@ -125,18 +132,19 @@ func newFROSTSigningSession(
 			processingLock:     sync.Mutex{},
 			topicComposer: &TopicComposer{
 				ComposeBroadcastTopic: func() string {
-					return fmt.Sprintf("sign:broadcast:frost:%s", sessionID)
+					return fmt.Sprintf("sign:broadcast:ed25519:%s", sessionID)
 				},
 				ComposeDirectTopic: func(nodeID string) string {
-					return fmt.Sprintf("sign:direct:frost:%s:%s", nodeID, sessionID)
+					return fmt.Sprintf("sign:direct:ed25519:%s:%s", nodeID, sessionID)
 				},
 			},
 			identityStore: identityStore,
 		},
-		pool:         threadPool,
-		config:       config,
-		messagesCh:   make(chan *protocol.Message, 100),
-		messageHash:  hashedMessage, // Use the SHA-256 hashed message
+		pool:       threadPool,
+		config:     config,
+		messagesCh: make(chan *protocol.Message, 100),
+		// Passed through untouched — see the field comment on message.
+		message:      message,
 		signerIDs:    signerIDs,
 		useBroadcast: useBroadcast,
 		done:         false,
@@ -191,7 +199,7 @@ func (s *frostSigningSession) Init() {
 	s.logger.Info().
 		Str("sessionID", s.sessionID).
 		Str("walletID", s.walletID).
-		Hex("messageHash", s.messageHash).
+		Int("messageLen", len(s.message)).
 		Interface("signerIDs", s.signerIDs).
 		Bool("useBroadcast", s.useBroadcast).
 		Msg("Initializing FROST signing session")
@@ -199,8 +207,7 @@ func (s *frostSigningSession) Init() {
 	// Create protocol logger
 	s.protocolLogger = log.NewTestLogger(log.InfoLevel)
 
-	// Create FROST Taproot signing protocol
-	startFunc := frost.SignTaproot(s.config, s.signerIDs, s.messageHash)
+	startFunc := ed25519SignStart(s.config, s.signerIDs, s.message)
 
 	// Create handler with timeout context for signing operations
 	ctx, cancel := context.WithTimeout(context.Background(), SigningTimeout)
@@ -259,8 +266,19 @@ func (s *frostSigningSession) handleProtocolMessages() {
 					s.resultErr = err
 					s.errCh <- err
 				} else {
-					// FROST Taproot signing returns taproot.Signature which is []byte (64 bytes)
-					s.signature = result.(taproot.Signature)
+					// SignEd25519 resolves to a VALUE, not a pointer — asserting
+					// *frost.Ed25519Signature here would panic.
+					sig, ok := result.(frost.Ed25519Signature)
+					if !ok {
+						err := fmt.Errorf("Ed25519 signing returned %T, want frost.Ed25519Signature", result)
+						s.resultErr = err
+						s.errCh <- err
+					} else if encoded, mErr := sig.MarshalBinary(); mErr != nil {
+						s.resultErr = fmt.Errorf("failed to encode Ed25519 signature: %w", mErr)
+						s.errCh <- s.resultErr
+					} else {
+						s.signature = encoded
+					}
 				}
 				s.resultMutex.Unlock()
 				s.finishCh <- true
@@ -417,22 +435,22 @@ func (s *frostSigningSession) publishResult() {
 		return
 	}
 
-	if s.signature == nil || len(s.signature) != 64 {
+	if len(s.signature) != 64 {
 		s.logger.Error().Int("sigLen", len(s.signature)).Msg("FROST: Invalid signature after signing completion (expected 64 bytes)")
 		s.externalFinishChan <- ""
 		return
 	}
 
-	// taproot.Signature is already in BIP-340 format: R_x (32 bytes) || s (32 bytes) = 64 bytes
-	fullSignature := []byte(s.signature)
+	// RFC 8032 encoding: R (32 bytes) ‖ S (32 bytes, little-endian).
+	fullSignature := s.signature
 
 	s.logger.Info().
 		Str("sessionID", s.sessionID).
 		Str("walletID", s.walletID).
-		Hex("sigRX", fullSignature[:32]).
-		Hex("sigZ", fullSignature[32:]).
+		Hex("sigR", fullSignature[:32]).
+		Hex("sigS", fullSignature[32:]).
 		Int("sigLen", len(fullSignature)).
-		Msg("FROST/Taproot signing completed successfully")
+		Msg("FROST/Ed25519 signing completed successfully")
 
 	// Create success event with EdDSA signature format
 	successEvent := event.SigningResultEvent{

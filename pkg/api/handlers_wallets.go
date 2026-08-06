@@ -152,7 +152,12 @@ func (s *Server) handleGetWalletAddresses(w http.ResponseWriter, r *http.Request
 	}
 	if wallet.SolAddress != nil {
 		addresses["solana"] = *wallet.SolAddress
-		addresses["ton"] = *wallet.SolAddress // Ed25519-based
+		// No "ton" entry. TON shares this wallet's Ed25519 key but not its
+		// address format: a TON address is workchain ‖ SHA-256 of a wallet
+		// contract's StateInit cell, base64url with a CRC16, and it differs
+		// between contract versions. The Solana base58 string is not a TON
+		// address in any encoding, so serving it here published an address that
+		// can receive nothing and prove nothing. Absent until address.TON exists.
 	}
 	writeJSON(w, http.StatusOK, addresses)
 }

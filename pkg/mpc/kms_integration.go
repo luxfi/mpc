@@ -189,7 +189,7 @@ func isKeyShare(key string) bool {
 		return true
 	}
 	// Known key-type prefixed shares
-	for _, prefix := range []string{"frost:", "sr25519:", "tfhe:"} {
+	for _, prefix := range []string{"ed25519:", "sr25519:", "tfhe:"} {
 		if strings.HasPrefix(key, prefix) {
 			return true
 		}

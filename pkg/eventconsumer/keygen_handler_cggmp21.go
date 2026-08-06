@@ -3,131 +3,79 @@ package eventconsumer
 import (
 	"context"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"time"
 
-	"github.com/nats-io/nats.go"
-
-	"github.com/luxfi/mpc/pkg/event"
 	"github.com/luxfi/mpc/pkg/logger"
-	"github.com/luxfi/mpc/pkg/messaging"
-	"github.com/luxfi/mpc/pkg/mpc"
 )
 
-// handleKeyGenEventCGGMP21 handles key generation events for CGGMP21 protocol
-func (ec *eventConsumer) handleKeyGenEventCGGMP21(msg *event.Message, natMsg *nats.Msg) {
-	// Mark session as active
-	ec.trackSession(msg.OrgID, msg.WalletID, "")
-
-	// Remove session from active list when done
-	defer ec.untrackSession(msg.OrgID, msg.WalletID, "")
-
-	// Create a context with timeout for the entire key generation process
-	baseCtx, cancel := context.WithTimeout(context.Background(), KeyGenTimeOut)
-	defer cancel()
-
-	// Decode the message
-	if msg.EventType != MPCGenerateEvent {
-		logger.Error("unexpected event type", nil, "expected", MPCGenerateEvent, "got", msg.EventType)
-		return
-	}
-
-	walletID := msg.WalletID
-
-	// Create CGGMP21 keygen session
-	keygenSession, err := ec.node.CreateKeyGenSession(walletID, ec.mpcThreshold, ec.genKeyResultQueue, msg.OrgID)
+// runCGGMP21Keygen runs the CGGMP21 ceremony and returns the wallet's secp256k1
+// public key: the key behind its EVM, Bitcoin, LUX and XRPL addresses.
+//
+// It publishes nothing. Running a ceremony and announcing a wallet are separate
+// jobs — a wallet's key set has more than one leg, and only the orchestrator can
+// see whether the set as a whole is worth announcing.
+func (ec *eventConsumer) runCGGMP21Keygen(ctx context.Context, orgID, walletID string) ([]byte, error) {
+	keygenSession, err := ec.node.CreateKeyGenSession(walletID, ec.mpcThreshold, ec.genKeyResultQueue, orgID)
 	if err != nil {
-		ec.handleKeygenSessionError(walletID, err, "Failed to create CGGMP21 key generation session", natMsg)
-		return
+		return nil, fmt.Errorf("failed to create CGGMP21 key generation session: %w", err)
 	}
 	keygenSession.Init()
 
-	// Setup context for monitoring
-	ctx, done := context.WithCancel(baseCtx)
+	monitorCtx, done := context.WithCancel(ctx)
+	defer done()
 
-	// Prepare success event
-	successEvent := &event.KeygenResultEvent{
-		WalletID:   walletID,
-		ResultType: event.ResultTypeSuccess,
-	}
-
-	// Channel to communicate errors
 	errorChan := make(chan error, 1)
-
-	// Monitor for errors in background
 	go func() {
 		select {
-		case <-ctx.Done():
+		case <-monitorCtx.Done():
 			return
 		case err := <-keygenSession.ErrChan():
 			if err != nil {
 				logger.Error("CGGMP21 keygen session error", err)
-				errorChan <- err
-				done()
+				select {
+				case errorChan <- err:
+				default:
+				}
 			}
 		}
 	}()
 
-	// Start listening to messages
 	keygenSession.ListenToIncomingMessageAsync()
 
 	// Small delay for peer setup
 	time.Sleep(DefaultSessionStartupDelay * time.Millisecond)
 
-	// Start processing outbound messages
 	go keygenSession.ProcessOutboundMessage()
 
-	// Wait for the keygen to complete
 	completionChan := make(chan string, 1)
 	go func() {
-		result := keygenSession.WaitForFinish()
-		completionChan <- result
+		completionChan <- keygenSession.WaitForFinish()
 	}()
 
-	// Wait for completion, error, or timeout
 	select {
 	case pubKeyHex := <-completionChan:
-		// Success - set the public key
-		if pubKeyHex != "" {
-			pubKeyBytes, err := hex.DecodeString(pubKeyHex)
-			if err == nil {
-				successEvent.ECDSAPubKey = pubKeyBytes
-			}
+		if pubKeyHex == "" {
+			// The session sends "" for every failure it can detect, including a
+			// failed kvstore.Put and a failed keyinfo save. Treating that as
+			// success — which this handler used to do — announces a wallet whose
+			// EVM and Bitcoin addresses are published while fewer than t+1 nodes
+			// actually hold a share, so the addresses can receive funds and can
+			// never sign. That is the same shape of loss this change removes on
+			// the Solana side, and the same rule applies: under uncertainty,
+			// emit nothing.
+			return nil, fmt.Errorf("CGGMP21 keygen produced no public key")
 		}
-		done() // Signal completion
+		pubKeyBytes, err := hex.DecodeString(pubKeyHex)
+		if err != nil {
+			return nil, fmt.Errorf("CGGMP21 keygen returned a malformed public key: %w", err)
+		}
+		return pubKeyBytes, nil
 
 	case err := <-errorChan:
-		// Error occurred
-		ec.handleKeygenSessionError(walletID, err, "CGGMP21 keygen error", natMsg)
-		return
+		return nil, fmt.Errorf("CGGMP21 keygen error: %w", err)
 
-	case <-baseCtx.Done():
-		// Timeout occurred
-		logger.Warn("Key generation timed out", "walletID", walletID, "timeout", KeyGenTimeOut)
-		ec.handleKeygenSessionError(walletID, fmt.Errorf("keygen session timed out after %v", KeyGenTimeOut), "Key generation timed out", natMsg)
-		return
+	case <-ctx.Done():
+		return nil, fmt.Errorf("keygen session timed out after %v", KeyGenTimeOut)
 	}
-
-	// Marshal and publish success event
-	payload, err := json.Marshal(successEvent)
-	if err != nil {
-		logger.Error("Failed to marshal keygen success event", err)
-		ec.handleKeygenSessionError(walletID, err, "Failed to marshal keygen success event", natMsg)
-		return
-	}
-
-	key := fmt.Sprintf(mpc.TypeGenerateWalletResultFmt, walletID)
-	if err := ec.genKeyResultQueue.Enqueue(
-		key,
-		payload,
-		&messaging.EnqueueOptions{IdempotententKey: composeKeygenIdempotentKey(walletID, natMsg)},
-	); err != nil {
-		logger.Error("Failed to publish key generation success message", err)
-		ec.handleKeygenSessionError(walletID, err, "Failed to publish key generation success message", natMsg)
-		return
-	}
-
-	ec.sendReplyToRemoveMsg(natMsg)
-	logger.Info("[COMPLETED KEY GEN] CGGMP21 key generation completed successfully", "walletID", walletID)
 }
