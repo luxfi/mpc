@@ -106,7 +106,8 @@ func (p *Node) CreateKeyGenSession(
 	return session, nil
 }
 
-// CreateEdDSAKeyGenSession creates a FROST keygen session for EdDSA
+// CreateEdDSAKeyGenSession creates a FROST keygen session over edwards25519,
+// producing an RFC 8032 Ed25519 key (Solana address, TON wallet key)
 func (p *Node) CreateEdDSAKeyGenSession(
 	walletID string,
 	threshold int,
@@ -321,11 +322,14 @@ func (p *Node) CreateSignSession(
 	return session, nil
 }
 
-// CreateEdDSASignSession creates a FROST signing session for EdDSA (Ed25519)
+// CreateEdDSASignSession creates a FROST signing session over edwards25519.
+//
+// message is the message itself, not a digest. PureEdDSA hashes it inside the
+// challenge, so a caller that pre-hashes signs the wrong thing.
 func (p *Node) CreateEdDSASignSession(
 	sessionID string,
 	walletID string,
-	messageHash []byte,
+	message []byte,
 	signerPeerIDs []string,
 	resultQueue messaging.MessageQueue,
 	useBroadcast bool,
@@ -353,7 +357,7 @@ func (p *Node) CreateEdDSASignSession(
 	session, err := newFROSTSigningSession(
 		sessionID,
 		walletID,
-		messageHash,
+		message,
 		p.pubSub,
 		selfPartyID,
 		signerPartyIDs,

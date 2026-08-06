@@ -17,7 +17,6 @@ import (
 	"github.com/luxfi/threshold/protocols/cmp/config"
 	"github.com/rs/zerolog"
 
-	"github.com/luxfi/mpc/pkg/event"
 	"github.com/luxfi/mpc/pkg/identity"
 	"github.com/luxfi/mpc/pkg/keyinfo"
 	"github.com/luxfi/mpc/pkg/kvstore"
@@ -355,18 +354,14 @@ func (s *cggmp21KeygenSession) publishResult() {
 	defer s.resultMutex.Unlock()
 
 	if s.resultErr != nil {
+		// Report to the caller and to nobody else. This session used to publish
+		// its own failure onto mpc.mpc_keygen_result.<walletID> with no
+		// idempotency key, while the orchestrator published the wallet's verdict
+		// onto the same subject — and the reader is first-wins, so across a ring
+		// one node's local failure could beat the other nodes' success and
+		// decide the verdict for a wallet that genuinely exists. One publisher,
+		// one verdict: the orchestrator's.
 		s.logger.Error().Err(s.resultErr).Msg("CGGMP21: keygen failed with error")
-		failureEvent := event.CreateKeygenFailure(
-			s.walletID,
-			map[string]any{
-				"error":    s.resultErr.Error(),
-				"protocol": "CGGMP21",
-			},
-		)
-		evtData, _ := json.Marshal(failureEvent)
-		if err := s.resultQueue.Enqueue(fmt.Sprintf("mpc.mpc_keygen_result.%s", s.walletID), evtData, nil); err != nil {
-			s.logger.Error().Err(err).Msg("failed to publish keygen failure event")
-		}
 		// IMPORTANT: Always send to externalFinishChan so WaitForFinish() doesn't block forever
 		s.externalFinishChan <- ""
 		return

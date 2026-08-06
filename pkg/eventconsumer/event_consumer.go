@@ -30,6 +30,12 @@ const (
 	DefaultSessionStartupDelay = 500
 
 	KeyGenTimeOut = 120 * time.Second
+
+	// Ed25519KeyGenTimeOut bounds the Ed25519 leg on its own, so the expensive
+	// secp256k1 leg cannot starve it. FROST keygen is three rounds with no heavy
+	// primitives — it is bounded by network round-trips, not computation — so
+	// this is generous rather than tight.
+	Ed25519KeyGenTimeOut = 60 * time.Second
 )
 
 type EventConsumer interface {
@@ -119,6 +125,45 @@ func (ec *eventConsumer) Run() {
 	logger.Info("MPC Event consumer started...!")
 }
 
+// handleKeyGenEvent mints a wallet's key set and publishes it.
+//
+// A wallet is not one key. Chains disagree about curves, and
+// types.GetNetworkKeyType is the single table recording which chain wants which,
+// so a wallet needs one key per curve its networks use and a single keygen
+// request mints them all. This function is the only place that decides which
+// ceremonies run, which is what keeps every site downstream from having to know
+// or guess a curve.
+//
+// The two legs do not have equal standing:
+//
+//   - secp256k1 (CGGMP21) backs EVM, Bitcoin, LUX and XRPL. Its failure fails the
+//     wallet.
+//   - Ed25519 (FROST) backs Solana and TON. Its failure is deliberately NOT
+//     fatal: the wallet is published without eddsa_pub_key, which suppresses
+//     sol_address downstream. A wallet that cannot receive Solana is an
+//     inconvenience; a wallet that receives Solana at an address the ring cannot
+//     sign for has lost the funds permanently. Only the first is recoverable, so
+//     the Ed25519 leg fails closed and the wallet survives without it.
+//
+// sr25519 (Polkadot/Kusama) appears in the network table but has no leg here, so
+// DOT/KSM wallets still cannot be minted. That gap predates this function and is
+// left visible rather than papered over.
+//
+// The order is load-bearing and must not be changed or parallelised. Only the
+// CGGMP21 session writes the wallet's keyinfo record (its threshold and
+// participant set); the Ed25519 session never does. CreateEdDSASignSession reads
+// that record to decide whether it has enough signers, so an Ed25519 key minted
+// without the CGGMP21 leg having completed first would be unsignable — the exact
+// outcome this whole change exists to prevent. Running secp256k1 first, and
+// abandoning the wallet if it fails, is what guarantees the record exists.
+//
+// Each leg gets its OWN deadline rather than sharing one. A single budget across
+// two sequential ceremonies is not shared fairly: CGGMP21 is the expensive leg
+// (Paillier keygen and its proofs), so it would routinely consume most of the
+// budget and starve the Ed25519 leg into a systematic timeout — turning "Solana
+// is supported" into "Solana works when the ring is idle". Separate deadlines
+// also mean the secp256k1 leg keeps exactly the budget it had before this
+// change, so nothing that worked previously became slower or less reliable.
 func (ec *eventConsumer) handleKeyGenEvent(natMsg *nats.Msg) {
 	raw := natMsg.Data
 	var msg types.GenerateKeyMessage
@@ -134,13 +179,64 @@ func (ec *eventConsumer) handleKeyGenEvent(natMsg *nats.Msg) {
 		return
 	}
 
-	// Convert to event message format and use CGGMP21 handler
-	eventMsg := &event.Message{
-		OrgID:     msg.OrgID,
-		EventType: MPCGenerateEvent,
-		WalletID:  msg.WalletID,
+	ec.trackSession(msg.OrgID, msg.WalletID, "")
+	defer ec.untrackSession(msg.OrgID, msg.WalletID, "")
+
+	result := &event.KeygenResultEvent{
+		WalletID:   msg.WalletID,
+		ResultType: event.ResultTypeSuccess,
 	}
-	ec.handleKeyGenEventCGGMP21(eventMsg, natMsg)
+
+	secpCtx, cancelSecp := context.WithTimeout(context.Background(), KeyGenTimeOut)
+	ecdsaPubKey, err := ec.runCGGMP21Keygen(secpCtx, msg.OrgID, msg.WalletID)
+	cancelSecp()
+	if err != nil {
+		ec.handleKeygenSessionError(msg.WalletID, err, "CGGMP21 key generation failed", natMsg)
+		return
+	}
+	result.ECDSAPubKey = ecdsaPubKey
+
+	ed25519Ctx, cancelEd := context.WithTimeout(context.Background(), Ed25519KeyGenTimeOut)
+	eddsaPubKey, err := ec.runEd25519Keygen(ed25519Ctx, msg.OrgID, msg.WalletID)
+	cancelEd()
+	if err != nil {
+		logEd25519LegSkipped(msg.WalletID, err)
+	} else {
+		result.EDDSAPubKey = eddsaPubKey
+	}
+
+	// Nothing below this line may relax the curve check. If an EdDSA key is
+	// present it must be a real Ed25519 key; otherwise drop it and publish the
+	// wallet without one.
+	if err := assertKeygenResultConsistent(result); err != nil {
+		logEd25519LegSkipped(msg.WalletID, err)
+		result.EDDSAPubKey = nil
+	}
+
+	payload, err := json.Marshal(result)
+	if err != nil {
+		logger.Error("Failed to marshal keygen success event", err)
+		ec.handleKeygenSessionError(msg.WalletID, err, "Failed to marshal keygen success event", natMsg)
+		return
+	}
+
+	key := fmt.Sprintf(mpc.TypeGenerateWalletResultFmt, msg.WalletID)
+	if err := ec.genKeyResultQueue.Enqueue(
+		key,
+		payload,
+		&messaging.EnqueueOptions{IdempotententKey: composeKeygenIdempotentKey(msg.WalletID, natMsg)},
+	); err != nil {
+		logger.Error("Failed to publish key generation success message", err)
+		ec.handleKeygenSessionError(msg.WalletID, err, "Failed to publish key generation success message", natMsg)
+		return
+	}
+
+	ec.sendReplyToRemoveMsg(natMsg)
+	logger.Info("[COMPLETED KEY GEN] key generation completed",
+		"walletID", msg.WalletID,
+		"hasECDSAKey", len(result.ECDSAPubKey) > 0,
+		"hasEd25519Key", len(result.EDDSAPubKey) > 0,
+	)
 }
 
 // handleKeygenSessionError handles errors that occur during key generation

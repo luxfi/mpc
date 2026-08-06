@@ -13,7 +13,6 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/rs/zerolog"
 
-	"github.com/luxfi/mpc/pkg/event"
 	"github.com/luxfi/mpc/pkg/identity"
 	"github.com/luxfi/mpc/pkg/keyinfo"
 	"github.com/luxfi/mpc/pkg/kvstore"
@@ -22,15 +21,41 @@ import (
 	"github.com/luxfi/mpc/pkg/utils"
 )
 
-// FROSTKeygenSession interface for FROST keygen
+// FROSTKeygenSession runs FROST distributed key generation over edwards25519.
+//
+// The group is not incidental. The key this ceremony produces is a plain RFC
+// 8032 Ed25519 public key: base58-encoded it is a Solana address, and it is the
+// key a TON wallet contract stores. It must therefore come from
+// frost.KeygenEd25519 and from nothing else. FROST over secp256k1 (the Taproot
+// entry point this session used to call) yields a 32-byte key too, which is why
+// the mistake is invisible downstream — the length matches, the address parses,
+// and the funds never move.
 type FROSTKeygenSession interface {
 	Session
+	// GetPublicKey returns the 32-byte Ed25519 public key after keygen completes.
+	GetPublicKey() []byte
+}
+
+// ed25519KeygenStart names the keygen primitive for the Ed25519 route, once.
+//
+// It exists so that the ceremony the daemon runs and the ceremony the tests run
+// cannot drift apart. If the tests called frost.KeygenEd25519 directly they would
+// be asserting on a copy of this decision rather than on the decision itself, and
+// would keep passing while the session quietly ran something else — which is
+// exactly how the Taproot bug survived: the tests and the code agreed about the
+// name "EdDSA" and disagreed about the curve.
+//
+// KeygenTaproot (BIP-340 over secp256k1) must never appear here. Its key is also
+// 32 bytes, so it passes every downstream check and mints a Solana address the
+// ring can never sign for.
+func ed25519KeygenStart(selfID party.ID, participants []party.ID, threshold int) protocol.StartFunc {
+	return frost.KeygenEd25519(selfID, participants, threshold)
 }
 
 type frostKeygenSession struct {
 	session
 	handler        *protocol.Handler
-	config         *frost.TaprootConfig
+	config         *frost.Config
 	messagesCh     chan *protocol.Message
 	resultMutex    sync.Mutex
 	done           bool
@@ -70,12 +95,17 @@ func newFROSTKeygenSession(
 			logger:             zerolog.New(utils.ZerologConsoleWriter()).With().Timestamp().Logger(),
 			processing:         newDedupMap(),
 			processingLock:     sync.Mutex{},
+			// The topic names the curve, not just the scheme. FROST is defined
+			// over any prime-order group, so "frost" alone does not say what a
+			// peer is about to agree with us on; a peer running a different
+			// group under the same topic would be a silent mixed-curve
+			// ceremony. Naming the group keeps that unreachable.
 			topicComposer: &TopicComposer{
 				ComposeBroadcastTopic: func() string {
-					return fmt.Sprintf("keygen:broadcast:frost:%s", walletID)
+					return fmt.Sprintf("keygen:broadcast:ed25519:%s", walletID)
 				},
 				ComposeDirectTopic: func(nodeID string) string {
-					return fmt.Sprintf("keygen:direct:frost:%s:%s", nodeID, walletID)
+					return fmt.Sprintf("keygen:direct:ed25519:%s:%s", nodeID, walletID)
 				},
 			},
 			identityStore: identityStore,
@@ -142,10 +172,9 @@ func (s *frostKeygenSession) Init() {
 	s.protocolLogger = log.NewTestLogger(log.InfoLevel)
 	s.logger.Info().Msg("[FROST] Protocol logger created")
 
-	// Create FROST keygen protocol for Taproot (Ed25519-based Schnorr)
-	s.logger.Info().Msg("[FROST] Creating KeygenTaproot start function")
-	startFunc := frost.KeygenTaproot(s.selfPartyID, s.partyIDs, s.threshold)
-	s.logger.Info().Msg("[FROST] KeygenTaproot start function created")
+	s.logger.Info().Msg("[FROST] Creating KeygenEd25519 start function")
+	startFunc := ed25519KeygenStart(s.selfPartyID, s.partyIDs, s.threshold)
+	s.logger.Info().Msg("[FROST] KeygenEd25519 start function created")
 
 	// Create handler with timeout context for DKG operations
 	ctx, cancel := context.WithTimeout(context.Background(), KeygenTimeout)
@@ -209,14 +238,25 @@ func (s *frostKeygenSession) handleProtocolMessages() {
 					s.resultErr = err
 					s.errCh <- err
 				} else {
-					s.config = result.(*frost.TaprootConfig)
-					if s.config != nil {
-						s.logger.Info().
-							Int("publicKeyLen", len(s.config.PublicKey)).
-							Str("publicKeyHex", fmt.Sprintf("%x", s.config.PublicKey)).
-							Msg("[FROST-PROTOCOL] handler.Result() returned valid config")
+					cfg, ok := result.(*frost.Config)
+					if !ok {
+						// A different concrete type means a different curve ran.
+						// Refuse it rather than reach into it: the whole point of
+						// this session is that only an Ed25519 config may leave it.
+						err := fmt.Errorf("FROST keygen returned %T, want *frost.Config over edwards25519", result)
+						s.logger.Error().Err(err).Msg("[FROST-PROTOCOL] wrong config type from keygen")
+						s.resultErr = err
+						s.errCh <- err
 					} else {
-						s.logger.Warn().Msg("[FROST-PROTOCOL] handler.Result() returned nil config!")
+						s.config = cfg
+						if pubBytes, mErr := cfg.PublicKey.MarshalBinary(); mErr == nil {
+							s.logger.Info().
+								Int("publicKeyLen", len(pubBytes)).
+								Str("publicKeyHex", fmt.Sprintf("%x", pubBytes)).
+								Msg("[FROST-PROTOCOL] handler.Result() returned valid config")
+						} else {
+							s.logger.Warn().Err(mErr).Msg("[FROST-PROTOCOL] could not marshal public key")
+						}
 					}
 				}
 				s.resultMutex.Unlock()
@@ -363,18 +403,13 @@ func (s *frostKeygenSession) publishResult() {
 	defer s.resultMutex.Unlock()
 
 	if s.resultErr != nil {
-		s.logger.Error().Err(s.resultErr).Msg("FROST: keygen failed with error")
-		failureEvent := event.CreateKeygenFailure(
-			s.walletID,
-			map[string]any{
-				"error":    s.resultErr.Error(),
-				"protocol": "FROST",
-			},
-		)
-		evtData, _ := json.Marshal(failureEvent)
-		if err := s.resultQueue.Enqueue(fmt.Sprintf("mpc.mpc_keygen_result.%s", s.walletID), evtData, nil); err != nil {
-			s.logger.Error().Err(err).Msg("FROST: failed to publish keygen failure event")
-		}
+		// Report the failure to the caller and to nobody else. This ceremony is
+		// one leg of a wallet's key set, not the wallet's verdict: a wallet whose
+		// secp256k1 leg succeeded is still a good wallet with no Solana address.
+		// Publishing a keygen failure from here would race the orchestrator's
+		// success event on the same subject, and whichever landed first would
+		// win — so the leg reports, and only the orchestrator publishes.
+		s.logger.Error().Err(s.resultErr).Msg("FROST: Ed25519 keygen failed with error")
 		// IMPORTANT: Always send to externalFinishChan so WaitForFinish() doesn't block forever
 		s.externalFinishChan <- ""
 		return
@@ -387,8 +422,9 @@ func (s *frostKeygenSession) publishResult() {
 		return
 	}
 
-	// Save key share with frost prefix using CBOR (JSON doesn't preserve crypto types)
-	shareBytes, err := MarshalFROSTConfig(s.config)
+	// CBOR, not JSON: the curve types have no JSON marshalers and would
+	// round-trip to nothing.
+	shareBytes, err := MarshalEd25519Config(s.config)
 	if err != nil {
 		s.logger.Error().Err(err).Msg("FROST: Failed to marshal key share")
 		// IMPORTANT: Always send to externalFinishChan so WaitForFinish() doesn't block forever
@@ -396,33 +432,29 @@ func (s *frostKeygenSession) publishResult() {
 		return
 	}
 
-	// Save with frost: prefix to distinguish from ECDSA keys
-	frostKey := fmt.Sprintf("frost:%s", s.walletID)
-	if err := s.kvstore.Put(OrgScopedKey(s.orgID, frostKey), shareBytes); err != nil {
+	if err := s.kvstore.Put(OrgScopedKey(s.orgID, Ed25519ShareKey(s.walletID)), shareBytes); err != nil {
 		s.logger.Error().Err(err).Msgf("FROST: Failed to save key share for wallet %s", s.walletID)
 		// IMPORTANT: Always send to externalFinishChan so WaitForFinish() doesn't block forever
 		s.externalFinishChan <- ""
 		return
 	}
 
-	// Get public key hex
+	// Publish the public key only if it re-encodes cleanly. An empty string here
+	// means no eddsa_pub_key and therefore no Solana address — the system
+	// declining to name an address it is not certain it can sign for, which is
+	// the correct outcome, not a degraded one.
 	var pubKeyHex string
-	if s.config != nil && len(s.config.PublicKey) > 0 {
-		pubKeyHex = fmt.Sprintf("%x", s.config.PublicKey)
-		s.logger.Info().
-			Int("configPubKeyLen", len(s.config.PublicKey)).
-			Str("pubKeyHex", pubKeyHex).
-			Msg("[FROST-PUBLISH] PublicKey available")
+	pubBytes, err := s.config.PublicKey.MarshalBinary()
+	if err != nil || len(pubBytes) != 32 {
+		s.logger.Error().Err(err).
+			Int("pubKeyLen", len(pubBytes)).
+			Msg("[FROST-PUBLISH] Ed25519 public key did not marshal to 32 bytes; publishing nothing")
 	} else {
-		s.logger.Warn().
-			Bool("configNil", s.config == nil).
-			Int("configPubKeyLen", func() int {
-				if s.config != nil {
-					return len(s.config.PublicKey)
-				}
-				return -1
-			}()).
-			Msg("[FROST-PUBLISH] PublicKey is empty or config is nil!")
+		pubKeyHex = fmt.Sprintf("%x", pubBytes)
+		s.logger.Info().
+			Int("configPubKeyLen", len(pubBytes)).
+			Str("pubKeyHex", pubKeyHex).
+			Msg("[FROST-PUBLISH] Ed25519 PublicKey available")
 	}
 
 	// Notify via external finish channel
@@ -445,12 +477,17 @@ func (s *frostKeygenSession) WaitForFinish() string {
 	return <-s.externalFinishChan
 }
 
-// GetPublicKey returns the EdDSA public key after keygen completes
+// GetPublicKey returns the 32-byte Ed25519 public key after keygen completes,
+// or nil if there is not one. nil is a usable answer; a wrong 32 bytes is not.
 func (s *frostKeygenSession) GetPublicKey() []byte {
 	s.resultMutex.Lock()
 	defer s.resultMutex.Unlock()
-	if s.config != nil {
-		return s.config.PublicKey
+	if s.config == nil || s.config.PublicKey == nil {
+		return nil
 	}
-	return nil
+	pubBytes, err := s.config.PublicKey.MarshalBinary()
+	if err != nil {
+		return nil
+	}
+	return pubBytes
 }

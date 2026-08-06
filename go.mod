@@ -39,7 +39,7 @@ require (
 	github.com/luxfi/lattice/v7 v7.1.4
 	github.com/luxfi/log v1.4.3
 	github.com/luxfi/metric v1.8.1
-	github.com/luxfi/threshold v1.12.5
+	github.com/luxfi/threshold v1.12.7
 	github.com/luxfi/zap v1.2.6
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/mr-tron/base58 v1.3.0

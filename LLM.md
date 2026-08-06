@@ -2,6 +2,60 @@
 
 This document provides comprehensive guidance for AI assistants working with the MPC (Multi-Party Computation) codebase.
 
+## ✅ `eddsa_pub_key` / `sol_address` are LIVE — Ed25519, and only from `KeygenEd25519`
+
+Solana/TON keys are real as of `luxfi/threshold` **v1.12.7**, which added the
+FROST(Ed25519, SHA-512) ciphersuite of RFC 9591. This section previously said the
+opposite and told you to leave `eddsa_pub_key` empty; that blocker is cleared.
+
+**The hazard it replaced, which has NOT gone away as a class.** The sessions named
+"EdDSA" used to call `frost.KeygenTaproot` — BIP-340 over **secp256k1**. Its public key
+is also 32 bytes, so it passed mpcd's `len(result.EDDSAPubKey) == 32` gate and
+base58-encoded into a real-looking Solana address the ring could never sign for.
+Deposits to such an address are unrecoverable.
+
+**The rules that keep it fixed:**
+
+- Any value reaching `EDDSAPubKey` MUST come from `frost.KeygenEd25519` and nothing else.
+  `KeygenTaproot` (secp256k1) and `frost.Keygen(curve.Ed25519{}, …)` (BLAKE3 challenge,
+  big-endian `S`) both produce plausible-looking 32-byte keys that no chain accepts.
+- Sign with `frost.SignEd25519` only. Generic `frost.Sign` over the *same* Ed25519 config
+  returns 64 bytes shaped exactly like a signature, with a BLAKE3 challenge and big-endian
+  `S`. `SignEd25519`'s `Result()` is a **value** (`frost.Ed25519Signature`), not a pointer.
+- **Never pre-hash.** PureEdDSA hashes the message inside the challenge. The old signing
+  session SHA-256'd anything that was not already 32 bytes (a BIP-340 requirement); that is
+  removed, and re-adding it signs a digest of a digest.
+- **Provenance is the defence, not validation.** `pkg/address.Solana` checks the bytes
+  decode as a prime-order edwards25519 point, but that is only a backstop: measured, it
+  refuses ~93.4% of secp256k1 x-only keys, because about 1 in 16 of them is *genuinely* a
+  valid Ed25519 key too. No function of the bytes alone can do better. It also rejects the
+  identity point, for which any signature verifies — the DKG does not.
+- When anything is uncertain, emit **nothing**. An absent `sol_address` is recoverable; a
+  wrong one is not. The Ed25519 keygen leg is deliberately non-fatal for this reason.
+
+**Layout.** Keygen `pkg/mpc/frost_keygen_session.go` → share at `ed25519:<walletID>`
+(`Ed25519ShareKey`, CBOR via `ed25519_config_marshal.go`), topics `keygen:*:ed25519:*`.
+Signing `pkg/mpc/signing_session_frost.go` reads the same key. Orchestration is
+`handleKeyGenEvent` in `pkg/eventconsumer/event_consumer.go`, which runs the secp256k1 leg
+then the Ed25519 leg and publishes one result. **That order is load-bearing**: only the
+CGGMP21 session writes `keyinfo`, and `CreateEdDSASignSession` reads it to count signers,
+so the Ed25519 leg must never run first or alone. Shares written under the old `frost:`
+prefix were secp256k1 and are intentionally unreachable.
+
+Pinned by `pkg/mpc/ed25519_spendable_test.go`, which runs the real ceremony, round-trips
+every share through the production codec, derives the address, decodes it back, and
+verifies a threshold signature with `crypto/ed25519` against the key **the address decodes
+to** — plus `pkg/address`, `cmd/mpcd`, and `pkg/eventconsumer` guards.
+
+**Still open:** TON addresses are NOT emitted. The Ed25519 key *is* the correct TON key;
+only the address encoding is missing (workchain ‖ SHA-256 of a wallet contract's StateInit
+cell, base64url + CRC16 — and v4r2 vs W5 give different addresses for the same key).
+Guessing it recreates exactly the failure above. Also open: resharing an Ed25519 wallet
+(`eddsa_resharing_session.go` + `pkg/protocol/frost/adapter.go` are still Taproot/secp256k1
+and read the *bare* walletID key, so they never touch the Ed25519 share); mpcd's `/sign`
+clamps `payload_hash` to exactly 32 bytes, so a raw Solana transaction cannot go through
+the HTTP API (the NATS path has no clamp); and sr25519 (DOT/KSM) still has no keygen leg.
+
 ## 🔴 v1.17.12 — CRITICAL threshold-degree fix (was silently 1-of-n) + BRIDGE-ORACLE finding (2026-07-15)
 
 **The bug (fixed by commit `1e1d318`, in tag `v1.17.12`):** `--threshold=N` only drove the
