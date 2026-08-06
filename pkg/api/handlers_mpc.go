@@ -25,6 +25,7 @@ import (
 	"github.com/hanzoai/orm"
 
 	"github.com/luxfi/mpc/pkg/db"
+	"github.com/luxfi/mpc/pkg/types"
 	"github.com/luxfi/mpc/pkg/webauthn"
 )
 
@@ -470,8 +471,12 @@ func (s *Server) handleMpcCryptoWallet(w http.ResponseWriter, r *http.Request) {
 // --- /v1/mpc/sign + /v1/mpc/settlement/sign ---
 
 type signRequest struct {
-	Message   string `json:"message"`
-	Encoding  string `json:"encoding,omitempty"`
+	Message  string `json:"message"`
+	Encoding string `json:"encoding,omitempty"`
+	// Network the signature is for ("SOL", "ETH", "evm", …). Required: it
+	// selects the signing curve, and a wallet holds a key on each curve, so
+	// there is nothing to fall back to.
+	Network   string `json:"network"`
 	WalletID  string `json:"walletId,omitempty"`
 	SessionID string `json:"sessionId,omitempty"`
 	Value     string `json:"value,omitempty"`
@@ -502,6 +507,11 @@ func (s *Server) handleMpcSignDefault(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, "sessionId is required for signing")
 		return
 	}
+	network, err := types.ParseNetwork(req.Network)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	walletID := req.WalletID
 	if walletID == "" {
 		walletID = s.findDefaultWalletID(r.Context(), orgID, userID)
@@ -529,7 +539,7 @@ func (s *Server) handleMpcSignDefault(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid message encoding: "+err.Error())
 		return
 	}
-	result, err := s.mpc.TriggerSign(orgID, wal.WalletID, payload)
+	result, err := s.mpc.TriggerSign(orgID, wal.WalletID, network, payload)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "signing failed: "+err.Error())
 		return
@@ -547,8 +557,11 @@ func (s *Server) handleMpcSignSettlement(w http.ResponseWriter, r *http.Request)
 	userID := getUserID(r.Context())
 
 	var req struct {
-		WalletID       string `json:"walletId"`
-		Payload        string `json:"payload"`
+		WalletID string `json:"walletId"`
+		Payload  string `json:"payload"`
+		// Network selects the signing curve. Settlements are not confined to
+		// one chain, so this is the caller's to state and cannot be inferred.
+		Network        string `json:"network"`
 		Reason         string `json:"reason"`
 		ReferenceID    string `json:"referenceId,omitempty"`
 		IdempotencyKey string `json:"idempotencyKey,omitempty"`
@@ -563,14 +576,19 @@ func (s *Server) handleMpcSignSettlement(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, "walletId, payload, reason are required")
 		return
 	}
+	network, err := types.ParseNetwork(req.Network)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	switch req.Reason {
 	case "trade_settlement", "deposit", "withdrawal", "issuance", "cancellation":
 	default:
 		writeError(w, http.StatusBadRequest, "invalid reason")
 		return
 	}
-	wal, err := orm.Get[db.Wallet](s.db.ORM, req.WalletID)
-	if err != nil || wal.OrgID != orgID {
+	wal, getErr := orm.Get[db.Wallet](s.db.ORM, req.WalletID)
+	if getErr != nil || wal.OrgID != orgID {
 		writeError(w, http.StatusNotFound, "wallet not found")
 		return
 	}
@@ -587,7 +605,7 @@ func (s *Server) handleMpcSignSettlement(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, "invalid payload encoding: "+err.Error())
 		return
 	}
-	result, err := s.mpc.TriggerSign(orgID, wal.WalletID, payload)
+	result, err := s.mpc.TriggerSign(orgID, wal.WalletID, network, payload)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "settlement signing failed: "+err.Error())
 		return

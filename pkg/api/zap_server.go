@@ -11,6 +11,7 @@ import (
 
 	"github.com/luxfi/mpc/pkg/db"
 	"github.com/luxfi/mpc/pkg/logger"
+	"github.com/luxfi/mpc/pkg/types"
 )
 
 // ZAP opcodes for MPC API operations (0x0060-0x006F range).
@@ -28,6 +29,7 @@ const (
 	fieldWalletID = 9
 	fieldPayload  = 10
 	fieldIntentID = 11
+	fieldNetwork  = 12
 
 	fieldStatus = 8
 	fieldData   = 9
@@ -87,7 +89,15 @@ func (s *Server) zapSign(_ context.Context, _ string, msg *zap.Message) (*zap.Me
 		return zapError("org_id, wallet_id, and payload required")
 	}
 
-	result, err := s.mpc.TriggerSign(orgID, walletID, payload)
+	// This is the general signing surface, so the network is the caller's to
+	// state and is refused when absent or unrecognised — the curve it selects
+	// is not something the daemon may assume on a caller's behalf.
+	network, err := types.ParseNetwork(root.Text(fieldNetwork))
+	if err != nil {
+		return zapError(err.Error())
+	}
+
+	result, err := s.mpc.TriggerSign(orgID, walletID, network, payload)
 	if err != nil {
 		return zapError(err.Error())
 	}

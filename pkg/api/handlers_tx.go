@@ -11,6 +11,7 @@ import (
 	"github.com/hanzoai/orm"
 
 	"github.com/luxfi/mpc/pkg/db"
+	"github.com/luxfi/mpc/pkg/types"
 )
 
 func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request) {
@@ -269,10 +270,23 @@ func (s *Server) signAndBroadcast(txID, orgID string) {
 	}
 
 	sys := "system"
+
+	// The transaction's own chain selects the curve. Resolve it BEFORE marking
+	// the transaction as signing: a chain nobody recorded a curve for has no
+	// determinate signature, and the tx must fail on that rather than be
+	// signed with whichever curve happened to be the default.
+	network, err := types.ParseNetwork(tx.Chain)
+	if err != nil {
+		tx.RecordTransition("failed", "signing refused: "+err.Error(), &sys)
+		tx.Update()
+		s.fireWebhook(ctx, orgID, "tx.failed", map[string]string{"tx_id": txID, "error": err.Error()})
+		return
+	}
+
 	tx.RecordTransition("signing", "MPC threshold signing initiated", &sys)
 	tx.Update()
 
-	result, err := s.mpc.TriggerSign(orgID, wallet.WalletID, tx.RawTx)
+	result, err := s.mpc.TriggerSign(orgID, wallet.WalletID, network, tx.RawTx)
 	if err != nil {
 		tx.RecordTransition("failed", "signing failed: "+err.Error(), &sys)
 		tx.Update()

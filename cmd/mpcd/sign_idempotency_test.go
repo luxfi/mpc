@@ -19,6 +19,7 @@ import (
 	"testing"
 
 	mpcapi "github.com/luxfi/mpc/pkg/api"
+	"github.com/luxfi/mpc/pkg/types"
 )
 
 // fields builds a signFields with sensible defaults, overridable per test.
@@ -26,7 +27,7 @@ func fields(mut ...func(*signFields)) signFields {
 	f := signFields{
 		OrgID:       "org-1",
 		WalletID:    "wallet-1",
-		KeyType:     "secp256k1",
+		Network:     "ETH",
 		ChainID:     96369,
 		PayloadHash: "deadbeef",
 	}
@@ -55,7 +56,7 @@ func TestCanonicalSignHash_StableAndFieldSensitive(t *testing.T) {
 	mutators := map[string]func(*signFields){
 		"org_id":       func(f *signFields) { f.OrgID = "org-2" },
 		"wallet_id":    func(f *signFields) { f.WalletID = "wallet-2" },
-		"key_type":     func(f *signFields) { f.KeyType = "ed25519" },
+		"network":      func(f *signFields) { f.Network = "SOL" },
 		"chain_id":     func(f *signFields) { f.ChainID = 96368 },
 		"payload_hash": func(f *signFields) { f.PayloadHash = "c0ffee" },
 	}
@@ -92,17 +93,17 @@ func TestSignIdempotency_ValidateRequest(t *testing.T) {
 func TestSignIdempotency_CachesResult(t *testing.T) {
 	c := newSignIdempotencyCache()
 	var calls atomic.Int64
-	signer := func(org, wallet string, payload []byte) (*mpcapi.SignResult, error) {
+	signer := func(org, wallet string, network types.NetworkCode, payload []byte) (*mpcapi.SignResult, error) {
 		calls.Add(1)
 		return &mpcapi.SignResult{R: "aa", S: "bb", Signature: "ccdd"}, nil
 	}
 
 	f := fields()
-	r1, err := c.Do("idem-1", f, []byte{0xde, 0xad}, signer)
+	r1, err := c.Do("idem-1", f, types.NetworkETH, []byte{0xde, 0xad}, signer)
 	if err != nil {
 		t.Fatalf("first Do failed: %v", err)
 	}
-	r2, err := c.Do("idem-1", f, []byte{0xde, 0xad}, signer)
+	r2, err := c.Do("idem-1", f, types.NetworkETH, []byte{0xde, 0xad}, signer)
 	if err != nil {
 		t.Fatalf("second Do failed: %v", err)
 	}
@@ -122,17 +123,17 @@ func TestSignIdempotency_CachesResult(t *testing.T) {
 func TestSignIdempotency_ConflictNeverSigns(t *testing.T) {
 	c := newSignIdempotencyCache()
 	var calls atomic.Int64
-	signer := func(org, wallet string, payload []byte) (*mpcapi.SignResult, error) {
+	signer := func(org, wallet string, network types.NetworkCode, payload []byte) (*mpcapi.SignResult, error) {
 		calls.Add(1)
 		return &mpcapi.SignResult{Signature: "ccdd"}, nil
 	}
 
-	if _, err := c.Do("idem-1", fields(), []byte{0x01}, signer); err != nil {
+	if _, err := c.Do("idem-1", fields(), types.NetworkETH, []byte{0x01}, signer); err != nil {
 		t.Fatalf("first Do failed: %v", err)
 	}
 	// Reuse the SAME idempotency key with DIFFERENT content → conflict.
 	conflicting := fields(func(f *signFields) { f.PayloadHash = "feedface" })
-	_, err := c.Do("idem-1", conflicting, []byte{0x02}, signer)
+	_, err := c.Do("idem-1", conflicting, types.NetworkETH, []byte{0x02}, signer)
 	if !errors.Is(err, errIdempotencyConflict) {
 		t.Fatalf("conflict: got %v, want errIdempotencyConflict", err)
 	}
@@ -147,7 +148,7 @@ func TestSignIdempotency_ConcurrentSingleFlight(t *testing.T) {
 	// Block all callers at a barrier so they pile up on the same key
 	// simultaneously, then release — proving single-flight (one signer call).
 	release := make(chan struct{})
-	signer := func(org, wallet string, payload []byte) (*mpcapi.SignResult, error) {
+	signer := func(org, wallet string, network types.NetworkCode, payload []byte) (*mpcapi.SignResult, error) {
 		calls.Add(1)
 		<-release
 		return &mpcapi.SignResult{Signature: "ccdd"}, nil
@@ -164,7 +165,7 @@ func TestSignIdempotency_ConcurrentSingleFlight(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 			<-start // line everyone up at the gate
-			results[i], errs[i] = c.Do("idem-hot", f, []byte{0x07}, signer)
+			results[i], errs[i] = c.Do("idem-hot", f, types.NetworkETH, []byte{0x07}, signer)
 		}(i)
 	}
 	close(start)   // fire all goroutines
@@ -191,14 +192,14 @@ func TestSignIdempotency_ConcurrentSingleFlight(t *testing.T) {
 func TestSignIdempotency_DistinctKeysSignSeparately(t *testing.T) {
 	c := newSignIdempotencyCache()
 	var calls atomic.Int64
-	signer := func(org, wallet string, payload []byte) (*mpcapi.SignResult, error) {
+	signer := func(org, wallet string, network types.NetworkCode, payload []byte) (*mpcapi.SignResult, error) {
 		n := calls.Add(1)
 		return &mpcapi.SignResult{Signature: fmt.Sprintf("sig-%d", n)}, nil
 	}
-	if _, err := c.Do("idem-a", fields(), []byte{0x01}, signer); err != nil {
+	if _, err := c.Do("idem-a", fields(), types.NetworkETH, []byte{0x01}, signer); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := c.Do("idem-b", fields(), []byte{0x01}, signer); err != nil {
+	if _, err := c.Do("idem-b", fields(), types.NetworkETH, []byte{0x01}, signer); err != nil {
 		t.Fatal(err)
 	}
 	if calls.Load() != 2 {
@@ -212,7 +213,7 @@ func TestSignIdempotency_DistinctKeysSignSeparately(t *testing.T) {
 func TestSignIdempotency_SignerErrorNotCached(t *testing.T) {
 	c := newSignIdempotencyCache()
 	var calls atomic.Int64
-	signer := func(org, wallet string, payload []byte) (*mpcapi.SignResult, error) {
+	signer := func(org, wallet string, network types.NetworkCode, payload []byte) (*mpcapi.SignResult, error) {
 		n := calls.Add(1)
 		if n == 1 {
 			return nil, errors.New("transient consensus timeout")
@@ -220,10 +221,10 @@ func TestSignIdempotency_SignerErrorNotCached(t *testing.T) {
 		return &mpcapi.SignResult{Signature: "recovered"}, nil
 	}
 	f := fields()
-	if _, err := c.Do("idem-retry", f, []byte{0x01}, signer); err == nil {
+	if _, err := c.Do("idem-retry", f, types.NetworkETH, []byte{0x01}, signer); err == nil {
 		t.Fatal("expected first Do to surface signer error")
 	}
-	res, err := c.Do("idem-retry", f, []byte{0x01}, signer)
+	res, err := c.Do("idem-retry", f, types.NetworkETH, []byte{0x01}, signer)
 	if err != nil {
 		t.Fatalf("retry after transient failure should succeed: %v", err)
 	}

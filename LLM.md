@@ -52,9 +52,45 @@ only the address encoding is missing (workchain ‖ SHA-256 of a wallet contract
 cell, base64url + CRC16 — and v4r2 vs W5 give different addresses for the same key).
 Guessing it recreates exactly the failure above. Also open: resharing an Ed25519 wallet
 (`eddsa_resharing_session.go` + `pkg/protocol/frost/adapter.go` are still Taproot/secp256k1
-and read the *bare* walletID key, so they never touch the Ed25519 share); mpcd's `/sign`
-clamps `payload_hash` to exactly 32 bytes, so a raw Solana transaction cannot go through
-the HTTP API (the NATS path has no clamp); and sr25519 (DOT/KSM) still has no keygen leg.
+and read the *bare* walletID key, so they never touch the Ed25519 share); and sr25519
+(DOT/KSM) still has no keygen leg.
+
+## Curve selection: a property of the REQUEST, from the network, in one place
+
+A wallet is not on a curve. One keygen mints a secp256k1 key (EVM/BTC/Lux/XRPL) **and**
+an Ed25519 key (Solana/TON), so "what curve is this wallet" has no answer — and any
+scalar answer is a lie the signer then acts on. `transport.KeyInfo` therefore has no
+`KeyType` field; it has one public-key field per curve, and `RegisterKey` has no keyType
+parameter for anyone to hardcode. It **merges**, because one keygen writes the record
+twice: the CGGMP21 ceremony knows the threshold and no keys, `TriggerKeygen` knows the
+keys and arrives later.
+
+The curve comes from the **network**, resolved in exactly one function —
+`types.KeyTypeForNetwork` over the table in `pkg/types/networks.go`. There is no default
+arm: an unrecorded network yields `types.ErrUnknownNetwork` and the request is refused
+before it touches any signing machinery. `types.ParseNetwork` is the one lookup from a
+free-form chain string ("evm", "solana", "base") to a canonical code, likewise closed —
+an unknown chain fails closed rather than being pattern-matched into a family.
+
+`MPCBackend.TriggerSign(orgID, walletID, network, payload)` is the single funnel. Entry
+points that carry a network state it (`/v1/mpc/sign`, `/v1/mpc/sign/settlement`, the ZAP
+sign op, the transaction pipeline via `tx.Chain`); entry points bound to one runtime by
+construction name it as a constant, because no other payload can reach them — Safe
+EIP-712 and ERC-4337 hashes and the bridge keccak digest are `NetworkEVM`; the KMS
+surfaces sign Lux validator key sets and are `NetworkLUX`.
+
+`/sign`'s payload rule is now the scheme's, not the endpoint's: secp256k1 requires
+exactly 32 bytes (it signs a digest), Ed25519 accepts the message at any non-empty
+length (PureEdDSA hashes it inside the challenge). The old unconditional 32-byte clamp
+made a Solana transaction impossible to express over HTTP. `/sign` takes `network` and
+no longer takes `key_type` — two ways to say the curve is the misuse being removed.
+**`lux/wallet`'s custody adapter must send `network`**; it currently sends `key_type`
+plus a numeric `chain_id`, and its requests are refused until it does.
+
+Pinned end-to-end by `cmd/mpcd/sign_curve_routing_test.go`, which drives
+`ConsensusMPCBackend.TriggerSign` with a real threshold ring behind it and checks the
+result with `crypto/ed25519.Verify` (Solana) and public-key recovery (EVM). The
+in-process ceremony driver is shared at `internal/ceremony`.
 
 ## 🔴 v1.17.12 — CRITICAL threshold-degree fix (was silently 1-of-n) + BRIDGE-ORACLE finding (2026-07-15)
 

@@ -869,10 +869,14 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 				return
 			}
 
+			// The request names a NETWORK, not a curve. The curve is derived
+			// from it here, in the daemon, so that every caller cannot get it
+			// independently wrong — and so a caller cannot ask for a Solana
+			// signature under a secp256k1 key by mislabelling the request.
 			var req struct {
 				OrgID          string `json:"org_id"`
 				WalletID       string `json:"wallet_id"`
-				KeyType        string `json:"key_type"`
+				Network        string `json:"network"`
 				ChainID        int    `json:"chain_id"`
 				PayloadHash    string `json:"payload_hash"`
 				IdempotencyKey string `json:"idempotency_key"`
@@ -888,7 +892,7 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 			fields := signFields{
 				OrgID:       req.OrgID,
 				WalletID:    req.WalletID,
-				KeyType:     req.KeyType,
+				Network:     req.Network,
 				ChainID:     req.ChainID,
 				PayloadHash: req.PayloadHash,
 			}
@@ -899,18 +903,24 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 				return
 			}
 
-			// payload_hash must be valid hex and exactly 32 bytes (the digest
-			// to sign). Decode here so a malformed hash fails at the boundary,
-			// never inside the signer.
-			payload, err := hex.DecodeString(strings.TrimPrefix(req.PayloadHash, "0x"))
-			if err != nil || len(payload) != 32 {
+			network, err := types.ParseNetwork(req.Network)
+			if err != nil {
 				w.WriteHeader(http.StatusBadRequest)
-				json.NewEncoder(w).Encode(map[string]string{"error": "payload_hash must be 32-byte hex"})
+				json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+				return
+			}
+
+			// Decode and length-check at the boundary, by curve, so a malformed
+			// request fails here and never inside the signer.
+			payload, err := decodeSignPayload(network, req.PayloadHash)
+			if err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 				return
 			}
 
 			// Idempotent single-flight threshold sign. Conflict → 409, no sign.
-			res, err := signIdem.Do(req.IdempotencyKey, fields, payload, mpcBackend.TriggerSign)
+			res, err := signIdem.Do(req.IdempotencyKey, fields, network, payload, mpcBackend.TriggerSign)
 			if errors.Is(err, errIdempotencyConflict) {
 				w.WriteHeader(http.StatusConflict)
 				json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
@@ -1150,12 +1160,24 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 }
 
 // ConsensusMPCBackend implements api.MPCBackend using the consensus transport.
+// envelopeSigner is the slice of the node identity the backend uses: it signs
+// the initiator envelope so the ring can verify who asked for an operation.
+// Named as an interface because that is all the backend needs — and because it
+// is what lets the signing entry point be driven without a consensus ring
+// underneath it.
+type envelopeSigner interface {
+	SignMessage(payload []byte) []byte
+}
+
 type ConsensusMPCBackend struct {
-	pubSub       *ConsensusPubSubAdapter
+	// pubSub is the interface, not the consensus adapter: the backend
+	// publishes requests and awaits results, and has no business knowing what
+	// carries them.
+	pubSub       messaging.PubSub
 	peerRegistry *ConsensusPeerRegistry
 	factory      *transport.Factory
 	keyInfoStore *transport.KeyInfoStore
-	identity     *ConsensusIdentityStore
+	identity     envelopeSigner
 	nodeID       string
 	threshold    int
 }
@@ -1202,6 +1224,26 @@ func (b *ConsensusMPCBackend) TriggerKeygen(orgID, walletID string) (*mpcapi.Key
 			btcAddr = pubKeyToBtcAddress(result.ECDSAPubKey)
 		}
 		solAddr = eddsaPubKeyToSolAddress(result.EDDSAPubKey)
+
+		// Record BOTH curve keys against the wallet. This is the only moment
+		// the daemon holds them together, and it is what later lets a signing
+		// request be refused up front when the curve its network needs was
+		// never minted — the Ed25519 leg is allowed to fail without failing
+		// the wallet, so "has an Ed25519 key" is a real question with a real
+		// no answer. A registration failure is not fatal: the keys exist and
+		// the shares are stored; only the early refusal is lost.
+		if b.keyInfoStore != nil {
+			if err := b.keyInfoStore.RegisterKey(
+				result.WalletID,
+				b.threshold,
+				hex.EncodeToString(result.ECDSAPubKey),
+				hex.EncodeToString(result.EDDSAPubKey),
+				nil,
+			); err != nil {
+				logger.Warn("Failed to record wallet key set", "walletID", result.WalletID, "err", err)
+			}
+		}
+
 		// Report the security property this key actually has. Keygen accepts no
 		// per-request threshold — the ring's --threshold governs — so a caller
 		// can only verify what it asked for if we tell it what it got.
@@ -1220,7 +1262,41 @@ func (b *ConsensusMPCBackend) TriggerKeygen(orgID, walletID string) (*mpcapi.Key
 	}
 }
 
-func (b *ConsensusMPCBackend) TriggerSign(orgID, walletID string, payload []byte) (*mpcapi.SignResult, error) {
+// TriggerSign requests a threshold signature over payload for a given network.
+//
+// The network is the whole input to the curve decision: types.KeyTypeForNetwork
+// is the one table, and a network it does not recognise is refused rather than
+// resolved to a default. That refusal is the point. A wallet holds a
+// secp256k1 key and an Ed25519 key at once, so "which curve" is a property of
+// the request and never of the wallet — and guessing it wrong means either a
+// signature Solana rejects or a real signature from a key the caller never
+// named. Neither is recoverable after the fact.
+func (b *ConsensusMPCBackend) TriggerSign(orgID, walletID string, network types.NetworkCode, payload []byte) (*mpcapi.SignResult, error) {
+	// Resolve the curve before touching any signing machinery, so a request
+	// whose curve is undetermined costs nothing and reaches nothing.
+	keyType, err := types.KeyTypeForNetwork(network)
+	if err != nil {
+		return nil, fmt.Errorf("sign refused: %w", err)
+	}
+
+	// Refuse up front when the wallet's recorded key set has no key on that
+	// curve. The Ed25519 keygen leg is allowed to fail without failing the
+	// wallet, so this is a real state: a wallet that can receive Solana but was
+	// never given a key to spend it. Saying so here beats a signing session
+	// that starts and then cannot find a share.
+	//
+	// Gated on RecordsCurves: a record from before key sets were recorded lists
+	// no keys and therefore denies none. Treating its silence as a denial would
+	// refuse every wallet minted earlier. For those, the missing share remains
+	// the thing that fails closed, exactly as it did before.
+	if b.keyInfoStore != nil {
+		if info, err := b.keyInfoStore.Get(walletID); err == nil && info != nil && info.RecordsCurves() {
+			if _, ok := info.PublicKeyFor(keyType); !ok {
+				return nil, fmt.Errorf("sign refused: wallet %s has no %s key (network %s)", walletID, keyType, network)
+			}
+		}
+	}
+
 	txID := fmt.Sprintf("sign-%d", time.Now().UnixNano())
 	resultTopic := fmt.Sprintf("mpc.mpc_signing_result.%s", walletID)
 	resultCh := make(chan json.RawMessage, 1)
@@ -1235,27 +1311,13 @@ func (b *ConsensusMPCBackend) TriggerSign(orgID, walletID string, payload []byte
 	}
 	defer unsub.Unsubscribe()
 
-	// Look up key type from key info store
-	keyType := types.KeyTypeSecp256k1 // default for ECDSA
-	if b.keyInfoStore != nil {
-		if info, err := b.keyInfoStore.Get(walletID); err == nil && info.KeyType != "" {
-			keyType = types.KeyType(info.KeyType)
-		}
-	}
-	// Normalize legacy key type names
-	switch keyType {
-	case "ecdsa", "ECDSA":
-		keyType = types.KeyTypeSecp256k1
-	case "eddsa", "EDDSA":
-		keyType = types.KeyTypeEd25519
-	}
-
 	msg := types.SignTxMessage{
-		OrgID:    orgID,
-		KeyType:  keyType,
-		WalletID: walletID,
-		TxID:     txID,
-		Tx:       payload,
+		OrgID:               orgID,
+		KeyType:             keyType,
+		WalletID:            walletID,
+		NetworkInternalCode: string(network),
+		TxID:                txID,
+		Tx:                  payload,
 	}
 	// Sign the message with the node's private key
 	raw, _ := msg.Raw()
@@ -1624,8 +1686,11 @@ func (s *ConsensusKeyInfoStore) Get(walletID string) (*keyinfo.KeyInfo, error) {
 	}, nil
 }
 
+// Save records what the ceremony knows: the wallet's threshold. It knows no
+// public keys — those arrive with the keygen result — and RegisterKey merges,
+// so this write leaves whichever curve keys are already recorded intact.
 func (s *ConsensusKeyInfoStore) Save(walletID string, info *keyinfo.KeyInfo) error {
-	return s.store.RegisterKey(walletID, "secp256k1", info.Threshold, "", "", nil)
+	return s.store.RegisterKey(walletID, info.Threshold, "", "", nil)
 }
 
 // ConsensusMessageQueue adapts transport for messaging.MessageQueue

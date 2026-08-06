@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/luxfi/mpc/pkg/types"
 )
 
 // mockMPCBackend implements MPCBackend for KMS handler tests.
@@ -17,6 +19,10 @@ type mockMPCBackend struct {
 	keygenErr    error
 	signErr      error
 	reshareErr   error
+
+	// signNetwork records the network the handler routed with, so a test can
+	// assert which curve a request would have selected.
+	signNetwork types.NetworkCode
 }
 
 func (m *mockMPCBackend) TriggerKeygen(orgID, walletID string) (*KeygenResult, error) {
@@ -25,7 +31,8 @@ func (m *mockMPCBackend) TriggerKeygen(orgID, walletID string) (*KeygenResult, e
 	}
 	return m.keygenResult, nil
 }
-func (m *mockMPCBackend) TriggerSign(orgID, walletID string, payload []byte) (*SignResult, error) {
+func (m *mockMPCBackend) TriggerSign(orgID, walletID string, network types.NetworkCode, payload []byte) (*SignResult, error) {
+	m.signNetwork = network
 	if m.signErr != nil {
 		return nil, m.signErr
 	}
