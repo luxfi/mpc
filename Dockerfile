@@ -77,13 +77,32 @@ ENV GOWORK=off
 # the token can end early) and an Authorization header built with base64 (which
 # yields an EMPTY credential, and therefore 'could not read Username', if the
 # builder image has no base64). The helper needs neither.
+#
+# `download` WITHOUT `all`, and that is the fix rather than a tidy-up. `all`
+# expands to the whole module graph — every dependency of every dependency,
+# including test-only ones nothing here links — so the build was fetching
+# modules it never compiles and failing on them:
+#
+#   fatal: Authentication failed for 'https://github.com/hanzoai/replicate/'
+#
+# `go mod why` on that module answers "main module does not need module
+# github.com/hanzoai/replicate", and it appears in go.sum alone, never in a
+# require. luxfi/hsm is the same shape — imported only by
+# cmd/mpcd/airgap_command_test.go, so it is absent from `go list -deps ./cmd/mpcd`.
+# The release was gated on reaching private repositories that contribute nothing
+# to the binary.
+#
+# Bare `download` takes the main module's own requirements, which is exactly the
+# set the two builds below compile, and GOFLAGS=-mod=mod lets `go build` record
+# any sum that is still missing. Smaller fetch, smaller credential surface, and
+# a build that can no longer be broken by a module it does not use.
 RUN --mount=type=secret,id=gh_token \
     sh -c 'if [ -s /run/secrets/gh_token ]; then \
              git config --global credential."https://github.com".helper \
                "!f() { echo username=x-access-token; echo \"password=$(cat /run/secrets/gh_token)\"; }; f"; \
            fi; \
            rm -f go.sum; \
-           go mod download all'
+           go mod download'
 
 # Per SCALE_STANDARD.md §2 (https://github.com/hanzoai/hips/blob/main/docs/SCALE_STANDARD.md)
 # — every Go production Dockerfile that emits JSON to a client builds
