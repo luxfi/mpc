@@ -61,9 +61,23 @@ ENV GOWORK=off
 # committed (git-sourced) go.sum fails proxy-fetch verification. rm + re-download
 # rebuilds go.sum from what is really fetched; GOFLAGS=-mod=mod + GOSUMDB=off let
 # it record those hashes. This is regenerate-not-bypass.
+# THE CREDENTIAL NEVER ENTERS A URL. Putting it in one made git parse the
+# credential prefix as a hostname the moment the token carried anything the URL
+# grammar ends on:
+#   fatal: unable to access 'https://x-access-token:***@github.com/...':
+#   Could not resolve host: x-access-token
+# The workflow already strips \r\n from the secret and command substitution eats
+# a trailing newline, so both defences were in place and it still broke — which
+# is the point: a URL is the wrong container for a value whose bytes are not
+# ours to control. luxfi/node hit this same failure.
+#
+# http.extraheader passes the credential as a HEADER instead, so nothing about
+# the token can change how the address is read. The value is base64 of
+# "x-access-token:<token>", which is exactly what actions/checkout does.
 RUN --mount=type=secret,id=gh_token \
     sh -c 'if [ -s /run/secrets/gh_token ]; then \
-             git config --global url."https://x-access-token:$(cat /run/secrets/gh_token)@github.com/".insteadOf "https://github.com/"; \
+             AUTH=$(printf "x-access-token:%s" "$(cat /run/secrets/gh_token)" | base64 | tr -d "\n"); \
+             git config --global http.https://github.com/.extraheader "AUTHORIZATION: basic ${AUTH}"; \
            fi; \
            rm -f go.sum; \
            go mod download all'
