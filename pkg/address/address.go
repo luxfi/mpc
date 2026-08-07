@@ -11,16 +11,13 @@
 // string when it cannot. Callers must omit the address when they get an error:
 // no address is a recoverable state, a wrong address is not.
 //
-// TON is deliberately absent. A TON wallet holds the same Ed25519 key this
-// package validates, so the cryptography is not the gap — the address encoding
-// is. A TON address is workchain ‖ SHA-256 of the StateInit cell of a specific
-// wallet contract, rendered base64url with a CRC16, and it depends on which
-// wallet version is deployed (v4r2 and W5 give different addresses for the same
-// key). Producing it requires the TVM cell representation-hash construction and
-// the exact contract code cell. Guessing any of that yields a fundable,
-// unspendable address, which is the failure this package exists to prevent, so
-// TON addresses are not emitted until that encoding is implemented against
-// published test vectors.
+// The chains are one file each: Solana here, TON in ton.go, XRP in xrp.go.
+// Each file states which curve it gates on and, where the address is not a
+// direct encoding of the key, exactly which parameters were pinned to produce
+// it — because those parameters are as address-determining as the key. TON in
+// particular is not an encoding of a public key at all but the hash of a
+// specific wallet contract's StateInit, so its file names the contract version
+// it committed to and why; see ton.go.
 package address
 
 import (
