@@ -830,6 +830,12 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 					if solAddr := eddsaPubKeyToSolAddress(result.EDDSAPubKey); solAddr != "" {
 						resp["sol_address"] = solAddr
 					}
+					if tonAddr := eddsaPubKeyToTonAddress(result.EDDSAPubKey); tonAddr != "" {
+						resp["ton_address"] = tonAddr
+					}
+					if xrpAddr := ecdsaPubKeyToXrpAddress(result.ECDSAPubKey); xrpAddr != "" {
+						resp["xrp_address"] = xrpAddr
+					}
 				} else {
 					resp["error"] = result.ErrorReason
 					resp["error_code"] = result.ErrorCode
@@ -1880,6 +1886,56 @@ func eddsaPubKeyToSolAddress(pubKey []byte) string {
 		logger.Warn("Refusing to derive a Solana address from a non-Ed25519 key",
 			"error", err.Error(),
 			"consequence", "sol_address omitted from the response",
+		)
+		return ""
+	}
+	return addr
+}
+
+// eddsaPubKeyToTonAddress derives the v4R2 TON wallet address from the same
+// Ed25519 key Solana uses, or returns "" when the bytes are not one.
+//
+// TON and Solana share the key but not the address: a TON address is the hash
+// of a wallet contract's StateInit, not an encoding of the key. Serving the
+// Solana base58 string under a TON label is a bug this repo has already shipped
+// once, so the two are derived by two functions from one gate and never
+// substituted for one another.
+func eddsaPubKeyToTonAddress(pubKey []byte) string {
+	if len(pubKey) == 0 {
+		return ""
+	}
+	addr, err := address.TON(pubKey)
+	if err != nil {
+		logger.Warn("Refusing to derive a TON address from a non-Ed25519 key",
+			"error", err.Error(),
+			"consequence", "ton_address omitted from the response",
+		)
+		return ""
+	}
+	return addr
+}
+
+// ecdsaPubKeyToXrpAddress derives the XRP Ledger classic address from the
+// secp256k1 key, or returns "" when the bytes are not a point on that curve.
+//
+// Unlike pubKeyToBtcAddress, this refuses a bare 32-byte x-coordinate instead
+// of assuming even-y. Assuming is how you publish the sibling point's address
+// for half of all keys.
+//
+// The address is emitted because we must be able to prove we control it, not
+// because a fresh XRPL address should be minted per payer: XRPL's ~10 XRP base
+// reserve is non-refundable, so one address per payer strands the reserve every
+// time. Deposits belong at a single pooled address distinguished by
+// DestinationTag, which is the payment layer's concern, not keygen's.
+func ecdsaPubKeyToXrpAddress(pubKey []byte) string {
+	if len(pubKey) == 0 {
+		return ""
+	}
+	addr, err := address.XRP(pubKey)
+	if err != nil {
+		logger.Warn("Refusing to derive an XRP address from a non-secp256k1 key",
+			"error", err.Error(),
+			"consequence", "xrp_address omitted from the response",
 		)
 		return ""
 	}

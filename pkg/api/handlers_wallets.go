@@ -1,14 +1,40 @@
 package api
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
 
 	"github.com/hanzoai/orm"
 
+	"github.com/luxfi/mpc/pkg/address"
 	"github.com/luxfi/mpc/pkg/db"
 )
+
+// deriveFromPubKey turns a stored hex public key into an address using one of
+// pkg/address's curve-gated derivations, reporting false when there is no key,
+// the hex is unusable, or the key is not on the curve that chain needs.
+//
+// Deriving on read rather than storing a column per chain is deliberate: the
+// public keys are already persisted, the derivation is pure, and every wallet
+// minted before a chain was supported therefore gets its address with no
+// backfill and no schema change. There is still exactly one derivation per
+// chain — this only decides when to call it.
+func deriveFromPubKey(pubKeyHex *string, derive func([]byte) (string, error)) (string, bool) {
+	if pubKeyHex == nil || *pubKeyHex == "" {
+		return "", false
+	}
+	raw, err := hex.DecodeString(*pubKeyHex)
+	if err != nil {
+		return "", false
+	}
+	addr, err := derive(raw)
+	if err != nil {
+		return "", false
+	}
+	return addr, true
+}
 
 func (s *Server) handleListWallets(w http.ResponseWriter, r *http.Request) {
 	orgID := getOrgID(r.Context())
@@ -136,28 +162,29 @@ func (s *Server) handleGetWalletAddresses(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// Every value here is derived from a public key by pkg/address, never
+	// copied from another chain's address. Sharing a key does not mean sharing
+	// an encoding: "xrp" served the 20-byte EVM address for a while, and "ton"
+	// served the Solana base58 string, and neither is an address on the chain
+	// it was labelled with. A chain whose derivation fails is simply absent.
 	addresses := map[string]interface{}{}
 	if wallet.EVMAddress != nil {
-		// "ethereum"/"lux"/"xrp" are user-facing display labels keyed by
-		// chain name; the value is the 20-byte EVM-runtime account
-		// address (the form consumed by every EVM-compatible chain plus
-		// xrp's secp256k1-derived form). Map labels are display names,
-		// not internal naming.
+		// "ethereum" and "lux" are display labels for one value: the 20-byte
+		// EVM-runtime account address every EVM-compatible chain consumes.
 		addresses["ethereum"] = *wallet.EVMAddress
-		addresses["lux"] = *wallet.EVMAddress // EVM-compatible
-		addresses["xrp"] = *wallet.EVMAddress // secp256k1-derived (simplified)
+		addresses["lux"] = *wallet.EVMAddress
 	}
 	if wallet.BtcAddress != nil {
 		addresses["bitcoin"] = *wallet.BtcAddress
 	}
 	if wallet.SolAddress != nil {
 		addresses["solana"] = *wallet.SolAddress
-		// No "ton" entry. TON shares this wallet's Ed25519 key but not its
-		// address format: a TON address is workchain ‖ SHA-256 of a wallet
-		// contract's StateInit cell, base64url with a CRC16, and it differs
-		// between contract versions. The Solana base58 string is not a TON
-		// address in any encoding, so serving it here published an address that
-		// can receive nothing and prove nothing. Absent until address.TON exists.
+	}
+	if addr, ok := deriveFromPubKey(wallet.ECDSAPubkey, address.XRP); ok {
+		addresses["xrp"] = addr
+	}
+	if addr, ok := deriveFromPubKey(wallet.EDDSAPubkey, address.TON); ok {
+		addresses["ton"] = addr
 	}
 	writeJSON(w, http.StatusOK, addresses)
 }
