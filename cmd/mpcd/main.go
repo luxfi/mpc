@@ -124,6 +124,12 @@ func main() {
 						Value:   ":9653",
 					},
 					&cli.StringFlag{
+						Name:    "api-zap-listen",
+						Usage:   "MPC-API ZAP server listen address (keygen/sign/status/wallets/intent; hanzoai/commerce dials this for custody addresses). Empty disables.",
+						Sources: cli.EnvVars("MPC_API_ZAP_LISTEN"),
+						Value:   ":9801",
+					},
+					&cli.StringFlag{
 						Name:    "threshold-listen",
 						Usage:   "Embedded threshold ZAP dispatcher listen address (luxfi/threshold/pkg/thresholdd surface: cggmp21/frost/pulsar/corona/magnetar/doerner). Empty disables. Default 127.0.0.1:7301 — process-local IPC; production fronts this via the cluster ingress + KMS.",
 						Sources: cli.EnvVars("MPC_THRESHOLD_LISTEN"),
@@ -1100,6 +1106,20 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 
 			apiServer := mpcapi.NewServer(database, mpcBackend, jwtSecret)
 			apiServer.StartScheduler(ctx)
+
+			// The MPC-API ops over ZAP. Nothing called StartZAP, so this
+			// surface existed in the binary and answered on no port — keygen,
+			// sign, status, wallets and intent were reachable over HTTP only,
+			// and hanzoai/commerce's ZAP transport dialled a listener that was
+			// never there. Same shape as kms-zap-listen above: an address,
+			// empty disables.
+			if apiZapAddr := c.String("api-zap-listen"); apiZapAddr != "" {
+				if err := apiServer.StartZAP(apiZapAddr); err != nil {
+					logger.Error("Failed to start MPC-API ZAP server", err, "addr", apiZapAddr)
+				} else {
+					logger.Info("MPC-API ZAP server ready", "addr", apiZapAddr)
+				}
+			}
 
 			// Wire HSM signer for intent co-signing.
 			// Provider-specific config is folded into a single map; each
