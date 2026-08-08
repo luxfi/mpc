@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
+	"strconv"
 
 	"github.com/hanzoai/orm"
 
@@ -23,21 +25,47 @@ const (
 	OpMPCIntent  uint16 = 0x0064
 )
 
-// ZAP object field offsets (after the 8-byte req/resp correlation header).
+// ZAP object layout: a status byte and ONE payload, and the payload is JSON.
+//
+// FIELD OFFSETS ARE BYTES, NOT SLOTS, AND A BYTES FIELD IS EIGHT OF THEM —
+// SetBytes writes a uint32 pointer at fieldOffset and a uint32 length at
+// fieldOffset+4. The previous layout spaced five fields ONE byte apart
+// (orgID 8, walletID 9, payload 10, intentID 11, network 12), so every write
+// destroyed the one before it: setting walletID overwrote orgID's length word.
+// Measured, the handler read back org_id "" with wallet_id intact — and since
+// zapKeygen refuses an empty org_id, that layout rejected every request any
+// client could physically send. The reply fared no better: status 8 / data 9
+// put data's length word one byte past what StartObject(16) reserved, so an
+// 85-byte JSON body came back with '{' replaced by 0x00.
+//
+// So there was no wire to preserve, only one to choose, and the choice is made:
+// this is byte-for-byte hanzoai/commerce's util/zapwire — status at 0, one
+// bytes field at 8, object 16 — which is what the only client of this surface
+// has always spoken. A request carries its arguments as JSON in that payload
+// rather than as parallel text fields, so adding an argument later changes a
+// struct and not an offset nobody can see is wrong.
 const (
-	fieldOrgID    = 8
-	fieldWalletID = 9
-	fieldPayload  = 10
-	fieldIntentID = 11
-	fieldNetwork  = 12
+	fieldStatus  = 0
+	fieldPayload = 8
 
-	fieldStatus = 8
-	fieldData   = 9
-	fieldError  = 10
+	objectSize = 16
 )
 
-// StartZAP creates a ZAP node on a separate port and registers MPC handlers.
-func (s *Server) StartZAP(port int) error {
+// StartZAP serves the MPC-API ops over ZAP at addr (":9801", "0.0.0.0:9801").
+//
+// Takes an ADDRESS, like its sibling StartKMSZAP, because mpcd's other listeners
+// are addresses (--listen, --api, --kms-zap-listen) and one shape for "where do
+// I listen" is worth more than saving a parse.
+func (s *Server) StartZAP(addr string) error {
+	_, portStr, err := net.SplitHostPort(addr)
+	if err != nil {
+		return fmt.Errorf("zap listen address %q: %w", addr, err)
+	}
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		return fmt.Errorf("zap listen address %q: port is not a number: %w", addr, err)
+	}
+
 	node := zap.NewNode(zap.NodeConfig{
 		NodeID:      fmt.Sprintf("mpc-api-%d", port),
 		ServiceType: "_mpc._tcp",
@@ -62,10 +90,38 @@ func (s *Server) StartZAP(port int) error {
 	return nil
 }
 
+// zapArgs is every argument any op on this surface takes. One struct, decoded
+// from the single JSON payload — a field a given op does not use is simply
+// absent, which is what `omitempty` on the client side already produces.
+type zapArgs struct {
+	OrgID    string          `json:"org_id"`
+	WalletID string          `json:"wallet_id"`
+	IntentID string          `json:"intent_id"`
+	Network  string          `json:"network"`
+	Payload  json.RawMessage `json:"payload"`
+}
+
+// zapDecode reads the request's JSON payload. An unparseable body is refused
+// rather than treated as an empty one, so a client sending the wrong frame gets
+// told so instead of being silently answered "org_id required".
+func zapDecode(msg *zap.Message) (zapArgs, error) {
+	var a zapArgs
+	body := msg.Root().Bytes(fieldPayload)
+	if len(body) == 0 {
+		return a, fmt.Errorf("empty request payload")
+	}
+	if err := json.Unmarshal(body, &a); err != nil {
+		return a, fmt.Errorf("request payload is not JSON: %w", err)
+	}
+	return a, nil
+}
+
 func (s *Server) zapKeygen(_ context.Context, _ string, msg *zap.Message) (*zap.Message, error) {
-	root := msg.Root()
-	orgID := root.Text(fieldOrgID)
-	walletID := root.Text(fieldWalletID)
+	a, err := zapDecode(msg)
+	if err != nil {
+		return zapError(err.Error())
+	}
+	orgID, walletID := a.OrgID, a.WalletID
 	if orgID == "" || walletID == "" {
 		return zapError("org_id and wallet_id required")
 	}
@@ -81,10 +137,11 @@ func (s *Server) zapKeygen(_ context.Context, _ string, msg *zap.Message) (*zap.
 }
 
 func (s *Server) zapSign(_ context.Context, _ string, msg *zap.Message) (*zap.Message, error) {
-	root := msg.Root()
-	orgID := root.Text(fieldOrgID)
-	walletID := root.Text(fieldWalletID)
-	payload := root.Bytes(fieldPayload)
+	a, err := zapDecode(msg)
+	if err != nil {
+		return zapError(err.Error())
+	}
+	orgID, walletID, payload := a.OrgID, a.WalletID, []byte(a.Payload)
 	if orgID == "" || walletID == "" || len(payload) == 0 {
 		return zapError("org_id, wallet_id, and payload required")
 	}
@@ -92,7 +149,7 @@ func (s *Server) zapSign(_ context.Context, _ string, msg *zap.Message) (*zap.Me
 	// This is the general signing surface, so the network is the caller's to
 	// state and is refused when absent or unrecognised — the curve it selects
 	// is not something the daemon may assume on a caller's behalf.
-	network, err := types.ParseNetwork(root.Text(fieldNetwork))
+	network, err := types.ParseNetwork(a.Network)
 	if err != nil {
 		return zapError(err.Error())
 	}
@@ -113,7 +170,11 @@ func (s *Server) zapStatus(_ context.Context, _ string, _ *zap.Message) (*zap.Me
 }
 
 func (s *Server) zapWallets(_ context.Context, _ string, msg *zap.Message) (*zap.Message, error) {
-	orgID := msg.Root().Text(fieldOrgID)
+	a, err := zapDecode(msg)
+	if err != nil {
+		return zapError(err.Error())
+	}
+	orgID := a.OrgID
 	if orgID == "" {
 		return zapError("org_id required")
 	}
@@ -134,9 +195,11 @@ func (s *Server) zapWallets(_ context.Context, _ string, msg *zap.Message) (*zap
 }
 
 func (s *Server) zapIntent(_ context.Context, _ string, msg *zap.Message) (*zap.Message, error) {
-	root := msg.Root()
-	orgID := root.Text(fieldOrgID)
-	intentID := root.Text(fieldIntentID)
+	a, err := zapDecode(msg)
+	if err != nil {
+		return zapError(err.Error())
+	}
+	orgID, intentID := a.OrgID, a.IntentID
 	if orgID == "" {
 		return zapError("org_id required")
 	}
@@ -152,7 +215,7 @@ func (s *Server) zapIntent(_ context.Context, _ string, msg *zap.Message) (*zap.
 	}
 
 	// Create from payload
-	payload := root.Bytes(fieldPayload)
+	payload := []byte(a.Payload)
 	if len(payload) == 0 {
 		return zapError("intent_id or payload required")
 	}
@@ -206,32 +269,35 @@ func (s *Server) zapEventForwarder(node *zap.Node) {
 	}
 }
 
-// zapError builds a ZAP response with error status.
+// zapError builds a ZAP response with error status. The message travels in the
+// SAME payload field a success uses — the status byte is what distinguishes
+// them — so a caller reads one place and never has to guess which field holds
+// the answer.
 func zapError(msg string) (*zap.Message, error) {
-	b := zap.NewBuilder(256)
-	ob := b.StartObject(16)
-	ob.SetUint8(fieldStatus, 1)
-	ob.SetText(fieldError, msg)
-	ob.FinishAsRoot()
-	return zap.Parse(b.Finish())
+	return zapReply(1, []byte(msg))
 }
 
 // zapOK builds a ZAP response with success status and JSON data.
 func zapOK(data []byte) (*zap.Message, error) {
-	b := zap.NewBuilder(len(data) + 64)
-	ob := b.StartObject(16)
-	ob.SetUint8(fieldStatus, 0)
-	ob.SetBytes(fieldData, data)
+	return zapReply(0, data)
+}
+
+func zapReply(status uint8, payload []byte) (*zap.Message, error) {
+	b := zap.NewBuilder(zap.HeaderSize + objectSize + len(payload))
+	ob := b.StartObject(objectSize)
+	ob.SetUint8(fieldStatus, status)
+	if len(payload) > 0 {
+		ob.SetBytes(fieldPayload, payload)
+	}
 	ob.FinishAsRoot()
 	return zap.Parse(b.Finish())
 }
 
 // zapMsg builds a one-way ZAP message with data payload.
 func zapMsg(data []byte) *zap.Message {
-	b := zap.NewBuilder(len(data) + 64)
-	ob := b.StartObject(16)
-	ob.SetBytes(fieldData, data)
-	ob.FinishAsRoot()
-	m, _ := zap.Parse(b.Finish())
+	m, err := zapReply(0, data)
+	if err != nil {
+		return nil
+	}
 	return m
 }
