@@ -1151,9 +1151,18 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 				)
 			}
 
-			// Mount chi handler on Base
+			// Mount chi handler on Base.
+			//
+			// Base keeps its own state, and where it keeps it is stated here rather
+			// than inherited. Left unset it falls back to a path beside the binary,
+			// which is the container root — writable for a root process and not for
+			// any other, so the same image serves the dashboard or silently does not
+			// depending on which uid it runs as. dataDir is the one directory this
+			// process is guaranteed to own, so the answer comes from the node's own
+			// configuration instead of from where it happens to have been started.
+			baseDataDir := filepath.Join(dataDir, "dashboard")
 			os.Args = []string{"mpcd", "serve", "--http", apiListenAddr}
-			baseApp := base.New()
+			baseApp := base.NewWithConfig(base.Config{DefaultDataDir: baseDataDir})
 			baseApp.OnServe().BindFunc(func(e *core.ServeEvent) error {
 				// Embedded admin UI at /_/mpc/
 				e.Router.GET("/_/mpc/{path...}", apis.Static(uimpc.DistDirFS(), true))
@@ -1165,14 +1174,21 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 				return e.Next()
 			})
 
-			logger.Info("Dashboard API starting (Base+SQLite)", "addr", apiListenAddr)
+			logger.Info("Dashboard API starting (Base+SQLite)", "addr", apiListenAddr, "dir", baseDataDir)
 			go func() {
+				// The reason goes in the MESSAGE. This used to pass err alongside it
+				// and the rendered line carried no reason at all, so a dashboard that
+				// bound nothing was indistinguishable from one nobody had asked for —
+				// and the next reader has only this line to work from.
 				if err := baseApp.Start(); err != nil {
-					logger.Error("Dashboard API server failed", err)
+					logger.Error("Dashboard API server failed: "+err.Error(), err,
+						"addr", apiListenAddr, "dir", baseDataDir)
 				}
 			}()
 
-			logger.Info("Dashboard API ready", "addr", apiListenAddr, "db", dbPath)
+			// "ready" is claimed by the goroutine above having been STARTED, not by
+			// anything having been bound, so it is not evidence the port is served.
+			logger.Info("Dashboard API listening", "addr", apiListenAddr, "db", dbPath)
 		}
 	}
 
