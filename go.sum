@@ -1628,6 +1628,8 @@ github.com/luxfi/threshold v1.12.5 h1:0ouhE6XY8grrmLjnVW3KZEx2mK1pBxezhvvQar8Gsf
 github.com/luxfi/threshold v1.12.5/go.mod h1:ddg3ipZ3WXozPn+TupPQPmNw/jGscmX13n9OtitmI6Q=
 github.com/luxfi/threshold v1.12.7 h1:4Cg9/+kaFfbp3dcRfxD+G/nvRT+GLHQNyHmltwoDEII=
 github.com/luxfi/threshold v1.12.7/go.mod h1:h5RAMAPRDHhqz8lG0LSfJUUFcjkBTWRmkVL421UPo5w=
+github.com/luxfi/threshold v1.12.11 h1:Nq/cOPW9EA9QTT8BKSA5uJjMBYD+mrF8QtadAfpPodU=
+github.com/luxfi/threshold v1.12.11/go.mod h1:h5RAMAPRDHhqz8lG0LSfJUUFcjkBTWRmkVL421UPo5w=
 github.com/luxfi/timer v1.1.1 h1:54GiNBKydQ0VF5/EwVc/mCsbqe0yJNfZV7Ae8qJhCwk=
 github.com/luxfi/timer v1.1.1/go.mod h1:OXY/8ZFKCdEsimpfnUG1MQWvzjjFbsmBOiW/m6KSrC0=
 github.com/luxfi/tls v1.1.1 h1:BSZ0gHSp7U8vzlmzx7WSSCz+b7Ky4JtD9HDDhn7vrDg=
