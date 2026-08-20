@@ -41,6 +41,10 @@ func (m *mockMPCBackend) TriggerSign(orgID, walletID string, network types.Netwo
 func (m *mockMPCBackend) TriggerReshare(orgID, walletID string, newThreshold int, newParticipants []string) error {
 	return m.reshareErr
 }
+func (m *mockMPCBackend) TriggerReveal(orgID, keyID string, ciphertext []byte) ([]byte, error) {
+	return nil, nil
+}
+
 func (m *mockMPCBackend) ExportKeyShare(orgID, walletID string) ([]byte, error) {
 	return nil, nil
 }

@@ -89,6 +89,18 @@ func Combine(store kvstore.KVStore, orgID, keyID string, ciphertext []byte, answ
 	return secret, nil
 }
 
+// Quorum is how many answers this key needs: the share set's own threshold plus
+// one. A caller waits for this many rather than for everyone, so one absent node
+// costs latency and not the opening — and it reads the number from the share
+// set, so no request can shrink it.
+func Quorum(store kvstore.KVStore, orgID, keyID string) (int, error) {
+	cfg, err := config(store, orgID, keyID)
+	if err != nil {
+		return 0, err
+	}
+	return cfg.Threshold + 1, nil
+}
+
 // PublicKey returns the group key a caller seals to. It is public in the strict
 // sense — handing it out lets anyone seal a secret to this committee and lets
 // nobody open one.

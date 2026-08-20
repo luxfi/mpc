@@ -595,6 +595,13 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 		threshold:    threshold,
 	}
 
+	// Answer opening requests. Every node serves this, because an opening needs
+	// a quorum and any node may be the one asked — a ring where only some
+	// answer is a ring with a smaller quorum than its threshold claims.
+	if err := mpcBackend.serveReveal(ctx); err != nil {
+		return fmt.Errorf("failed to serve reveal: %w", err)
+	}
+
 	// Per-node idempotency cache for the internal /sign endpoint. Anti-oracle:
 	// a reused idempotency key with conflicting content is refused without
 	// signing; concurrent duplicates collapse to a single threshold-sign.
