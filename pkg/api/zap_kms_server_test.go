@@ -49,6 +49,9 @@ func (s *stubBackend) TriggerSign(orgID, walletID string, network types.NetworkC
 func (s *stubBackend) TriggerReshare(orgID, walletID string, newT int, newP []string) error {
 	return nil
 }
+func (s *stubBackend) TriggerReveal(orgID, keyID string, ciphertext []byte) ([]byte, error) {
+	return nil, nil
+}
 func (s *stubBackend) ExportKeyShare(orgID, walletID string) ([]byte, error) { return nil, nil }
 func (s *stubBackend) GetClusterStatus() *ClusterStatus {
 	return &ClusterStatus{

@@ -33,6 +33,10 @@ type MPCBackend interface {
 	TriggerKeygen(orgID, walletID string) (*KeygenResult, error)
 	TriggerSign(orgID, walletID string, network types.NetworkCode, payload []byte) (*SignResult, error)
 	TriggerReshare(orgID, walletID string, newThreshold int, newParticipants []string) error
+	// TriggerReveal opens a ciphertext the caller brings, under the share set
+	// recorded for keyID. The ring answers with shares and stores nothing that
+	// needs opening, so the ciphertext is an argument and never a lookup.
+	TriggerReveal(orgID, keyID string, ciphertext []byte) ([]byte, error)
 	ExportKeyShare(orgID, walletID string) ([]byte, error) // Returns serialized key share for backup encryption
 	GetClusterStatus() *ClusterStatus
 }

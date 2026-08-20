@@ -38,6 +38,10 @@ const (
 	OpKMSSign    uint16 = 0x0011
 	OpKMSReshare uint16 = 0x0012
 	OpKMSWallet  uint16 = 0x0020
+	// OpKMSReveal opens a ciphertext the caller brings, under a wallet's share
+	// set. 0x0031 because that is the opcode the KMS client has always sent for
+	// it; the number is wire, not naming.
+	OpKMSReveal uint16 = 0x0031
 )
 
 // KMSZapServer wires MPCBackend onto a luxfi/zap.Node and frames responses in
@@ -169,6 +173,7 @@ func (s *KMSZapServer) muxByOpcode(ctx context.Context, from string, msg *zap.Me
 		OpKMSSign:    s.handleSign,
 		OpKMSReshare: s.handleReshare,
 		OpKMSWallet:  s.handleWallet,
+		OpKMSReveal:  s.handleReveal,
 	}
 	h, ok := dispatch[op]
 	if !ok {
@@ -434,4 +439,45 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// kmsZapRevealRequest asks the ring to open something the caller holds.
+//
+// The ciphertext is an ARGUMENT. The ring stores shares and answers with them;
+// it keeps nothing that needs opening, so there is no record here to name and a
+// caller may keep its sealed material wherever it likes — including somewhere
+// public, since only a quorum of these nodes can read it.
+type kmsZapRevealRequest struct {
+	VaultID    string `json:"vault_id"`
+	KeyID      string `json:"key_id"`
+	Ciphertext []byte `json:"ciphertext"`
+}
+
+type kmsZapRevealResponse struct {
+	Plaintext []byte `json:"plaintext"`
+}
+
+// handleReveal opens a ciphertext under a wallet's share set.
+//
+// A named handler, not a closure, so its prose stays with the operation.
+func (s *KMSZapServer) handleReveal(_ context.Context, from string, payload []byte) ([]byte, error) {
+	var req kmsZapRevealRequest
+	if err := json.Unmarshal(payload, &req); err != nil {
+		return nil, fmt.Errorf("decode reveal: %w", err)
+	}
+	if req.VaultID == "" || req.KeyID == "" {
+		return nil, fmt.Errorf("vault_id and key_id required")
+	}
+	if len(req.Ciphertext) == 0 {
+		return nil, fmt.Errorf("ciphertext required")
+	}
+	// The key is named and the ciphertext's length is stated; neither the
+	// ciphertext nor what it opens is logged, here or anywhere below.
+	logger.Info("kms-zap reveal", "from", from, "vault", req.VaultID, "key", req.KeyID, "bytes", len(req.Ciphertext))
+
+	plaintext, err := s.backend.TriggerReveal(req.VaultID, req.KeyID, req.Ciphertext)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(kmsZapRevealResponse{Plaintext: plaintext})
 }
