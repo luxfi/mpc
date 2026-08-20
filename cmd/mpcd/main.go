@@ -598,8 +598,14 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 	// Answer opening requests. Every node serves this, because an opening needs
 	// a quorum and any node may be the one asked — a ring where only some
 	// answer is a ring with a smaller quorum than its threshold claims.
+	//
+	// Logged and carried, not fatal. Signing is what this ring is for and was
+	// working before openings existed; a node that cannot answer one should not
+	// stop doing the other. The absence is not silent either way — it is said
+	// here, and an opening that goes short reports how many answered out of how
+	// many it needed.
 	if err := mpcBackend.serveReveal(ctx); err != nil {
-		return fmt.Errorf("failed to serve reveal: %w", err)
+		logger.Error("reveal: this node will not answer opening requests", err)
 	}
 
 	// Per-node idempotency cache for the internal /sign endpoint. Anti-oracle:
