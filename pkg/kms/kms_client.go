@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -75,10 +76,12 @@ func NewKMSClient(config KMSConfig) (*KMSClient, error) {
 		salt := sha256.Sum256([]byte("luxkms:" + config.ProjectID + ":" + config.ClientID))
 		masterKey = argon2.IDKey([]byte(config.ClientSecret), salt[:], 1, 64*1024, 4, 32)
 	} else {
-		// Development fallback -- deterministic but not secure for production
-		logger.Warn("No KMS client credentials provided, using deterministic key (NOT FOR PRODUCTION)")
-		salt := sha256.Sum256([]byte("luxkms:dev:" + config.ProjectID))
-		masterKey = argon2.IDKey([]byte("dev-fallback-"+config.ProjectID), salt[:], 1, 64*1024, 4, 32)
+		// Without a client secret there is nothing secret to derive from. The
+		// fallback here derived the key from the project id — both the salt and
+		// the password — so anyone who knew that public identifier could compute
+		// the key and open every share it protected. Encryption under a value
+		// the world can read is not encryption, and a warning is not a control.
+		return nil, errors.New("kms: no client credentials; refusing to protect key shares with a derivable key")
 	}
 
 	logger.Info("Initializing KMS client with AES-256-GCM encryption",
