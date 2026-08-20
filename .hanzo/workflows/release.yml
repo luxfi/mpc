@@ -166,7 +166,13 @@ jobs:
     runs-on: [lux-build-linux-amd64]
     timeout-minutes: 20
     steps:
-      - uses: actions/download-artifact@v4
+      # v3 for the same reason the upload above is v3, and it has to be the SAME
+      # version: v4 refuses this forge outright, and a v4 download cannot read a
+      # v3 artifact even where it runs. Fixing one side and not the other left
+      # every release building both binaries, publishing both images, and then
+      # failing at the last step — which reads as a failed release for a tag
+      # whose image is already live.
+      - uses: actions/download-artifact@v3
         with:
           path: dist/
       - uses: softprops/action-gh-release@v2
