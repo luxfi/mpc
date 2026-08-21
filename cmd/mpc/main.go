@@ -150,6 +150,7 @@ func main() {
 				},
 				Action: recoverDatabase,
 			},
+			evmCommand(),
 			{
 				Name:  "version",
 				Usage: "Display detailed version information",

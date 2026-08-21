@@ -35,6 +35,7 @@ require (
 	github.com/luxfi/crypto v1.20.2
 	github.com/luxfi/database v1.21.1
 	github.com/luxfi/fhe v1.11.1
+	github.com/luxfi/geth v1.20.1
 	github.com/luxfi/hsm v1.1.3
 	github.com/luxfi/lattice/v7 v7.1.4
 	github.com/luxfi/log v1.4.3
@@ -179,7 +180,6 @@ require (
 	github.com/luxfi/corona v0.10.4 // indirect
 	github.com/luxfi/crypto/ipa v1.2.4 // indirect
 	github.com/luxfi/dkg v0.3.5 // indirect
-	github.com/luxfi/geth v1.20.1 // indirect
 	github.com/luxfi/ids v1.3.2 // indirect
 	github.com/luxfi/lens v0.2.1 // indirect
 	github.com/luxfi/magnetar v1.2.3 // indirect
