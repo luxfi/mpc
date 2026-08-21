@@ -20,6 +20,9 @@ type brand struct {
 	// Site and Docs are the footer links. Empty omits the link.
 	Site string
 	Docs string
+	// Ico is the mark as an ICO, for the /favicon.ico a browser asks for on
+	// its own whether or not the page names an icon. Empty serves none.
+	Ico []byte
 }
 
 func (b brand) title() string {
@@ -46,6 +49,7 @@ var brands = map[string]brand{
 		Mark: hanzoMark,
 		Site: "https://hanzo.ai",
 		Docs: "https://docs.hanzo.ai",
+		Ico:  hanzoIco,
 	},
 }
 
@@ -79,3 +83,10 @@ func (b brand) favicon() string {
 //
 //go:embed assets/Geist-Variable.woff2
 var geistWoff2 []byte
+
+// The same mark as an ICO, byte-for-byte what hanzo.ai serves. A browser asks
+// for /favicon.ico on its own even when the page names an SVG, and the ones
+// that do not read SVG icons ask for nothing else.
+//
+//go:embed assets/hanzo.ico
+var hanzoIco []byte

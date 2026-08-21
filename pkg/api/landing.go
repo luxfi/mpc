@@ -19,6 +19,7 @@ var landingTemplate = template.Must(template.New("landing").Parse(`<!DOCTYPE htm
 <title>{{.Title}} — Threshold Signing</title>
 <meta name="description" content="Threshold signing over multi-party computation. Key shares never meet, so a full private key never exists anywhere.">
 {{if .Mark}}<link rel="icon" type="image/svg+xml" href="/favicon.svg">{{end}}
+{{if .Ico}}<link rel="icon" href="/favicon.ico" sizes="48x48">{{end}}
 <style>
 @font-face{font-family:Geist;font-style:normal;font-weight:100 900;font-display:swap;src:local('Geist'),url('/fonts/Geist-Variable.woff2') format('woff2')}
 *{margin:0;padding:0;box-sizing:border-box}
@@ -126,6 +127,19 @@ func favicon(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "image/svg+xml")
 	w.Header().Set("Cache-Control", "public,max-age=86400")
 	_, _ = w.Write([]byte(b.favicon()))
+}
+
+// ico answers the request a browser makes on its own, and the only one made by
+// a browser that does not read the SVG named above.
+func ico(w http.ResponseWriter, r *http.Request) {
+	b := brandFor(r.Host)
+	if len(b.Ico) == 0 {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "image/x-icon")
+	w.Header().Set("Cache-Control", "public,max-age=86400")
+	_, _ = w.Write(b.Ico)
 }
 
 func geist(w http.ResponseWriter, r *http.Request) {

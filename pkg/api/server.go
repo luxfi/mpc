@@ -271,6 +271,7 @@ func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, o
 	// Landing page, and the two assets it names. See landing.go.
 	r.Get("/", landing)
 	r.Get("/favicon.svg", favicon)
+	r.Get("/favicon.ico", ico)
 	r.Get("/fonts/Geist-Variable.woff2", geist)
 
 	// Health check (public, outside /v1, for K8s probes)
