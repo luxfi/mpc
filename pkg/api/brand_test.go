@@ -33,6 +33,7 @@ func TestLandingNamesTheHost(t *testing.T) {
 		"<title>Hanzo MPC — Threshold Signing</title>",
 		"https://docs.hanzo.ai",
 		`href="/favicon.svg"`,
+		`href="/favicon.ico"`,
 		hanzoMark,
 	} {
 		if !strings.Contains(body, want) {
@@ -59,6 +60,30 @@ func TestLandingUnbranded(t *testing.T) {
 	favicon(w, httptest.NewRequest("GET", "http://mpc.example.com/favicon.svg", nil))
 	if w.Code != 404 {
 		t.Errorf("favicon for an unknown host = %d, want 404", w.Code)
+	}
+}
+
+// A browser asks for /favicon.ico whether or not the page names an icon, and
+// one that does not read SVG icons asks for nothing else.
+func TestIcoIsServed(t *testing.T) {
+	w := httptest.NewRecorder()
+	ico(w, httptest.NewRequest("GET", "http://mpc.hanzo.ai/favicon.ico", nil))
+
+	if w.Code != 200 {
+		t.Fatalf("favicon.ico = %d, want 200", w.Code)
+	}
+	if got := w.Header().Get("Content-Type"); got != "image/x-icon" {
+		t.Errorf("Content-Type = %q, want image/x-icon", got)
+	}
+	// The ICO magic number, so a stub or a truncated embed fails here.
+	if b := w.Body.Bytes(); len(b) < 4 || b[0] != 0 || b[1] != 0 || b[2] != 1 || b[3] != 0 {
+		t.Error("the body is not an ICO")
+	}
+
+	w = httptest.NewRecorder()
+	ico(w, httptest.NewRequest("GET", "http://mpc.example.com/favicon.ico", nil))
+	if w.Code != 404 {
+		t.Errorf("favicon.ico for an unknown host = %d, want 404", w.Code)
 	}
 }
 
