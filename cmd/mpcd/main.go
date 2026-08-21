@@ -186,6 +186,7 @@ func main() {
 					return runNodeConsensus(ctx, c)
 				},
 			},
+			sealCommand,
 			{
 				Name:  "version",
 				Usage: "Display detailed version information",
