@@ -154,7 +154,7 @@ func openReveal(bus messaging.PubSub, store kvstore.KVStore, nodeID, orgID, keyI
 	if err != nil {
 		return nil, fmt.Errorf("reveal: encode request: %w", err)
 	}
-	if err := bus.Publish(fmt.Sprintf("%s.%s", event.RevealRequestTopicBase, sessionID), body); err != nil {
+	if err := bus.Publish(event.RevealRequestTopic, body); err != nil {
 		return nil, fmt.Errorf("reveal: publish request: %w", err)
 	}
 

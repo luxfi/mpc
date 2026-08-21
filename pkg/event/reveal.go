@@ -16,12 +16,18 @@ const (
 
 	// RevealRequestTopic is what every party listens to. One request reaches
 	// them all and each answers independently.
-	RevealRequestTopic     = "mpc.reveal_request.*"
-	RevealRequestTopicBase = "mpc.reveal_request"
+	//
+	// One literal topic, not a pattern. The consensus transport delivers by
+	// exact map lookup — it has no wildcards — so a party subscribed to
+	// "mpc.reveal_request.*" hears a request published under
+	// "mpc.reveal_request.<session>" never, and the opening times out with
+	// every share present and nobody having been asked. The session travels in
+	// the request body, where a reader needs it anyway.
+	RevealRequestTopic = "mpc.reveal_request"
 
-	// RevealAnswerTopic carries the answers back, keyed by session so two
-	// openings in flight cannot be combined into one.
-	RevealAnswerTopic     = "mpc.reveal_answer.*"
+	// RevealAnswerTopic carries the answers back, one topic per session, so two
+	// openings in flight cannot be combined into one. Both sides build the same
+	// literal from the same base, so no pattern is involved here either.
 	RevealAnswerTopicBase = "mpc.reveal_answer"
 )
 
