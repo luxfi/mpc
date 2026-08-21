@@ -545,10 +545,14 @@ func (s *Server) handleMpcSignDefault(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.recordMpcAudit(r.Context(), orgID, userID, "operation.sign", "wallet", walletID)
+	// v is the secp256k1 recovery id; empty for schemes without one (ed25519).
+	// EVM callers need r, s, AND v to assemble a broadcastable transaction, so
+	// this returns the same triple the KMS and ZAP signing paths do.
 	writeJSON(w, http.StatusOK, map[string]string{
 		"signature": result.Signature,
 		"r":         result.R,
 		"s":         result.S,
+		"v":         result.V,
 	})
 }
 
@@ -615,6 +619,7 @@ func (s *Server) handleMpcSignSettlement(w http.ResponseWriter, r *http.Request)
 		"signature": result.Signature,
 		"r":         result.R,
 		"s":         result.S,
+		"v":         result.V,
 	})
 }
 
