@@ -11,8 +11,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/luxfi/mpc/pkg/reveal"
 	"github.com/urfave/cli/v3"
+
+	"github.com/luxfi/mpc/pkg/reveal"
 )
 
 // sealCommand writes a secret that only a quorum of the ring can read.

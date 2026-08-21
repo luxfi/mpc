@@ -586,4 +586,3 @@ func (s *Server) SetTradeApproval(notifier custody.PushNotifier) {
 func (s *Server) Handler() http.Handler {
 	return s.router
 }
-
