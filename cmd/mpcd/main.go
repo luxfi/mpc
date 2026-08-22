@@ -737,6 +737,7 @@ func runNodeConsensus(ctx context.Context, c *cli.Command) error {
 			}
 			json.NewEncoder(w).Encode(keys)
 		}))
+		mux.HandleFunc("/group", internalAuth(groupHandler(factory.KVStore())))
 		mux.HandleFunc("/backup", internalAuth(internalRateLimit(func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodPost {
 				w.WriteHeader(http.StatusMethodNotAllowed)
