@@ -10,7 +10,7 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@hanzo/font": "^1.8.1",
+    "@hanzo/font": "^1.8.2",
     "@hanzo/docs": "^16.2.0",
     "@hanzo/docs-core": "^16.2.0",
     "@hanzo/mdx": "^14.2.0",
