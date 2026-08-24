@@ -10,12 +10,12 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/luxfi/mpc/internal/ceremony"
-	"github.com/luxfi/mpc/pkg/mpc"
 	"github.com/luxfi/threshold/pkg/party"
 	"github.com/luxfi/threshold/pkg/protocol"
 	"github.com/luxfi/threshold/protocols/frost"
 
+	"github.com/luxfi/mpc/internal/ceremony"
+	"github.com/luxfi/mpc/pkg/mpc"
 	revealpkg "github.com/luxfi/mpc/pkg/reveal"
 )
 
