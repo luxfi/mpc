@@ -1,7 +1,7 @@
 import "./global.css"
 import { RootProvider } from "fumadocs-ui/provider/next"
-import { GeistSans } from "geist/font/sans"
-import { GeistMono } from "geist/font/mono"
+import { ZenSans as GeistSans } from "@hanzo/font/sans"
+import { ZenMono as GeistMono } from "@hanzo/font/mono"
 import type { ReactNode } from "react"
 
 export const metadata = {
