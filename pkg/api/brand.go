@@ -76,13 +76,13 @@ func (b brand) favicon() string {
 		b.Mark + `</svg>`
 }
 
-// Geist is the typeface the page asks for, served from this binary. A
+// Zen is the typeface the page asks for, served from this binary. A
 // cross-origin stylesheet is refused by the browser (ERR_BLOCKED_BY_ORB) and
-// leaves every reader on system-ui while every rule asks for Geist, so the file
+// leaves every reader on system-ui while every rule asks for Zen, so the file
 // travels with the server that names it.
 //
-//go:embed assets/Geist-Variable.woff2
-var geistWoff2 []byte
+//go:embed assets/Zen-Variable.woff2
+var zenWoff2 []byte
 
 // The same mark as an ICO, byte-for-byte what hanzo.ai serves. A browser asks
 // for /favicon.ico on its own even when the page names an SVG, and the ones

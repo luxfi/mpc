@@ -272,7 +272,7 @@ func NewServer(database *db.Database, mpcBackend MPCBackend, jwtSecret string, o
 	r.Get("/", landing)
 	r.Get("/favicon.svg", favicon)
 	r.Get("/favicon.ico", ico)
-	r.Get("/fonts/Geist-Variable.woff2", geist)
+	r.Get("/fonts/Zen-Variable.woff2", zen)
 
 	// Health check (public, outside /v1, for K8s probes)
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
