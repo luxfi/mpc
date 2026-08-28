@@ -21,9 +21,9 @@ var landingTemplate = template.Must(template.New("landing").Parse(`<!DOCTYPE htm
 {{if .Mark}}<link rel="icon" type="image/svg+xml" href="/favicon.svg">{{end}}
 {{if .Ico}}<link rel="icon" href="/favicon.ico" sizes="48x48">{{end}}
 <style>
-@font-face{font-family:Geist;font-style:normal;font-weight:100 900;font-display:swap;src:local('Geist'),url('/fonts/Geist-Variable.woff2') format('woff2')}
+@font-face{font-family:Zen;font-style:normal;font-weight:100 900;font-display:swap;src:local('Zen'),url('/fonts/Zen-Variable.woff2') format('woff2')}
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:Geist,system-ui,sans-serif;background:#000;color:#a1a1a1;-webkit-font-smoothing:antialiased;display:flex;flex-direction:column;min-height:100vh}
+body{font-family:Zen,system-ui,sans-serif;background:#000;color:#a1a1a1;-webkit-font-smoothing:antialiased;display:flex;flex-direction:column;min-height:100vh}
 a{color:#fff;text-decoration:none}
 a:hover{text-decoration:underline}
 .wrap{width:100%;max-width:980px;margin:0 auto;padding:0 24px}
@@ -142,8 +142,8 @@ func ico(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(b.Ico)
 }
 
-func geist(w http.ResponseWriter, r *http.Request) {
+func zen(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "font/woff2")
 	w.Header().Set("Cache-Control", "public,max-age=31536000,immutable")
-	_, _ = w.Write(geistWoff2)
+	_, _ = w.Write(zenWoff2)
 }

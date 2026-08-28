@@ -99,11 +99,11 @@ func TestFaviconIsTheMark(t *testing.T) {
 	}
 }
 
-// The page asks for Geist by URL; a URL that 404s leaves every reader on
+// The page asks for Zen by URL; a URL that 404s leaves every reader on
 // system-ui with no sign anything is wrong.
-func TestGeistIsServed(t *testing.T) {
+func TestZenIsServed(t *testing.T) {
 	w := httptest.NewRecorder()
-	geist(w, httptest.NewRequest("GET", "http://mpc.hanzo.ai/fonts/Geist-Variable.woff2", nil))
+	zen(w, httptest.NewRequest("GET", "http://mpc.hanzo.ai/fonts/Zen-Variable.woff2", nil))
 
 	if got := w.Header().Get("Content-Type"); got != "font/woff2" {
 		t.Errorf("Content-Type = %q, want font/woff2", got)

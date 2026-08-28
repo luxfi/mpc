@@ -1,7 +1,7 @@
 import "./global.css"
 import { RootProvider } from "fumadocs-ui/provider/next"
-import { Zen as GeistSans } from "@hanzo/font/sans"
-import { ZenMono as GeistMono } from "@hanzo/font/mono"
+import { Zen } from "@hanzo/font/sans"
+import { ZenMono } from "@hanzo/font/mono"
 import type { ReactNode } from "react"
 
 export const metadata = {
@@ -16,7 +16,7 @@ export default function Layout({ children }: { children: ReactNode }) {
   return (
     <html
       lang="en"
-      className={`${GeistSans.variable} ${GeistMono.variable}`}
+      className={`${Zen.variable} ${ZenMono.variable}`}
       suppressHydrationWarning
     >
       <body className="min-h-svh bg-background font-sans antialiased">

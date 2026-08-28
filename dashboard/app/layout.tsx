@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { headers } from 'next/headers'
-import { GeistSans } from 'geist/font/sans'
-import { GeistMono } from 'geist/font/mono'
+import { Zen } from '@hanzo/font/sans'
+import { ZenMono } from '@hanzo/font/mono'
 import { resolveWhiteLabel } from '@luxfi/ui/white-label'
 import { Providers } from './providers'
 import './globals.css'
@@ -23,7 +23,7 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" className={`dark ${GeistSans.variable} ${GeistMono.variable}`}>
+    <html lang="en" className={`dark ${Zen.variable} ${ZenMono.variable}`}>
       <body className="font-sans min-h-screen bg-background text-foreground antialiased">
         <Providers>
           {children}
