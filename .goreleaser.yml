@@ -145,7 +145,7 @@ docker_manifests:
 nfpms:
   - id: packages
     package_name: mpcd
-    vendor: Lux Partners Limited
+    vendor: Lux Industries Inc
     homepage: https://github.com/luxfi/mpc
     maintainer: Lux Development Team <dev@lux.network>
     description: |-
