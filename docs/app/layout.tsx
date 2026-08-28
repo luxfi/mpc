@@ -1,6 +1,6 @@
 import "./global.css"
 import { RootProvider } from "fumadocs-ui/provider/next"
-import { ZenSans as GeistSans } from "@hanzo/font/sans"
+import { Zen as GeistSans } from "@hanzo/font/sans"
 import { ZenMono as GeistMono } from "@hanzo/font/mono"
 import type { ReactNode } from "react"
 
