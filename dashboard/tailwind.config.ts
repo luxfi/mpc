@@ -10,8 +10,8 @@ const config: Config = {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['var(--font-geist-sans)'],
-        mono: ['var(--font-geist-mono)'],
+        sans: ['var(--font-zen-sans)'],
+        mono: ['var(--font-zen-mono)'],
       },
       colors: {
         background: 'var(--background)',
