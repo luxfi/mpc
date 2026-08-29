@@ -1502,8 +1502,6 @@ github.com/luxfi/cache v1.3.1 h1:grQhi/B5GKypG7avDMeY143QTgFbfEvQICKNIh1Cw6U=
 github.com/luxfi/cache v1.3.1/go.mod h1:2MokdbeNUy/9O3mdREWkE6BiN7tRvePkXiKkcb+4M7g=
 github.com/luxfi/cc v0.3.0 h1:6nJ4/sF6XCcZ2upYTWJBgLV6HUB6Uy57Dt71NAmQF1k=
 github.com/luxfi/cc v0.3.0/go.mod h1:T27VmvfkBPr5WPbb9WdZqudRDSfvxyx/ddnP5DOeiR4=
-github.com/luxfi/chains v1.7.7 h1:VX1G1QNyQ07oRA6BDrNxoDnkXBdjUKltTygQHsrNuGE=
-github.com/luxfi/chains v1.7.7/go.mod h1:pRC6p5beDrzgmXdObdm3XkJr/IHC3FqxESFjUrnRnvo=
 github.com/luxfi/codec v1.1.4/go.mod h1:oGQ3j6E8c2P0pL0irYtWkrB1hmDUFIE0puXHK4gV5KI=
 github.com/luxfi/codec v1.2.1 h1:NA/O3dWm9QejQPdjLEIVx42ddVqAXsy6Y6igL/V1+aU=
 github.com/luxfi/codec v1.2.1/go.mod h1:xjWOTEbw9gxY/N8nZwQPvRCfPnK/ugJHBWsb3BZ0HHs=
@@ -1641,8 +1639,6 @@ github.com/luxfi/validators v1.3.1 h1:+/7j0CTXlMKyaSLFM+gd6Fq64/edORJfrD/xGnf7Xc
 github.com/luxfi/validators v1.3.1/go.mod h1:sIQyUZOvXoJ/9/RCOhHSzjumZIoxiqacNOn5mQWVozU=
 github.com/luxfi/version v1.0.1 h1:T/1KYWEMmsrNQk7pN7PFPAwh/7XbeX7cFAKLBqI37Sk=
 github.com/luxfi/version v1.0.1/go.mod h1:Y5fPkQ2DB0XRBCxgSPXp4ISzL1/jptKnmFknShRJCyg=
-github.com/luxfi/vm v1.3.1 h1:U2Bv7IDRFv8JtjUARfY53ZnOPRB2iPrPHSMDCQ+T0Js=
-github.com/luxfi/vm v1.3.1/go.mod h1:6YR/uFV2FoofmogQShv+HM7V8alz5rbrQYjp5w0bNVA=
 github.com/luxfi/warp v1.24.1 h1:9F+z6fy4sxmXp+3LlR9m3TiZ8Dfthh+s5KOeewSJL30=
 github.com/luxfi/warp v1.24.1/go.mod h1:kRGQDt6EB3oRLYo71aXqnmJuCBVfND3oQ5/2miaLoyg=
 github.com/luxfi/zap v1.0.1 h1:vlotZr4mMNdDGHxhPq+chRjVkjfv86SXF4FfN7v/bLQ=
