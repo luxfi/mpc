@@ -15,7 +15,7 @@
     "@hanzo/docs-core": "^17.0.1",
     "@hanzo/font": "^1.9.3",
     "@hanzo/mdx": "^14.2.6",
-    "@hanzo/ui": "^8.27.5",
+    "@hanzo/ui": "^8.27.7",
     "fumadocs-core": "^15.0.0",
     "fumadocs-mdx": "^12.0.0",
     "fumadocs-ui": "^16.0.0",
