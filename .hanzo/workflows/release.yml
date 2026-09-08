@@ -39,7 +39,7 @@ jobs:
       fail-fast: false
       matrix:
         arch: [amd64, arm64]
-    runs-on: [lux-build-linux-amd64]
+    runs-on: [linux-amd64]
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
@@ -93,7 +93,7 @@ jobs:
 
   manifest:
     needs: image
-    runs-on: [lux-build-linux-amd64]
+    runs-on: [linux-amd64]
     timeout-minutes: 20
     steps:
       - uses: docker/setup-buildx-action@v3
@@ -136,7 +136,7 @@ jobs:
         arch: [amd64, arm64]
     # arm64 cross-compiles via GOARCH; CGO_ENABLED=0 keeps it pure Go, so one
     # amd64 runner covers both and no cross-compiler is needed.
-    runs-on: [lux-build-linux-amd64]
+    runs-on: [linux-amd64]
     timeout-minutes: 30
     # luxfi/* are PUBLIC modules, fetched and checksum-verified through the
     # default immutable proxy.golang.org + sum.golang.org. No GOPRIVATE /
@@ -163,7 +163,7 @@ jobs:
 
   release:
     needs: binaries
-    runs-on: [lux-build-linux-amd64]
+    runs-on: [linux-amd64]
     timeout-minutes: 20
     steps:
       # v3 for the same reason the upload above is v3, and it has to be the SAME
@@ -181,7 +181,7 @@ jobs:
 
   notify:
     needs: [manifest, release]
-    runs-on: [lux-build-linux-amd64]
+    runs-on: [linux-amd64]
     timeout-minutes: 10
     steps:
       - name: Tell luxfi/universe the image is published

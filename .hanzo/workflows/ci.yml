@@ -31,7 +31,7 @@ env:
 
 jobs:
   test:
-    runs-on: [lux-build-linux-amd64]
+    runs-on: [linux-amd64]
     timeout-minutes: 30
     env:
       GOEXPERIMENT: runtimesecret
@@ -46,7 +46,7 @@ jobs:
         run: CGO_ENABLED=1 go test -v -race -coverprofile=coverage.out ./...
 
   lint:
-    runs-on: [lux-build-linux-amd64]
+    runs-on: [linux-amd64]
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -63,7 +63,7 @@ jobs:
           skip-cache: true
 
   govulncheck:
-    runs-on: [lux-build-linux-amd64]
+    runs-on: [linux-amd64]
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -77,7 +77,7 @@ jobs:
 
   build:
     needs: [test, lint]
-    runs-on: [lux-build-linux-amd64]
+    runs-on: [linux-amd64]
     timeout-minutes: 20
     env:
       GOEXPERIMENT: runtimesecret
