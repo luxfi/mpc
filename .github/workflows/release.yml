@@ -10,6 +10,12 @@ name: Release
 # answers 404 for every one and only v1.17.32 resolves, which is what the MPC
 # quorum is still running and why its /group endpoint is not there to be called.
 #
+# THE TWO COPIES NOW DIFFER IN ONE LINE, deliberately: the artifact actions are
+# v4 here and v3 in the twin. github.com automatically fails a whole job that
+# asks for v3, at "Set up job", before checkout; the forge refuses v4. Neither
+# version works on both planes, so the version is the one thing a shared file
+# cannot share.
+#
 # It runs here now because the pieces are: the hanzo-platform GitHub App is
 # installed across the luxfi org and provisions a runner per queued job, and
 # GHCR_USER / GHCR_TOKEN are org Actions secrets on github.com. The note in the
@@ -169,7 +175,14 @@ jobs:
       # 0 successes in 72 attempts and v3 is 132 in 133. Both matrix legs built
       # mpcd and then threw it away at the last step, so two good builds read as
       # two failures — 20 of them in the last week alone.
-      - uses: actions/upload-artifact@v3
+      # v4 HERE AND v3 IN THE TWIN, and that is the one line the two planes cannot
+      # share. github.com AUTOMATICALLY FAILS any job that asks for v3 — not the
+      # step, the whole job, at "Set up job", before checkout — so on this plane
+      # v3 is unusable. The forge refuses v4 outright, so there it is unusable
+      # too. Measured: the first run of this file on github.com failed both
+      # binary jobs at step one with the deprecation error and left the two jobs
+      # that depend on them queued.
+      - uses: actions/upload-artifact@v4
         with:
           name: mpcd-linux-${{ matrix.arch }}
           path: mpcd
@@ -179,13 +192,15 @@ jobs:
     runs-on: [linux-amd64]
     timeout-minutes: 20
     steps:
-      # v3 for the same reason the upload above is v3, and it has to be the SAME
-      # version: v4 refuses this forge outright, and a v4 download cannot read a
-      # v3 artifact even where it runs. Fixing one side and not the other left
-      # every release building both binaries, publishing both images, and then
-      # failing at the last step — which reads as a failed release for a tag
-      # whose image is already live.
-      - uses: actions/download-artifact@v3
+      # The SAME version as the upload, and that has always been the rule here: a
+      # v4 download cannot read a v3 artifact even where both run. Fixing one
+      # side and not the other left every release building both binaries,
+      # publishing both images, and then failing at the last step — a failed
+      # release for a tag whose image is already live.
+      #
+      # With no name, v4 fetches every artifact into path, one directory each,
+      # which is what the glob below already expects.
+      - uses: actions/download-artifact@v4
         with:
           path: dist/
       - uses: softprops/action-gh-release@v2
