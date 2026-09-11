@@ -52,106 +52,36 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
+# WHAT THIS COPY DOES NOT DO, and why it says so rather than failing at it.
+#
+# The image and manifest jobs are absent here. They need a builder, and a job on
+# this plane runs in an ephemeral pod with no docker daemon, so the only builder
+# available is the cluster's buildkit — which its own NetworkPolicy does not
+# expose to the runner namespace. That is deliberate: the daemon speaks
+# plaintext on 1234 and its config says it is not hardened for multi-tenant use,
+# so reaching it from a namespace that runs arbitrary repository code is exactly
+# what the scoping prevents. Attempting the build anyway left a red release on
+# every tag, which teaches people to ignore the pipeline.
+#
+# So images are built where the builder is, and the recipe is short:
+#
+#   pod in ns hanzo-build from moby/buildkit, ghcr-secret at $DOCKER_CONFIG,
+#   cloud-build-git's token as the gh_token build secret, source in by
+#   `git archive <tag> | kubectl exec -i … tar xzf -`, then per architecture
+#   `buildctl --addr tcp://<that arch's buildkitd pod IP>:1234 build …
+#   --output type=image,name=ghcr.io/luxfi/mpc:<tag>-<arch>,push=true`,
+#   joined with `crane index append -m …-amd64 -m …-arm64 -t <tag>`.
+#
+#   Address the POD, not the service: buildkitd-node is a DaemonSet with one
+#   node per architecture behind one ClusterIP, so the service round-robins and
+#   an amd64 build that lands on the arm64 node dies inside QEMU.
+#
+# Two things would bring these jobs back, and both are decisions rather than
+# edits: put TLS on the daemon so reaching it is safe from anywhere, or run CI
+# in ns hanzo-build, where the existing policy already admits it and the egress
+# deny already contains it.
+
 jobs:
-  image:
-    strategy:
-      fail-fast: false
-      matrix:
-        arch: [amd64, arm64]
-    runs-on: [linux-amd64]
-    timeout-minutes: 90
-    steps:
-      - uses: actions/checkout@v4
-
-      # NO DOCKER DAEMON HERE, and that is the shape of a runner rather than a
-      # fault: a job runs in an ephemeral pod with the docker CLI and no socket,
-      # so `docker-container` cannot start a builder and QEMU cannot be
-      # installed. Measured: both image jobs died at builder init with
-      # `dial unix /var/run/docker.sock: no such file or directory`.
-      #
-      # The cluster already runs buildkit — a DaemonSet with one node per
-      # architecture behind buildkitd-node:1234 — so the builder is reached
-      # rather than started, and the emulation question goes with it: each node
-      # builds its own platform natively.
-      - uses: docker/setup-buildx-action@v3
-        with:
-          driver: remote
-          endpoint: tcp://buildkitd-node.hanzo-build.svc.cluster.local:1234
-
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ secrets.GHCR_USER }}
-          password: ${{ secrets.GHCR_TOKEN }}
-
-      - name: Write the private-module token for BuildKit
-        # Stripped of trailing whitespace on purpose. Dockerfile:50 interpolates
-        # this into a URL:
-        #   git config url."https://x-access-token:$(cat /run/secrets/gh_token)@github.com/"
-        # so a single trailing newline in the stored secret truncates the URL at
-        # it and git resolves the credential prefix as the HOST:
-        #   Could not resolve host: x-access-token
-        # luxfi/node hit exactly this. The secret's bytes are not ours to
-        # control, so the trim happens here.
-        run: |
-          set -euo pipefail
-          umask 077
-          printf '%s' '${{ secrets.UNIVERSE_PAT }}' | tr -d '\r\n' > "${RUNNER_TEMP}/gh_token"
-          if [ ! -s "${RUNNER_TEMP}/gh_token" ]; then
-            echo "::error::UNIVERSE_PAT is empty — the luxfi/hsm module fetch will fail"
-            exit 1
-          fi
-
-      - name: Build and push (${{ matrix.arch }})
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: Dockerfile
-          platforms: linux/${{ matrix.arch }}
-          secrets: |
-            gh_token=${{ runner.temp }}/gh_token
-          provenance: false
-          push: true
-          tags: ghcr.io/luxfi/mpc:${{ github.ref_name }}-${{ matrix.arch }}
-
-  manifest:
-    needs: image
-    runs-on: [linux-amd64]
-    timeout-minutes: 20
-    steps:
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ secrets.GHCR_USER }}
-          password: ${{ secrets.GHCR_TOKEN }}
-      - name: Compose the multi-arch tag
-        # imagetools, not `docker manifest create`: `docker buildx build --push`
-        # emits a per-arch OCI index, and `docker manifest create` rejects those
-        # ("X is a manifest list"). imagetools handles them.
-        run: |
-          set -euo pipefail
-          IMG=ghcr.io/luxfi/mpc
-          TAG='${{ github.ref_name }}'
-          docker buildx imagetools create -t "$IMG:$TAG" \
-            "$IMG:${TAG}-amd64" \
-            "$IMG:${TAG}-arm64"
-
-      - name: Verify the pushed manifest resolves
-        # A tag that names nothing pullable is how a deployment ends up pinned
-        # to a phantom: the pin applies, the pod never starts, and the tag looks
-        # like a release. Prove it before the job is green.
-        run: |
-          set -euo pipefail
-          img="ghcr.io/luxfi/mpc:${{ github.ref_name }}"
-          for i in 1 2 3 4 5 6; do
-            if docker manifest inspect "$img" >/dev/null 2>&1; then
-              echo "$img is resolvable"; exit 0
-            fi
-            echo "manifest not visible yet (attempt ${i}/6) — retrying"; sleep 5
-          done
-          echo "::error::$img not pullable after push"; exit 1
-
   binaries:
     strategy:
       fail-fast: false
@@ -212,7 +142,7 @@ jobs:
           files: dist/**/*
 
   notify:
-    needs: [manifest, release]
+    needs: [release]
     runs-on: [linux-amd64]
     timeout-minutes: 10
     steps:
