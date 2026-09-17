@@ -472,10 +472,8 @@ func (p *Node) CreateReshareSession(
 	}
 }
 
-// CreateTFHEKeyGenSession and CreateTFHEComputeSession are gated behind the
-// `experimental_tfhe` build tag. See pkg/mpc/tfhe_node.go (experimental impl)
-// and pkg/mpc/tfhe_node_stub.go (default-build stub returning
-// ErrTFHENotImplemented).
+// CreateTFHEKeyGenSession and CreateTFHEComputeSession live in
+// pkg/mpc/tfhe_node.go.
 
 func contains(slice []string, item string) bool {
 	for _, s := range slice {

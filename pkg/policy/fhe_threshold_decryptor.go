@@ -1,255 +1,139 @@
-//go:build experimental_tfhe
-
-// RealThresholdDecryptor wires the FHEVerifier's ThresholdDecryptor
-// interface to the t-of-n committee implemented in
-// luxfi/threshold/protocols/tfhe.
-//
-// EXPERIMENTAL — gated behind the `experimental_tfhe` build tag because
-// the upstream luxfi/threshold/protocols/tfhe primitive is a fail-loud
-// placeholder that is NOT a real threshold scheme: every party stores
-// the full master key, PartialDecrypt returns an HMAC tag, and
-// CombineShares ignores partials and runs single-party decryption (it
-// panics at every entry point unless ALLOW_FAKE_TFHE_FOR_TESTING_ONLY=1,
-// by design). That package was deleted from luxfi/threshold upstream
-// (v1.10.0+); this file builds only against the older v1.9.x line and
-// only verifies dispatcher fan-out + aggregator wiring shape — it proves
-// NO threshold-security property. Default production builds compile
-// fhe_threshold_decryptor_stub.go instead, which fails CLOSED with
-// ErrThresholdFHENotWired. Real-threshold wiring (luxfi/fhe pkg/threshold
-// Shamir/LWE: ShareLWESecretKey / PartialDecryptLWE / CombineLWE) is
-// tracked per LP-137 §2.6.
-//
-// FHECiphertext / FHEThresholdShare / KeyShare / ShareAggregator.
-//
-// Flow:
-//
-//  1. Send a PartialDecrypt request to every configured PartyClient.
-//  2. Collect FHEThresholdShare responses as they arrive.
-//  3. Once `threshold` valid shares are in hand, call
-//     ShareAggregateService.Aggregate.
-//  4. Round the recovered plaintext to a boolean (FHE policy verdicts
-//     are 1-bit) and return.
-//
-// Failure modes are mapped to ErrFHEThresholdDec by the verifier wrapper
-// so the policy gate fails closed on any committee anomaly.
-//
-// This file is additive — it does not modify the FHEVerifier struct or
-// its existing constructors. Callers wire RealThresholdDecryptor via
-// FHEVerifier.Decryptor like any other ThresholdDecryptor.
-//
 // Copyright (c) 2026, Lux Industries Inc.
 // SPDX-License-Identifier: BSD-3-Clause
+
+// Committee is the FHE policy gate's threshold decryptor, backed by the
+// M-Chain committee of github.com/luxfi/threshold/protocols/tfhe.
+//
+// One encrypted verdict bit goes to every member; each returns a partial
+// decryption under its own share, bound by digest to the ciphertext. Any
+// failure returns an error, which FHEVerifier reads as a denial.
+
 package policy
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/sha256"
-	"errors"
 	"fmt"
 	"sync"
 
-	fhethr "github.com/luxfi/threshold/protocols/tfhe"
+	"github.com/luxfi/fhe"
+	"github.com/luxfi/threshold/protocols/tfhe"
 )
 
-// ErrCommitteeQuorum is returned by RealThresholdDecryptor.Decrypt when
-// the configured threshold could not be assembled from the available
-// PartyClient set within the request lifetime.
-var ErrCommitteeQuorum = errors.New("real-threshold-decryptor: insufficient quorum")
-
-// PartyClient is the per-peer RPC client. The default deployment maps
-// one PartyClient to one M-Chain MPC node hosting a single
-// FHEThresholdShare-producing endpoint.
-//
-// Implementations are responsible for transport (TLS 1.3, ZAP wire
-// types 60-79 per LP-022, etc.); this interface only describes the
-// shape of the request/response.
+// PartyClient is the per-member RPC client, one per node holding one share.
+// Implementations own the transport.
 type PartyClient interface {
-	// PartyID returns the 1-indexed party identifier this client
-	// targets. Used by the dispatcher to demux responses and by the
-	// aggregator to verify per-party material.
-	PartyID() uint32
+	// Party returns the member's 1-based committee position.
+	Party() int
 
-	// PartialDecrypt issues a partial-decrypt request to the peer.
-	// Implementations are expected to be concurrent-safe.
-	PartialDecrypt(
-		ctx context.Context,
-		ciphertext fhethr.FHECiphertext,
-		sessionID [32]byte,
-	) (fhethr.FHEThresholdShare, error)
+	// PartialDecrypt asks the member to partially decrypt ciphertext.
+	// Implementations must be safe for concurrent use.
+	PartialDecrypt(ctx context.Context, ciphertext []byte) (tfhe.Decryption, error)
 }
 
-// RealThresholdDecryptor is the production ThresholdDecryptor wired to
-// the M-Chain MPC committee.
-type RealThresholdDecryptor struct {
-	// Aggregate is the local aggregation service. Defaults to a
-	// fhethr.NewShareAggregator() when nil.
-	Aggregate fhethr.ShareAggregateService
-
-	// Parties is the per-party RPC client set. The dispatcher fans out
-	// to every entry in parallel and short-circuits as soon as
-	// `threshold` valid shares are received.
+// Committee is the threshold-FHE decryptor for the policy gate.
+type Committee struct {
+	// Parties is the member client set. Requests fan out to all of them.
 	Parties []PartyClient
 
-	// Threshold is the t-of-n bound. Must satisfy 1 ≤ Threshold ≤
-	// len(Parties).
-	Threshold uint32
+	// Threshold is how many partial decryptions recover a verdict.
+	Threshold int
 
-	// PartyKeys, when set, switches the aggregator to the symmetric-key
-	// verification path (see fhethr.ShareAggregator). Production
-	// committee self-checks populate this field; cross-committee
-	// callers leave it nil and rely on the public-key path once CDS
-	// noise proofs ship.
-	PartyKeys map[uint32]fhethr.KeyShare
+	// Params is the committee's FHE parameter set.
+	Params fhe.Parameters
 }
 
-// NewRealThresholdDecryptor returns a configured decryptor.
-func NewRealThresholdDecryptor(
-	parties []PartyClient,
-	threshold uint32,
-) *RealThresholdDecryptor {
-	return &RealThresholdDecryptor{
-		Aggregate: fhethr.NewShareAggregator(),
-		Parties:   parties,
-		Threshold: threshold,
-	}
+// NewThresholdDecryptor returns the policy gate's threshold decryptor.
+func NewThresholdDecryptor(parties []PartyClient, threshold int, params fhe.Parameters) *Committee {
+	return &Committee{Parties: parties, Threshold: threshold, Params: params}
 }
 
-// Decrypt implements ThresholdDecryptor. It accepts the opaque
-// encrypted-verdict bytes, fans out partial-decrypt requests to the
-// committee, and aggregates ≥t shares into a boolean verdict.
-//
-// The sessionID is derived from sha256("decrypt" || ciphertext) — the
-// FHEVerifier issues one ciphertext per (intent, policy) pair so the
-// derivation is replay-safe across calls. Production may layer a
-// caller-supplied sessionID on top via decorating the ciphertext bytes.
-func (d *RealThresholdDecryptor) Decrypt(
-	ctx context.Context,
-	ciphertextBytes []byte,
-) (bool, error) {
-	if d.Threshold == 0 {
-		return false, fmt.Errorf("real-threshold-decryptor: threshold must be > 0")
+// Decrypt implements ThresholdDecryptor: the encrypted verdict is a one-bit
+// ciphertext and Decrypt returns that bit. A wider ciphertext is refused.
+func (c *Committee) Decrypt(ctx context.Context, ciphertext []byte) (bool, error) {
+	if c.Threshold < 1 {
+		return false, fmt.Errorf("policy/tfhe: threshold must be at least 1, got %d", c.Threshold)
 	}
-	if uint32(len(d.Parties)) < d.Threshold {
-		return false, ErrCommitteeQuorum
+	if len(c.Parties) < c.Threshold {
+		return false, fmt.Errorf("%w: committee has %d members, threshold is %d",
+			tfhe.ErrQuorum, len(c.Parties), c.Threshold)
 	}
-	ct := fhethr.NewFHECiphertext(ciphertextBytes)
-	sess := sessionForCiphertext(ct)
-
-	shares, err := d.collectShares(ctx, ct, sess)
+	verdict, err := tfhe.Parse(ciphertext)
 	if err != nil {
 		return false, err
 	}
-	if uint32(len(shares)) < d.Threshold {
-		return false, ErrCommitteeQuorum
+	if verdict.NumBits() != 1 {
+		return false, fmt.Errorf("policy/tfhe: encrypted verdict carries %d bits, want 1", verdict.NumBits())
 	}
 
-	agg := d.Aggregate
-	if agg == nil {
-		agg = fhethr.NewShareAggregator()
-	}
-	if a, ok := agg.(*fhethr.ShareAggregator); ok && d.PartyKeys != nil {
-		a.PartyKeys = d.PartyKeys
-	}
-	res, plaintext, err := agg.Aggregate(ctx, ct, shares, d.Threshold, sess)
+	shares, err := c.collect(ctx, ciphertext)
 	if err != nil {
-		return false, fmt.Errorf("real-threshold-decryptor: aggregate: %w", err)
+		return false, err
 	}
-	if res.Status != fhethr.StatusOK {
-		return false, fmt.Errorf("real-threshold-decryptor: status=%s", res.Status)
+	bits, err := tfhe.Decrypt(ciphertext, shares, c.Params, c.Threshold)
+	if err != nil {
+		return false, err
 	}
-	return roundToBool(plaintext), nil
+	return bits[0], nil
 }
 
-// collectShares fans out PartialDecrypt to every configured peer and
-// returns as soon as `threshold` shares are collected. Errors from
-// individual peers are accumulated for diagnostic but not propagated:
-// the protocol succeeds when ≥t valid shares arrive regardless of how
-// many peers reported errors.
-func (d *RealThresholdDecryptor) collectShares(
-	ctx context.Context,
-	ct fhethr.FHECiphertext,
-	sess [32]byte,
-) ([]fhethr.FHEThresholdShare, error) {
-	type result struct {
-		share fhethr.FHEThresholdShare
+// collect fans out to every member and returns as soon as the contributions in
+// hand contain a quorum that recombines exactly; reaching the threshold count
+// alone is not sufficient (tfhe.Quorum).
+//
+// A member that errors, repeats a position, or answers about a different
+// ciphertext does not occupy a quorum slot.
+func (c *Committee) collect(ctx context.Context, ciphertext []byte) ([]tfhe.Decryption, error) {
+	want := tfhe.Digest(ciphertext)
+
+	type answer struct {
+		share tfhe.Decryption
 		err   error
 	}
-	out := make(chan result, len(d.Parties))
+	out := make(chan answer, len(c.Parties))
 	subCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	var wg sync.WaitGroup
-	for _, p := range d.Parties {
+	for _, p := range c.Parties {
 		wg.Add(1)
 		go func(p PartyClient) {
 			defer wg.Done()
-			s, err := p.PartialDecrypt(subCtx, ct, sess)
+			share, err := p.PartialDecrypt(subCtx, ciphertext)
+			if err == nil && share.From != p.Party() {
+				err = fmt.Errorf("member %d answered as %d", p.Party(), share.From)
+			}
 			select {
-			case out <- result{share: s, err: err}:
+			case out <- answer{share: share, err: err}:
 			case <-subCtx.Done():
 			}
 		}(p)
 	}
 	go func() { wg.Wait(); close(out) }()
 
-	collected := make([]fhethr.FHEThresholdShare, 0, d.Threshold)
-	seen := make(map[uint32]struct{}, d.Threshold)
-	var errs []error
-	for r := range out {
-		if r.err != nil {
-			errs = append(errs, r.err)
+	collected := make([]tfhe.Decryption, 0, len(c.Parties))
+	positions := make([]int, 0, len(c.Parties))
+	seen := make(map[int]struct{}, len(c.Parties))
+	rejected := 0
+	for a := range out {
+		if a.err != nil {
+			rejected++
 			continue
 		}
-		if _, dup := seen[r.share.PartyID]; dup {
+		if a.share.Digest != want {
+			rejected++
 			continue
 		}
-		seen[r.share.PartyID] = struct{}{}
-		collected = append(collected, r.share)
-		if uint32(len(collected)) >= d.Threshold {
-			cancel()
+		if _, dup := seen[a.share.From]; dup {
+			rejected++
+			continue
+		}
+		seen[a.share.From] = struct{}{}
+		collected = append(collected, a.share)
+		positions = append(positions, a.share.From)
+		if tfhe.Quorum(positions, c.Threshold) {
 			return collected, nil
 		}
 	}
-	if uint32(len(collected)) < d.Threshold {
-		return collected, fmt.Errorf("%w (collected %d, errors %d)", ErrCommitteeQuorum, len(collected), len(errs))
-	}
-	return collected, nil
-}
-
-// sessionForCiphertext derives a deterministic 32-byte sessionID from
-// the ciphertext bytes. Per-call uniqueness comes from the F-Chain
-// PolicyVault: each evaluation produces a distinct ciphertext, so each
-// produces a distinct session.
-//
-// An additional 16 bytes of crypto/rand entropy are mixed in to defend
-// against the (small) chance of two evaluations producing identical
-// ciphertext bytes due to deterministic FHE encoding — at the cost of
-// the per-call replay protection in the producer's PartialDecrypter
-// being a no-op. Production deployments anchoring the session to
-// ciphertext-only MUST disable the entropy mix.
-func sessionForCiphertext(ct fhethr.FHECiphertext) [32]byte {
-	var rnd [16]byte
-	_, _ = rand.Read(rnd[:])
-	h := sha256.New()
-	h.Write([]byte("LUX/FHE/THRESHOLD/SESSION/v1"))
-	h.Write(ct.ID[:])
-	h.Write(rnd[:])
-	var out [32]byte
-	copy(out[:], h.Sum(nil))
-	return out
-}
-
-// roundToBool reduces an arbitrary plaintext byte slice to a single
-// boolean: true iff any byte is non-zero. The FHE policy circuit emits
-// a 1-bit verdict, so the plaintext is always 1 byte in production —
-// the byte-vector path here matches the toy threshold scheme used by
-// the threshold package's unit tests.
-func roundToBool(plaintext []byte) bool {
-	for _, b := range plaintext {
-		if b != 0 {
-			return true
-		}
-	}
-	return false
+	return nil, fmt.Errorf("%w: %d of %d members answered, %d unusable, and no %d of them recombine exactly",
+		tfhe.ErrQuorum, len(collected), len(c.Parties), rejected, c.Threshold)
 }

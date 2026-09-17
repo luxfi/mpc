@@ -10,10 +10,10 @@
 // This package exists ONLY so the single external consumer that is still
 // pinned to a pre-extraction luxfi/mpc — github.com/luxfi/threshold v1.9.9,
 // whose pkg/thresholdd/tee_options.go imports github.com/luxfi/mpc/cc/attest
-// and references attest.KindNRAS — keeps building. threshold's main branch
-// has already dropped this import (the TEE custody code moved to luxfi/tee);
-// mpc cannot bump to it yet because mpc/pkg/mpc still imports
-// threshold/protocols/tfhe, which that same threshold branch removed.
+// and references attest.KindNRAS, keeps building. threshold's main branch has
+// already dropped this import (the TEE custody code moved to luxfi/tee), and
+// threshold/protocols/tfhe is a real package again, so the next threshold tag
+// carries both.
 //
 // Every symbol here is a zero-logic re-export (type aliases preserve type
 // identity with the leaf — a value produced by github.com/luxfi/cc/attest is

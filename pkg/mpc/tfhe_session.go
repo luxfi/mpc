@@ -1,30 +1,29 @@
 // Copyright (c) 2024-2026, Lux Industries Inc
 // SPDX-License-Identifier: BSD-3-Clause
 
-//go:build experimental_tfhe
-
-// Package-level note: this file is the EXPERIMENTAL threshold-FHE wallet
-// keygen / compute path. It is gated behind the `experimental_tfhe` build tag
-// because the underlying primitive in luxfi/threshold/protocols/tfhe is a
-// fail-loud placeholder that does NOT implement real Shamir/LWE threshold
-// decryption (every party stores the full master key — see
-// lps/LP-137-TFHE-REAL-THRESHOLD-SPEC.md §2.6). Default builds compile the
-// stubs in tfhe_node_stub.go which return ErrTFHENotImplemented from every
-// entry point. Real-threshold wiring (luxfi/lattice Shamir/LWE) is tracked
-// as a multi-week separate task per LP-137 §2.6.
+// Threshold-FHE wallet sessions: a dealerless key generation across the ready
+// committee, then encryption and threshold decryption.
+//
+// Each node samples only its own secret contribution, broadcasts the public
+// collective-key share and unicasts one Shamir sub-share per peer; summing the
+// sub-shares it receives gives it a share of a collective secret no node and no
+// message ever carries.
 
 package mpc
 
 import (
-	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"sync"
+	"time"
 
 	"github.com/nats-io/nats.go"
 	"github.com/rs/zerolog"
 
 	"github.com/luxfi/fhe"
+	"github.com/luxfi/lattice/v7/multiparty"
 	"github.com/luxfi/threshold/pkg/party"
 	"github.com/luxfi/threshold/protocols/tfhe"
 
@@ -36,38 +35,124 @@ import (
 	"github.com/luxfi/mpc/pkg/utils"
 )
 
-// TFHESession interface for threshold FHE operations
+// tfheParams resolves the parameter set every threshold-FHE wallet uses:
+// ~128-bit security at N=1024.
+func tfheParams() (fhe.Parameters, fhe.ParametersLiteral, error) {
+	lit := fhe.PN10QP27
+	params, err := fhe.NewParametersFromLiteral(lit)
+	return params, lit, err
+}
+
+// TFHESession is the committee side of a threshold-FHE wallet: encrypt under
+// the collective public key, contribute one partial decryption, collect the
+// peers' and combine. No method returns a key; no node holds one.
 type TFHESession interface {
 	Session
-	// Encrypt encrypts a value using the threshold FHE scheme
-	Encrypt(value uint64, fheType fhe.FheUintType) (*fhe.BitCiphertext, error)
-	// CreateDecryptionShare creates this party's partial decryption share
-	CreateDecryptionShare(ctx context.Context, ct *fhe.BitCiphertext) (*tfhe.DecryptionShare, error)
-	// AddDecryptionShare adds a share from another party
-	AddDecryptionShare(share *tfhe.DecryptionShare) error
-	// Decrypt combines shares and decrypts (requires threshold shares)
-	Decrypt(ctx context.Context, ct *fhe.BitCiphertext) (uint64, error)
-	// CanDecrypt returns true if enough shares are collected
-	CanDecrypt() bool
-	// GetProtocol returns the underlying TFHE protocol
-	GetProtocol() *tfhe.Protocol
+
+	// Encrypt encrypts value under the collective public key.
+	Encrypt(value uint64, fheType fhe.FheUintType) ([]byte, error)
+
+	// PartialDecrypt contributes this node's partial decryption and broadcasts
+	// it to the committee.
+	PartialDecrypt(ciphertext []byte) (tfhe.Decryption, error)
+
+	// AddShare records a peer's partial decryption.
+	AddShare(contribution tfhe.Decryption) error
+
+	// CanDecrypt reports whether the threshold has been met for ciphertext.
+	CanDecrypt(ciphertext []byte) bool
+
+	// Decrypt combines the collected partial decryptions of ciphertext.
+	Decrypt(ciphertext []byte) (uint64, error)
 }
 
-// tfheKeygenSession handles threshold FHE key generation
+var (
+	_ Session     = (*tfheKeygenSession)(nil)
+	_ TFHESession = (*tfheComputeSession)(nil)
+)
+
+// Round-1 messages. Neither can carry a secret key: one is a public
+// collective-key share, the other one Shamir point addressed to one recipient.
+
+// tfhePublicShare is broadcast: the sender's share -a·s_j + e_j of the
+// collective public key.
+type tfhePublicShare struct {
+	From  int    `json:"from"`
+	Share []byte `json:"share"`
+}
+
+// tfheSubShare is unicast: the coefficientwise Shamir evaluation, at the
+// recipient's position, of the sender's own contribution.
+type tfheSubShare struct {
+	From   int      `json:"from"`
+	To     int      `json:"to"`
+	Coeffs []uint64 `json:"coeffs"`
+}
+
+// tfheCRSSeed derives the ceremony's common reference seed from the wallet and
+// the committee in canonical order. The polynomial it seeds is public, and
+// every node must derive the same seed or the public keys disagree.
+func tfheCRSSeed(walletID string, ids []party.ID) []byte {
+	h := sha256.New()
+	h.Write([]byte("LUX/MPC/TFHE/DKG/CRS/v1"))
+	h.Write([]byte(walletID))
+	for _, id := range ids {
+		h.Write([]byte{0})
+		h.Write([]byte(id))
+	}
+	return h.Sum(nil)
+}
+
+// tfhePositions assigns each member its 1-based Shamir position from the
+// canonical order of the party IDs, identically on every node.
+func tfhePositions(ids []party.ID) ([]party.ID, map[party.ID]int) {
+	ordered := make([]party.ID, len(ids))
+	copy(ordered, ids)
+	sort.Slice(ordered, func(i, j int) bool { return ordered[i] < ordered[j] })
+	at := make(map[party.ID]int, len(ordered))
+	for i, id := range ordered {
+		at[id] = i + 1
+	}
+	return ordered, at
+}
+
+// tfhePositionsByNode indexes committee positions by node ID, the identity an
+// inbound message authenticates as its sender.
+func tfhePositionsByNode(ordered []party.ID) map[string]int {
+	at := make(map[string]int, len(ordered))
+	for i, id := range ordered {
+		at[extractNodeID(string(id))] = i + 1
+	}
+	return at
+}
+
+// ============================================================================
+// Key generation.
+// ============================================================================
+
+// tfheKeygenSession runs one dealerless key-generation ceremony.
 type tfheKeygenSession struct {
 	session
-	params       fhe.Parameters
-	threshold    int
-	totalParties int
-	pubKey       *fhe.PublicKey
-	shares       map[party.ID]*tfhe.SecretKeyShare
-	resultMutex  sync.Mutex
-	done         bool
-	resultErr    error
-	orgID        string
+
+	params    fhe.Parameters
+	paramsLit fhe.ParametersLiteral
+	total     int
+	position  int
+	// byNode maps an authenticated sender to the position it may speak for.
+	byNode map[string]int
+
+	ckg multiparty.PublicKeyGenProtocol
+	crp multiparty.PublicKeyGenCRP
+
+	mu sync.Mutex
+	// dealer holds this node's own secret contribution, zeroized as soon as
+	// the node holds its share.
+	dealer *tfhe.Party
+	public map[int]multiparty.PublicKeyGenShare
+	sub    map[int]tfhe.Point
+	done   bool
 }
 
-// newTFHEKeygenSession creates a new TFHE keygen session
 func newTFHEKeygenSession(
 	walletID string,
 	pubSub messaging.PubSub,
@@ -75,31 +160,51 @@ func newTFHEKeygenSession(
 	partyIDs []party.ID,
 	threshold int,
 	params fhe.Parameters,
-	kvstore kvstore.KVStore,
+	paramsLit fhe.ParametersLiteral,
+	kv kvstore.KVStore,
 	keyinfoStore keyinfo.Store,
 	resultQueue messaging.MessageQueue,
 	identityStore identity.Store,
 	orgID string,
-) *tfheKeygenSession {
+) (*tfheKeygenSession, error) {
+	ordered, positions := tfhePositions(partyIDs)
+	position, ok := positions[selfPartyID]
+	if !ok {
+		return nil, fmt.Errorf("mpc/tfhe: this node is not in the committee for %s", walletID)
+	}
+	total := len(ordered)
+	if threshold < 1 || threshold > total {
+		return nil, fmt.Errorf("mpc/tfhe: threshold %d out of range for committee of %d", threshold, total)
+	}
+
+	crp, ckg, err := tfhe.Reference(params, tfheCRSSeed(walletID, ordered))
+	if err != nil {
+		return nil, fmt.Errorf("mpc/tfhe: common reference: %w", err)
+	}
+	dealer, err := tfhe.NewParty(position, threshold, total, params)
+	if err != nil {
+		return nil, fmt.Errorf("mpc/tfhe: committee member %d: %w", position, err)
+	}
+
 	return &tfheKeygenSession{
 		session: session{
 			walletID:           walletID,
+			orgID:              orgID,
 			pubSub:             pubSub,
 			selfPartyID:        selfPartyID,
-			partyIDs:           partyIDs,
+			partyIDs:           ordered,
 			subscriberList:     []messaging.Subscription{},
-			rounds:             2, // TFHE keygen is simpler - trusted dealer
-			outCh:              make(chan msg, 100),
+			rounds:             2,
+			outCh:              make(chan msg, 2*total+2),
 			errCh:              make(chan error, 10),
 			finishCh:           make(chan bool, 1),
 			externalFinishChan: make(chan string, 1),
 			threshold:          threshold,
-			kvstore:            kvstore,
+			kvstore:            kv,
 			keyinfoStore:       keyinfoStore,
 			resultQueue:        resultQueue,
 			logger:             zerolog.New(utils.ZerologConsoleWriter()).With().Timestamp().Logger(),
 			processing:         newDedupMap(),
-			processingLock:     sync.Mutex{},
 			topicComposer: &TopicComposer{
 				ComposeBroadcastTopic: func() string {
 					return fmt.Sprintf("tfhe:keygen:broadcast:%s", walletID)
@@ -110,25 +215,28 @@ func newTFHEKeygenSession(
 			},
 			identityStore: identityStore,
 		},
-		params:       params,
-		threshold:    threshold,
-		totalParties: len(partyIDs),
-		done:         false,
-		orgID:        orgID,
-	}
+		params:    params,
+		paramsLit: paramsLit,
+		total:     total,
+		position:  position,
+		byNode:    tfhePositionsByNode(ordered),
+		ckg:       ckg,
+		crp:       crp,
+		dealer:    dealer,
+		public:    make(map[int]multiparty.PublicKeyGenShare, total),
+		sub:       make(map[int]tfhe.Point, total),
+	}, nil
 }
 
+// ListenToIncomingMessageAsync routes the broadcast topic to collective-key
+// shares and the direct topic to sub-shares.
 func (s *tfheKeygenSession) ListenToIncomingMessageAsync() {
 	broadcastTopic := s.topicComposer.ComposeBroadcastTopic()
 	broadcastSub, err := s.pubSub.Subscribe(broadcastTopic, func(m *nats.Msg) {
-		s.logger.Debug().
-			Str("topic", broadcastTopic).
-			Int("size", len(m.Data)).
-			Msg("Received TFHE broadcast message")
-		s.ProcessInboundMessage(m.Data)
+		s.onInbound(m.Data, s.acceptPublicShare)
 	})
 	if err != nil {
-		s.logger.Error().Err(err).Msgf("Failed to subscribe to TFHE broadcast topic %s", broadcastTopic)
+		s.logger.Error().Err(err).Msgf("Failed to subscribe to %s", broadcastTopic)
 		s.errCh <- err
 		return
 	}
@@ -136,14 +244,10 @@ func (s *tfheKeygenSession) ListenToIncomingMessageAsync() {
 
 	directTopic := s.topicComposer.ComposeDirectTopic(extractNodeID(string(s.selfPartyID)))
 	directSub, err := s.pubSub.Subscribe(directTopic, func(m *nats.Msg) {
-		s.logger.Debug().
-			Str("topic", directTopic).
-			Int("size", len(m.Data)).
-			Msg("Received TFHE direct message")
-		s.ProcessInboundMessage(m.Data)
+		s.onInbound(m.Data, s.acceptSubShare)
 	})
 	if err != nil {
-		s.logger.Error().Err(err).Msgf("Failed to subscribe to TFHE direct topic %s", directTopic)
+		s.logger.Error().Err(err).Msgf("Failed to subscribe to %s", directTopic)
 		s.errCh <- err
 		return
 	}
@@ -152,237 +256,402 @@ func (s *tfheKeygenSession) ListenToIncomingMessageAsync() {
 	s.logger.Info().
 		Str("broadcast", broadcastTopic).
 		Str("direct", directTopic).
-		Msg("Listening to TFHE incoming messages")
+		Int("position", s.position).
+		Msg("Listening for threshold-FHE key-generation messages")
 }
 
+// onInbound authenticates a wire message, resolves the sender to the position
+// it may speak for, de-duplicates, and dispatches the body. The position comes
+// from the sender, never from the body.
+func (s *tfheKeygenSession) onInbound(raw []byte, accept func(from int, body []byte) error) {
+	m := &types.Message{}
+	if err := json.Unmarshal(raw, m); err != nil {
+		s.logger.Error().Err(err).Msg("Malformed threshold-FHE message")
+		return
+	}
+	if err := s.verifyInboundSignature(m); err != nil {
+		s.logger.Warn().Err(err).Str("sender", m.SenderNodeID).Msg("Dropping message with invalid signature")
+		return
+	}
+	from, ok := s.byNode[m.SenderNodeID]
+	if !ok {
+		s.logger.Warn().Str("sender", m.SenderNodeID).Msg("Dropping message from a node outside the committee")
+		return
+	}
+	if s.processing.seen(fmt.Sprintf("%x", utils.GetMessageHash(m.Body))) {
+		return
+	}
+	if err := accept(from, m.Body); err != nil {
+		s.logger.Warn().Err(err).Str("sender", m.SenderNodeID).Msg("Rejecting threshold-FHE message")
+	}
+}
+
+// ProcessInboundMessage satisfies the base session contract. Key generation
+// routes per topic, so a message reaching here is unattributable.
+func (s *tfheKeygenSession) ProcessInboundMessage(msgBytes []byte) {
+	s.logger.Error().
+		Int("msgLen", len(msgBytes)).
+		Msg("Threshold-FHE key generation received an untopiced message; discarded")
+}
+
+func (s *tfheKeygenSession) acceptPublicShare(from int, body []byte) error {
+	var wire tfhePublicShare
+	if err := json.Unmarshal(body, &wire); err != nil {
+		return fmt.Errorf("decode collective-key share: %w", err)
+	}
+	if wire.From != from {
+		return fmt.Errorf("position %d sent a collective-key share claiming position %d", from, wire.From)
+	}
+	if len(wire.Share) == 0 {
+		return fmt.Errorf("collective-key share from position %d is empty", wire.From)
+	}
+	share := s.ckg.AllocateShare()
+	if err := share.UnmarshalBinary(wire.Share); err != nil {
+		return fmt.Errorf("decode collective-key share from position %d: %w", wire.From, err)
+	}
+
+	s.mu.Lock()
+	if _, dup := s.public[wire.From]; dup {
+		s.mu.Unlock()
+		return fmt.Errorf("position %d sent two collective-key shares", wire.From)
+	}
+	s.public[wire.From] = share
+	s.mu.Unlock()
+
+	s.finalizeIfComplete()
+	return nil
+}
+
+func (s *tfheKeygenSession) acceptSubShare(from int, body []byte) error {
+	var wire tfheSubShare
+	if err := json.Unmarshal(body, &wire); err != nil {
+		return fmt.Errorf("decode sub-share: %w", err)
+	}
+	if wire.From != from {
+		return fmt.Errorf("position %d sent a sub-share claiming position %d", from, wire.From)
+	}
+	if wire.To != s.position {
+		return fmt.Errorf("sub-share addressed to position %d delivered to %d", wire.To, s.position)
+	}
+	if n := s.params.ParamsLWE().RingQ().N(); len(wire.Coeffs) != n {
+		return fmt.Errorf("sub-share from position %d has %d coefficients, want %d", wire.From, len(wire.Coeffs), n)
+	}
+
+	s.mu.Lock()
+	if _, dup := s.sub[wire.From]; dup {
+		s.mu.Unlock()
+		return fmt.Errorf("position %d sent two sub-shares", wire.From)
+	}
+	s.sub[wire.From] = tfhe.Point{From: wire.From, To: wire.To, Coeffs: wire.Coeffs}
+	s.mu.Unlock()
+
+	s.finalizeIfComplete()
+	return nil
+}
+
+// Init deals this node's round-1 contribution: one broadcast public share and
+// one unicast sub-share per peer, its own folded in locally.
 func (s *tfheKeygenSession) Init() {
 	s.logger.Info().
 		Str("walletID", s.walletID).
 		Int("threshold", s.threshold).
-		Int("totalParties", s.totalParties).
-		Msg("Initializing TFHE keygen session")
+		Int("committee", s.total).
+		Int("position", s.position).
+		Msg("Dealing threshold-FHE key generation")
 
-	// Create key generator
-	kg, err := tfhe.NewKeyGenerator(s.threshold, s.totalParties, s.params, nil)
-	if err != nil {
-		s.logger.Error().Err(err).Msg("Failed to create TFHE key generator")
-		s.errCh <- err
+	s.mu.Lock()
+	dealer := s.dealer
+	s.mu.Unlock()
+	if dealer == nil {
+		s.errCh <- fmt.Errorf("mpc/tfhe: committee member already finalized")
 		return
 	}
 
-	// Generate keys (trusted dealer approach)
-	parties := make([]party.ID, len(s.partyIDs))
-	copy(parties, s.partyIDs)
-
-	pubKey, shares, err := kg.GenerateKeys(context.Background(), parties)
+	publicShare, subShares, err := dealer.Deal(s.crp)
 	if err != nil {
-		s.logger.Error().Err(err).Msg("Failed to generate TFHE keys")
-		s.errCh <- err
+		s.errCh <- fmt.Errorf("mpc/tfhe: deal: %w", err)
 		return
 	}
 
-	s.pubKey = pubKey
-	s.shares = shares
+	shareBytes, err := publicShare.Share.MarshalBinary()
+	if err != nil {
+		s.errCh <- fmt.Errorf("mpc/tfhe: encode collective-key share: %w", err)
+		return
+	}
+	broadcast, err := json.Marshal(tfhePublicShare{From: s.position, Share: shareBytes})
+	if err != nil {
+		s.errCh <- fmt.Errorf("mpc/tfhe: encode broadcast: %w", err)
+		return
+	}
 
-	s.logger.Info().
-		Str("walletID", s.walletID).
-		Int("numShares", len(shares)).
-		Msg("[INITIALIZED] TFHE keygen session initialized")
+	s.mu.Lock()
+	s.public[s.position] = publicShare.Share
+	for _, sub := range subShares {
+		if sub.To == s.position {
+			s.sub[sub.From] = sub
+		}
+	}
+	s.mu.Unlock()
 
-	// Signal completion
+	s.outCh <- msg{FromPartyID: s.selfPartyID, IsBroadcast: true, Data: broadcast}
+
+	for _, sub := range subShares {
+		if sub.To == s.position {
+			continue
+		}
+		recipient := s.partyIDs[sub.To-1]
+		body, err := json.Marshal(tfheSubShare{From: sub.From, To: sub.To, Coeffs: sub.Coeffs})
+		if err != nil {
+			s.errCh <- fmt.Errorf("mpc/tfhe: encode sub-share for position %d: %w", sub.To, err)
+			return
+		}
+		s.outCh <- msg{FromPartyID: s.selfPartyID, ToPartyIDs: []party.ID{recipient}, Data: body}
+	}
+
+	s.finalizeIfComplete()
+}
+
+// finalizeIfComplete assembles the collective public key and this node's
+// share once every member's round-1 output has arrived, then erases the
+// contribution.
+func (s *tfheKeygenSession) finalizeIfComplete() {
+	s.mu.Lock()
+	if s.done || len(s.public) != s.total || len(s.sub) != s.total {
+		s.mu.Unlock()
+		return
+	}
+	s.done = true
+	dealer := s.dealer
+	publicShares := make([]tfhe.Public, 0, s.total)
+	for from, share := range s.public {
+		publicShares = append(publicShares, tfhe.Public{From: from, Share: share})
+	}
+	inbound := make([]tfhe.Point, 0, s.total)
+	for _, sub := range s.sub {
+		inbound = append(inbound, sub)
+	}
+	s.mu.Unlock()
+
+	sort.Slice(publicShares, func(i, j int) bool { return publicShares[i].From < publicShares[j].From })
+	sort.Slice(inbound, func(i, j int) bool { return inbound[i].From < inbound[j].From })
+
+	pub, err := tfhe.Assemble(s.ckg, s.crp, publicShares, s.params)
+	if err != nil {
+		s.errCh <- fmt.Errorf("mpc/tfhe: collective public key: %w", err)
+		return
+	}
+	share, err := dealer.Aggregate(inbound)
+	if err != nil {
+		s.errCh <- fmt.Errorf("mpc/tfhe: fold sub-shares: %w", err)
+		return
+	}
+
+	// The node keeps only its share from here.
+	dealer.Zeroize()
+	s.mu.Lock()
+	s.dealer = nil
+	s.mu.Unlock()
+
+	pubBytes, err := pub.MarshalBinary()
+	if err != nil {
+		s.errCh <- fmt.Errorf("mpc/tfhe: encode collective public key: %w", err)
+		return
+	}
+	member := &tfhe.Member{
+		Params:    s.paramsLit,
+		Threshold: s.threshold,
+		Total:     s.total,
+		Key:       pubBytes,
+		Share:     share,
+	}
+	if err := member.Validate(); err != nil {
+		s.errCh <- err
+		return
+	}
+	if err := s.persist(member); err != nil {
+		s.errCh <- err
+		return
+	}
 	s.finishCh <- true
 }
 
-func (s *tfheKeygenSession) ProcessInboundMessage(msgBytes []byte) {
-	s.processingLock.Lock()
-	defer s.processingLock.Unlock()
-
-	inboundMessage := &types.Message{}
-	if err := json.Unmarshal(msgBytes, inboundMessage); err != nil {
-		s.logger.Error().Err(err).Msg("TFHE ProcessInboundMessage unmarshal error")
-		return
+func (s *tfheKeygenSession) persist(member *tfhe.Member) error {
+	body, err := tfhe.Marshal(member)
+	if err != nil {
+		return fmt.Errorf("mpc/tfhe: encode committee member: %w", err)
 	}
-
-	// Verify Ed25519 signature on the wire message
-	if err := s.verifyInboundSignature(inboundMessage); err != nil {
-		s.logger.Warn().Err(err).Str("sender", inboundMessage.SenderNodeID).Msg("Dropping message with invalid signature")
-		return
+	key := OrgScopedKey(s.orgID, tfheWalletKey(s.walletID))
+	if err := s.kvstore.Put(key, body); err != nil {
+		return fmt.Errorf("mpc/tfhe: store committee member for %s: %w", s.walletID, err)
 	}
-
-	msgHashStr := fmt.Sprintf("%x", utils.GetMessageHash(inboundMessage.Body))
-	if s.processing.seen(msgHashStr) {
-		return
+	info := &keyinfo.KeyInfo{
+		ParticipantPeerIDs: convertFromPartyIDs(s.partyIDs),
+		Threshold:          s.threshold,
+		Version:            1,
 	}
-
-	s.logger.Debug().
-		Str("sender", inboundMessage.SenderID).
-		Int("bodyLen", len(inboundMessage.Body)).
-		Msg("Processing TFHE inbound message")
+	if err := s.keyinfoStore.Save(key, info); err != nil {
+		return fmt.Errorf("mpc/tfhe: store key info for %s: %w", s.walletID, err)
+	}
+	return nil
 }
 
+// tfheWalletKey is the key-store name for a threshold-FHE wallet.
+func tfheWalletKey(walletID string) string { return fmt.Sprintf("tfhe:%s", walletID) }
+
 func (s *tfheKeygenSession) ProcessOutboundMessage() {
-	s.logger.Info().Msgf("TFHE ProcessOutboundMessage started: %s", s.walletID)
+	deadline := time.After(KeygenTimeout)
 	for {
 		select {
-		case m := <-s.outCh:
-			recipientIDs := make([]string, len(m.ToPartyIDs))
-			for i, pid := range m.ToPartyIDs {
-				recipientIDs[i] = string(pid)
+		case m, ok := <-s.outCh:
+			if !ok {
+				return
 			}
-
-			msgWireBytes := &types.Message{
+			recipients := make([]string, len(m.ToPartyIDs))
+			for i, pid := range m.ToPartyIDs {
+				recipients[i] = string(pid)
+			}
+			s.sendMsg(&types.Message{
 				SessionID:    s.walletID,
 				SenderID:     string(m.FromPartyID),
-				RecipientIDs: recipientIDs,
+				RecipientIDs: recipients,
 				Body:         m.Data,
 				IsBroadcast:  m.IsBroadcast,
-			}
-			s.sendMsg(msgWireBytes)
+			})
 
 		case err := <-s.errCh:
-			s.logger.Error().Err(err).Msg("TFHE received error")
+			s.logger.Error().Err(err).Msg("Threshold-FHE key generation failed")
+			s.externalFinishChan <- ""
+			return
 
 		case <-s.finishCh:
-			s.logger.Info().Msg("TFHE keygen finished")
-			s.publishResult()
+			s.logger.Info().
+				Str("walletID", s.walletID).
+				Int("threshold", s.threshold).
+				Int("committee", s.total).
+				Msg("Threshold-FHE key generation complete")
+			s.externalFinishChan <- OrgScopedKey(s.orgID, tfheWalletKey(s.walletID))
+			return
+
+		case <-deadline:
+			collective, sub := s.progress()
+			s.logger.Error().
+				Dur("timeout", KeygenTimeout).
+				Int("collectiveShares", collective).
+				Int("subShares", sub).
+				Msg("Threshold-FHE key generation timed out")
+			s.externalFinishChan <- ""
 			return
 		}
 	}
 }
 
-func (s *tfheKeygenSession) publishResult() {
-	s.resultMutex.Lock()
-	defer s.resultMutex.Unlock()
-
-	if s.resultErr != nil {
-		s.logger.Error().Err(s.resultErr).Msg("TFHE keygen failed")
-		s.externalFinishChan <- ""
-		return
-	}
-
-	// Get this party's share
-	share, ok := s.shares[s.selfPartyID]
-	if !ok {
-		s.logger.Error().Msg("No share found for this party")
-		s.externalFinishChan <- ""
-		return
-	}
-
-	// Serialize and save the TFHE config
-	config := &tfhe.Config{
-		Threshold:      s.threshold,
-		TotalParties:   s.totalParties,
-		PartyID:        s.selfPartyID,
-		Generation:     1,
-		FHEParams:      s.params,
-		PublicKey:      s.pubKey,
-		SecretKeyShare: share,
-	}
-
-	configBytes, err := json.Marshal(config)
-	if err != nil {
-		s.logger.Error().Err(err).Msg("Failed to marshal TFHE config")
-		s.externalFinishChan <- ""
-		return
-	}
-
-	// Save with tfhe: prefix to distinguish from other key types, org-scoped
-	tfheBaseKey := fmt.Sprintf("tfhe:%s", s.walletID)
-	tfheKey := OrgScopedKey(s.orgID, tfheBaseKey)
-	if err := s.kvstore.Put(tfheKey, configBytes); err != nil {
-		s.logger.Error().Err(err).Msgf("Failed to save TFHE config for %s", s.walletID)
-		s.externalFinishChan <- ""
-		return
-	}
-
-	// Save key info
-	keyInfo := &keyinfo.KeyInfo{
-		ParticipantPeerIDs: convertFromPartyIDs(s.partyIDs),
-		Threshold:          s.threshold,
-		Version:            1,
-	}
-	if err := s.keyinfoStore.Save(tfheKey, keyInfo); err != nil {
-		s.logger.Error().Err(err).Msgf("Failed to save TFHE key info for %s", s.walletID)
-		s.externalFinishChan <- ""
-		return
-	}
-
-	s.logger.Info().
-		Str("walletID", s.walletID).
-		Int("threshold", s.threshold).
-		Msg("TFHE keygen completed successfully")
-
-	s.externalFinishChan <- tfheKey
+// progress reports how much of round 1 has arrived.
+func (s *tfheKeygenSession) progress() (collective, sub int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.public), len(s.sub)
 }
 
 func (s *tfheKeygenSession) Stop() {
-	close(s.outCh)
-	close(s.errCh)
+	s.unsubscribe()
+	s.processing.stop()
+	s.mu.Lock()
+	if s.dealer != nil {
+		s.dealer.Zeroize()
+		s.dealer = nil
+	}
+	s.mu.Unlock()
 }
 
-func (s *tfheKeygenSession) WaitForFinish() string {
-	return <-s.externalFinishChan
-}
+func (s *tfheKeygenSession) WaitForFinish() string { return <-s.externalFinishChan }
 
-// tfheComputeSession handles threshold FHE encryption/decryption
+// ============================================================================
+// Encryption and threshold decryption.
+// ============================================================================
+
+// tfheComputeSession is one node's part in encrypting and threshold-decrypting
+// a committee ciphertext.
 type tfheComputeSession struct {
 	session
-	protocol    *tfhe.Protocol
-	resultMutex sync.Mutex
-	orgID       string
+
+	member *tfhe.Member
+	params fhe.Parameters
+	pub    *fhe.PublicKey
+	// byNode maps an authenticated sender to the position it may speak for,
+	// from the roster recorded at key generation.
+	byNode map[string]int
+
+	mu sync.Mutex
+	// collected holds every partial decryption seen, keyed first by the
+	// ciphertext it is bound to and then by the contributing member.
+	collected map[[32]byte]map[int]tfhe.Decryption
 }
 
-// newTFHEComputeSession creates a session for TFHE computation
 func newTFHEComputeSession(
 	sessionID string,
 	walletID string,
 	pubSub messaging.PubSub,
 	selfPartyID party.ID,
 	participantIDs []party.ID,
-	kvstore kvstore.KVStore,
+	kv kvstore.KVStore,
 	keyinfoStore keyinfo.Store,
 	resultQueue messaging.MessageQueue,
 	identityStore identity.Store,
 	orgID string,
 ) (*tfheComputeSession, error) {
-	// Load TFHE config from kvstore using org-scoped key
-	tfheBaseKey := fmt.Sprintf("tfhe:%s", walletID)
-	configBytes, err := GetKeyShareWithFallback(kvstore, orgID, tfheBaseKey)
+	stored, err := GetKeyShareWithFallback(kv, orgID, tfheWalletKey(walletID))
 	if err != nil {
-		return nil, fmt.Errorf("failed to get TFHE config: %w", err)
+		return nil, fmt.Errorf("mpc/tfhe: load committee member for %s: %w", walletID, err)
+	}
+	member, err := tfhe.Unmarshal(stored)
+	if err != nil {
+		return nil, err
+	}
+	params, err := member.Parameters()
+	if err != nil {
+		return nil, err
+	}
+	pub, err := member.Collective()
+	if err != nil {
+		return nil, err
 	}
 
-	var config tfhe.Config
-	if err := json.Unmarshal(configBytes, &config); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal TFHE config: %w", err)
-	}
-
-	// Create protocol
-	protocol, err := tfhe.NewProtocol(&config, nil)
+	// Positions come from the roster the ceremony recorded, not from the
+	// caller's participant list, which would renumber a partial committee.
+	info, err := keyinfoStore.Get(OrgScopedKey(orgID, tfheWalletKey(walletID)))
 	if err != nil {
-		return nil, fmt.Errorf("failed to create TFHE protocol: %w", err)
+		return nil, fmt.Errorf("mpc/tfhe: load committee roster for %s: %w", walletID, err)
 	}
+	if len(info.ParticipantPeerIDs) != member.Total {
+		return nil, fmt.Errorf("mpc/tfhe: committee roster for %s has %d members, share says %d",
+			walletID, len(info.ParticipantPeerIDs), member.Total)
+	}
+	roster := make([]party.ID, len(info.ParticipantPeerIDs))
+	for i, id := range info.ParticipantPeerIDs {
+		roster[i] = party.ID(id)
+	}
+	ordered, _ := tfhePositions(roster)
 
 	return &tfheComputeSession{
 		session: session{
 			walletID:           walletID,
 			sessionID:          sessionID,
+			orgID:              orgID,
 			pubSub:             pubSub,
 			selfPartyID:        selfPartyID,
-			partyIDs:           participantIDs,
+			partyIDs:           ordered,
 			subscriberList:     []messaging.Subscription{},
 			rounds:             1,
 			outCh:              make(chan msg, 100),
 			errCh:              make(chan error, 10),
 			finishCh:           make(chan bool, 1),
 			externalFinishChan: make(chan string, 1),
-			threshold:          config.Threshold,
-			kvstore:            kvstore,
+			threshold:          member.Threshold,
+			kvstore:            kv,
 			keyinfoStore:       keyinfoStore,
 			resultQueue:        resultQueue,
 			logger:             zerolog.New(utils.ZerologConsoleWriter()).With().Timestamp().Logger(),
 			processing:         newDedupMap(),
-			processingLock:     sync.Mutex{},
 			topicComposer: &TopicComposer{
 				ComposeBroadcastTopic: func() string {
 					return fmt.Sprintf("tfhe:compute:broadcast:%s", sessionID)
@@ -393,8 +662,11 @@ func newTFHEComputeSession(
 			},
 			identityStore: identityStore,
 		},
-		protocol: protocol,
-		orgID:    orgID,
+		member:    member,
+		params:    params,
+		pub:       pub,
+		byNode:    tfhePositionsByNode(ordered),
+		collected: make(map[[32]byte]map[int]tfhe.Decryption),
 	}, nil
 }
 
@@ -424,59 +696,68 @@ func (s *tfheComputeSession) Init() {
 	s.logger.Info().
 		Str("sessionID", s.sessionID).
 		Str("walletID", s.walletID).
-		Msg("TFHE compute session initialized")
+		Int("threshold", s.member.Threshold).
+		Int("position", s.member.Share.Index).
+		Msg("Threshold-FHE decryption session ready")
 }
 
 func (s *tfheComputeSession) ProcessInboundMessage(msgBytes []byte) {
-	s.processingLock.Lock()
-	defer s.processingLock.Unlock()
-
-	inboundMessage := &types.Message{}
-	if err := json.Unmarshal(msgBytes, inboundMessage); err != nil {
-		s.logger.Error().Err(err).Msg("TFHE compute unmarshal error")
+	m := &types.Message{}
+	if err := json.Unmarshal(msgBytes, m); err != nil {
+		s.logger.Error().Err(err).Msg("Malformed threshold-FHE decryption message")
 		return
 	}
-
-	// Verify Ed25519 signature on the wire message
-	if err := s.verifyInboundSignature(inboundMessage); err != nil {
-		s.logger.Warn().Err(err).Str("sender", inboundMessage.SenderNodeID).Msg("Dropping message with invalid signature")
+	if err := s.verifyInboundSignature(m); err != nil {
+		s.logger.Warn().Err(err).Str("sender", m.SenderNodeID).Msg("Dropping message with invalid signature")
 		return
 	}
-
-	msgHashStr := fmt.Sprintf("%x", utils.GetMessageHash(inboundMessage.Body))
-	if s.processing.seen(msgHashStr) {
+	from, ok := s.byNode[m.SenderNodeID]
+	if !ok {
+		s.logger.Warn().Str("sender", m.SenderNodeID).Msg("Dropping partial decryption from a node outside the committee")
 		return
 	}
-
-	// Handle decryption share messages
-	var share tfhe.DecryptionShare
-	if err := json.Unmarshal(inboundMessage.Body, &share); err == nil {
-		if err := s.protocol.AddDecryptionShare(&share); err != nil {
-			s.logger.Error().Err(err).Msg("Failed to add decryption share")
-		}
+	if s.processing.seen(fmt.Sprintf("%x", utils.GetMessageHash(m.Body))) {
+		return
+	}
+	var contribution tfhe.Decryption
+	if err := json.Unmarshal(m.Body, &contribution); err != nil {
+		s.logger.Error().Err(err).Msg("Malformed partial decryption")
+		return
+	}
+	if contribution.From != from {
+		s.logger.Warn().
+			Str("sender", m.SenderNodeID).
+			Int("claimed", contribution.From).
+			Int("actual", from).
+			Msg("Dropping partial decryption that claims another member's position")
+		return
+	}
+	if err := s.AddShare(contribution); err != nil {
+		s.logger.Warn().Err(err).Str("sender", m.SenderNodeID).Msg("Rejecting partial decryption")
 	}
 }
 
 func (s *tfheComputeSession) ProcessOutboundMessage() {
 	for {
 		select {
-		case m := <-s.outCh:
-			recipientIDs := make([]string, len(m.ToPartyIDs))
-			for i, pid := range m.ToPartyIDs {
-				recipientIDs[i] = string(pid)
+		case m, ok := <-s.outCh:
+			if !ok {
+				return
 			}
-
-			msgWireBytes := &types.Message{
+			recipients := make([]string, len(m.ToPartyIDs))
+			for i, pid := range m.ToPartyIDs {
+				recipients[i] = string(pid)
+			}
+			s.sendMsg(&types.Message{
 				SessionID:    s.sessionID,
 				SenderID:     string(m.FromPartyID),
-				RecipientIDs: recipientIDs,
+				RecipientIDs: recipients,
 				Body:         m.Data,
 				IsBroadcast:  m.IsBroadcast,
-			}
-			s.sendMsg(msgWireBytes)
+			})
 
-		case <-s.errCh:
-			// Handle errors
+		case err := <-s.errCh:
+			s.logger.Error().Err(err).Msg("Threshold-FHE decryption error")
 
 		case <-s.finishCh:
 			return
@@ -485,53 +766,80 @@ func (s *tfheComputeSession) ProcessOutboundMessage() {
 }
 
 func (s *tfheComputeSession) Stop() {
-	close(s.outCh)
-	close(s.errCh)
+	s.unsubscribe()
+	s.processing.stop()
 }
 
-func (s *tfheComputeSession) WaitForFinish() string {
-	return <-s.externalFinishChan
+func (s *tfheComputeSession) WaitForFinish() string { return <-s.externalFinishChan }
+
+// Encrypt encrypts value under the committee's collective public key.
+func (s *tfheComputeSession) Encrypt(value uint64, fheType fhe.FheUintType) ([]byte, error) {
+	return tfhe.Encrypt(s.params, s.pub, value, fheType)
 }
 
-// Encrypt encrypts a value using TFHE
-func (s *tfheComputeSession) Encrypt(value uint64, fheType fhe.FheUintType) (*fhe.BitCiphertext, error) {
-	enc := s.protocol.GetEncryptor()
-	if enc == nil {
-		return nil, fmt.Errorf("encryptor not initialized")
+// PartialDecrypt computes this node's contribution, records it, and broadcasts
+// it to the committee.
+func (s *tfheComputeSession) PartialDecrypt(ciphertext []byte) (tfhe.Decryption, error) {
+	contribution, err := s.member.Decrypt(ciphertext, nil)
+	if err != nil {
+		return tfhe.Decryption{}, err
 	}
-	return enc.EncryptUint64(value, fheType), nil
+	if err := s.AddShare(contribution); err != nil {
+		return tfhe.Decryption{}, err
+	}
+	body, err := json.Marshal(contribution)
+	if err != nil {
+		return tfhe.Decryption{}, fmt.Errorf("mpc/tfhe: encode partial decryption: %w", err)
+	}
+	s.outCh <- msg{FromPartyID: s.selfPartyID, IsBroadcast: true, Data: body}
+	return contribution, nil
 }
 
-// CreateDecryptionShare creates this party's partial decryption
-func (s *tfheComputeSession) CreateDecryptionShare(ctx context.Context, ct *fhe.BitCiphertext) (*tfhe.DecryptionShare, error) {
-	return s.protocol.CreateDecryptionShare(ctx, ct)
+// AddShare records a partial decryption, keyed by the ciphertext it is bound
+// to and by the member. A second from the same member is refused.
+func (s *tfheComputeSession) AddShare(contribution tfhe.Decryption) error {
+	if contribution.From < 1 || contribution.From > s.member.Total {
+		return fmt.Errorf("mpc/tfhe: partial decryption from position %d outside [1,%d]",
+			contribution.From, s.member.Total)
+	}
+	if len(contribution.Partials) == 0 {
+		return fmt.Errorf("mpc/tfhe: partial decryption from position %d is empty", contribution.From)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	byMember, ok := s.collected[contribution.Digest]
+	if !ok {
+		byMember = make(map[int]tfhe.Decryption, s.member.Total)
+		s.collected[contribution.Digest] = byMember
+	}
+	if _, dup := byMember[contribution.From]; dup {
+		return fmt.Errorf("mpc/tfhe: position %d already contributed to this ciphertext", contribution.From)
+	}
+	byMember[contribution.From] = contribution
+	return nil
 }
 
-// AddDecryptionShare adds a share from another party
-func (s *tfheComputeSession) AddDecryptionShare(share *tfhe.DecryptionShare) error {
-	return s.protocol.AddDecryptionShare(share)
+// CanDecrypt reports whether the threshold has been met for ciphertext.
+func (s *tfheComputeSession) CanDecrypt(ciphertext []byte) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.collected[tfhe.Digest(ciphertext)]) >= s.member.Threshold
 }
 
-// Decrypt combines shares and produces final decryption
-func (s *tfheComputeSession) Decrypt(ctx context.Context, ct *fhe.BitCiphertext) (uint64, error) {
-	plaintext, err := s.protocol.CombineShares(ctx, ct)
+// Decrypt combines the collected partial decryptions, failing rather than
+// returning a value when no quorum recombines.
+func (s *tfheComputeSession) Decrypt(ciphertext []byte) (uint64, error) {
+	digest := tfhe.Digest(ciphertext)
+	s.mu.Lock()
+	from := make([]tfhe.Decryption, 0, len(s.collected[digest]))
+	for _, contribution := range s.collected[digest] {
+		from = append(from, contribution)
+	}
+	s.mu.Unlock()
+
+	bits, err := tfhe.Decrypt(ciphertext, from, s.params, s.member.Threshold)
 	if err != nil {
 		return 0, err
 	}
-	// Convert bytes to uint64
-	var result uint64
-	for i := 0; i < len(plaintext) && i < 8; i++ {
-		result |= uint64(plaintext[i]) << (8 * i)
-	}
-	return result, nil
-}
-
-// CanDecrypt returns true if enough shares are collected
-func (s *tfheComputeSession) CanDecrypt() bool {
-	return s.protocol.CanDecrypt()
-}
-
-// GetProtocol returns the underlying TFHE protocol
-func (s *tfheComputeSession) GetProtocol() *tfhe.Protocol {
-	return s.protocol
+	return tfhe.Value(bits), nil
 }
